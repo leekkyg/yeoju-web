@@ -75,10 +75,11 @@ export default function Home() {
             </div>
             <span className="font-bold text-xl text-white">마켓</span>
           </Link>
-          
+
           <nav className="hidden md:flex items-center gap-6">
             <Link href="/community" className="text-gray-300 hover:text-white font-medium transition-colors">커뮤니티</Link>
             <Link href="/market" className="text-gray-300 hover:text-white font-medium transition-colors">마켓</Link>
+            <Link href="/news" className="text-gray-300 hover:text-white font-medium transition-colors">소식</Link>
             <Link href="/videos" className="text-gray-300 hover:text-white font-medium transition-colors">영상</Link>
           </nav>
 
@@ -104,7 +105,7 @@ export default function Home() {
             {ads.length > 0 ? (
               <>
                 {ads.map((ad, index) => (
-                  <a
+                  
                     key={ad.id}
                     href={ad.link_url || "#"}
                     className={`absolute inset-0 transition-opacity duration-500 ${
@@ -141,7 +142,7 @@ export default function Home() {
               <div className="w-full h-full bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
                 <div className="text-center">
                   <p className="text-amber-500 text-sm font-bold mb-1">YEOJU MARKET</p>
-                  <p className="text-white text-2xl font-bold">여주시민의 프리미엄 커뮤니티</p>
+                  <p className="text-white text-2xl font-bold">여주시민을 위한 프리미엄 커뮤니티</p>
                   <p className="text-gray-400 text-sm mt-2">광고 문의: 031-XXX-XXXX</p>
                 </div>
               </div>
@@ -149,40 +150,48 @@ export default function Home() {
           </div>
         </div>
 
-        {/* 메인 메뉴 */}
-        <div className="mt-6 grid grid-cols-4 gap-3">
-          <Link href="/community" className="bg-white rounded-xl p-4 shadow-md hover:shadow-lg transition-all border-2 border-transparent hover:border-amber-500 text-center group">
-            <div className="w-14 h-14 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-2 group-hover:scale-110 transition-transform">
-              <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        {/* 메인 메뉴 - 5개 아이콘 */}
+        <div className="mt-6 grid grid-cols-5 gap-2">
+          <Link href="/community" className="bg-white rounded-xl p-3 shadow-md hover:shadow-lg transition-all border-2 border-transparent hover:border-amber-500 text-center group">
+            <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-2 group-hover:scale-110 transition-transform">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" />
               </svg>
             </div>
-            <span className="text-sm font-bold text-gray-800">커뮤니티</span>
+            <span className="text-xs font-bold text-gray-800">커뮤니티</span>
           </Link>
-          <Link href="/market" className="bg-white rounded-xl p-4 shadow-md hover:shadow-lg transition-all border-2 border-transparent hover:border-amber-500 text-center group">
-            <div className="w-14 h-14 bg-amber-500 rounded-xl flex items-center justify-center mx-auto mb-2 group-hover:scale-110 transition-transform">
-              <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <Link href="/market" className="bg-white rounded-xl p-3 shadow-md hover:shadow-lg transition-all border-2 border-transparent hover:border-amber-500 text-center group">
+            <div className="w-12 h-12 bg-amber-500 rounded-xl flex items-center justify-center mx-auto mb-2 group-hover:scale-110 transition-transform">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
               </svg>
             </div>
-            <span className="text-sm font-bold text-gray-800">마켓</span>
+            <span className="text-xs font-bold text-gray-800">마켓</span>
           </Link>
-          <Link href="/videos" className="bg-white rounded-xl p-4 shadow-md hover:shadow-lg transition-all border-2 border-transparent hover:border-amber-500 text-center group">
-            <div className="w-14 h-14 bg-red-600 rounded-xl flex items-center justify-center mx-auto mb-2 group-hover:scale-110 transition-transform">
-              <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <Link href="/news" className="bg-white rounded-xl p-3 shadow-md hover:shadow-lg transition-all border-2 border-transparent hover:border-amber-500 text-center group">
+            <div className="w-12 h-12 bg-sky-500 rounded-xl flex items-center justify-center mx-auto mb-2 group-hover:scale-110 transition-transform">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+              </svg>
+            </div>
+            <span className="text-xs font-bold text-gray-800">소식</span>
+          </Link>
+          <Link href="/videos" className="bg-white rounded-xl p-3 shadow-md hover:shadow-lg transition-all border-2 border-transparent hover:border-amber-500 text-center group">
+            <div className="w-12 h-12 bg-red-600 rounded-xl flex items-center justify-center mx-auto mb-2 group-hover:scale-110 transition-transform">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <span className="text-sm font-bold text-gray-800">영상</span>
+            <span className="text-xs font-bold text-gray-800">영상</span>
           </Link>
-          <Link href="/coupons" className="bg-white rounded-xl p-4 shadow-md hover:shadow-lg transition-all border-2 border-transparent hover:border-amber-500 text-center group">
-            <div className="w-14 h-14 bg-emerald-600 rounded-xl flex items-center justify-center mx-auto mb-2 group-hover:scale-110 transition-transform">
-              <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <Link href="/coupons" className="bg-white rounded-xl p-3 shadow-md hover:shadow-lg transition-all border-2 border-transparent hover:border-amber-500 text-center group">
+            <div className="w-12 h-12 bg-emerald-600 rounded-xl flex items-center justify-center mx-auto mb-2 group-hover:scale-110 transition-transform">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
               </svg>
             </div>
-            <span className="text-sm font-bold text-gray-800">쿠폰</span>
+            <span className="text-xs font-bold text-gray-800">쿠폰</span>
           </Link>
         </div>
 
@@ -197,7 +206,7 @@ export default function Home() {
               </svg>
             </Link>
           </div>
-          
+
           <div className="space-y-3">
             {recentPosts.length > 0 ? (
               recentPosts.map((post) => (
@@ -259,7 +268,7 @@ export default function Home() {
               </svg>
             </Link>
           </div>
-          
+
           <div className="grid grid-cols-2 gap-4">
             {recentVideos.length > 0 ? (
               recentVideos.map((video) => (
@@ -333,6 +342,7 @@ export default function Home() {
                 <ul className="space-y-2 text-gray-400 text-sm">
                   <li><Link href="/community" className="hover:text-white transition-colors">커뮤니티</Link></li>
                   <li><Link href="/market" className="hover:text-white transition-colors">마켓</Link></li>
+                  <li><Link href="/news" className="hover:text-white transition-colors">소식</Link></li>
                   <li><Link href="/videos" className="hover:text-white transition-colors">영상</Link></li>
                 </ul>
               </div>
@@ -351,7 +361,7 @@ export default function Home() {
         </div>
       </footer>
 
-      {/* 모바일 하단 네비게이션 */}
+      {/* 모바일 하단 네비게이션 - 6개 탭 */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 z-50">
         <div className="flex">
           <Link href="/" className="flex-1 py-3 flex flex-col items-center gap-1">
@@ -366,11 +376,11 @@ export default function Home() {
             </svg>
             <span className="text-xs text-gray-500">커뮤니티</span>
           </Link>
-          <Link href="/market" className="flex-1 py-3 flex flex-col items-center gap-1">
+          <Link href="/news" className="flex-1 py-3 flex flex-col items-center gap-1">
             <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
             </svg>
-            <span className="text-xs text-gray-500">마켓</span>
+            <span className="text-xs text-gray-500">소식</span>
           </Link>
           <Link href="/videos" className="flex-1 py-3 flex flex-col items-center gap-1">
             <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
