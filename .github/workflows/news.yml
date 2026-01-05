@@ -15,39 +15,71 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: |
-          # 구글 뉴스 RSS 가져오기
-          curl -s "https://news.google.com/rss/search?q=여주시&hl=ko&gl=KR&ceid=KR:ko" > rss.xml
-          
-          echo "=== RSS 내용 확인 ==="
-          head -100 rss.xml
-          
-          # 제목과 링크 추출
-          grep -oP '(?<=<title>).*?(?=</title>)' rss.xml | tail -n +2 | head -10 > titles.txt
-          grep -oP '(?<=<link>)https://news.google.com[^<]*(?=</link>)' rss.xml | head -10 > links.txt
-          
-          echo "=== 추출된 제목 ==="
-          cat titles.txt
-          
-          echo "=== 추출된 링크 ==="
-          cat links.txt
-          
-          # 저장
-          paste titles.txt links.txt | while IFS=$'\t' read -r title link; do
+          save_news() {
+            local title="$1"
+            local link="$2"
+            local source="$3"
+            
             if [ -n "$title" ] && [ -n "$link" ]; then
-              echo "저장 중: $title"
-              
-              # 특수문자 처리
-              title=$(echo "$title" | sed 's/"/\\"/g' | sed "s/'/\\'/g")
+              title=$(echo "$title" | sed 's/"/\\"/g' | sed "s/'/\\'/g" | tr -d '\n\r')
               
               curl -s -X POST "${SUPABASE_URL}/rest/v1/news" \
                 -H "apikey: ${SUPABASE_KEY}" \
                 -H "Authorization: Bearer ${SUPABASE_KEY}" \
                 -H "Content-Type: application/json" \
                 -H "Prefer: resolution=ignore-duplicates" \
-                -d "{\"title\": \"${title}\", \"source\": \"구글뉴스\", \"link\": \"${link}\"}"
+                -d "{\"title\": \"${title}\", \"source\": \"${source}\", \"link\": \"${link}\"}"
               
-              echo " -> 완료"
+              echo "저장: [$source] $title"
             fi
-          done
+          }
+          
+          collect_rss() {
+            local url="$1"
+            local source="$2"
+            local filter="$3"
+            
+            echo "=== $source 수집 ==="
+            curl -s "$url" -A "Mozilla/5.0" -L > rss_temp.xml
+            
+            # CDATA 형식
+            grep -oP '(?<=<title><!\[CDATA\[).*?(?=\]\]></title>)' rss_temp.xml > titles_temp.txt 2>/dev/null
+            # 일반 형식
+            if [ ! -s titles_temp.txt ]; then
+              grep -oP '(?<=<title>)[^<]+(?=</title>)' rss_temp.xml > titles_temp.txt 2>/dev/null
+            fi
+            
+            grep -oP '(?<=<link>)http[^<]+(?=</link>)' rss_temp.xml > links_temp.txt 2>/dev/null
+            
+            if [ "$filter" = "여주" ]; then
+              grep -i "여주" titles_temp.txt > titles_filtered.txt 2>/dev/null
+              mv titles_filtered.txt titles_temp.txt 2>/dev/null
+            fi
+            
+            head -10 titles_temp.txt > titles_final.txt
+            head -10 links_temp.txt > links_final.txt
+            
+            paste titles_final.txt links_final.txt | while IFS=$'\t' read -r t l; do
+              save_news "$t" "$l" "$source"
+            done
+          }
+          
+          # 여주 전용/지역 언론사
+          collect_rss "https://www.kyeonggi.com/rss/S1N14.xml" "경기일보" ""
+          collect_rss "http://www.joongboo.com/rss/allArticle.xml" "중부일보" "여주"
+          collect_rss "https://www.kyeongin.com/rss/allArticle.xml" "경인일보" "여주"
+          collect_rss "http://www.kihoilbo.co.kr/rss/allArticle.xml" "기호일보" "여주"
+          collect_rss "http://www.incheonilbo.com/rss/allArticle.xml" "인천일보" "여주"
+          collect_rss "https://www.joongdo.co.kr/rss/allArticle.xml" "중도일보" "여주"
+          collect_rss "https://www.metroseoul.co.kr/rss/allArticle.xml" "메트로신문" "여주"
+          collect_rss "http://www.news114.kr/rss/allArticle.xml" "남한강뉴스" ""
+          collect_rss "https://www.mediayonhap.com/rss/allArticle.xml" "미디어연합" "여주"
+          collect_rss "https://www.sejongnewspaper.com/rss/allArticle.xml" "세종신문" ""
+          collect_rss "https://www.hanaronews.kr/rss/allArticle.xml" "팔당유역신문" "여주"
+          collect_rss "https://www.hnrsm.com/rss/allArticle.xml" "하나로신문" "여주"
+          collect_rss "https://www.jeonmae.co.kr/rss/allArticle.xml" "전국매일신문" "여주"
+          collect_rss "https://www.sisamagazine.co.kr/rss/allArticle.xml" "시사매거진" "여주"
+          collect_rss "https://www.kyungginews.com/rss/allArticle.xml" "경기뉴스통신" "여주"
+          collect_rss "http://seronanews.com/rss/allArticle.xml" "새로나신문" "여주"
           
           echo "=== 전체 완료 ==="
