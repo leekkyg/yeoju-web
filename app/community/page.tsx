@@ -10,9 +10,13 @@ export default function CommunityPage() {
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState("전체");
+  const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
     fetchPosts();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user);
+    });
   }, [selectedCategory]);
 
   const fetchPosts = async () => {
@@ -46,30 +50,36 @@ export default function CommunityPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      {/* 헤더 */}
-      <header className="bg-white sticky top-0 z-50 border-b border-gray-100">
-        <div className="max-w-lg mx-auto px-4 h-14 flex items-center">
-          <Link href="/" className="mr-3">
-            <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
+    <div className="min-h-screen bg-gray-100 pb-24 md:pb-10">
+      <header className="bg-gray-900 sticky top-0 z-50">
+        <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Link href="/" className="text-gray-400 hover:text-white">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </Link>
+            <h1 className="text-white font-bold text-lg">커뮤니티</h1>
+          </div>
+          <Link
+            href={user ? "/community/write" : "/login"}
+            className="px-4 py-1.5 bg-amber-500 text-gray-900 font-bold rounded-lg text-sm hover:bg-amber-400 transition-colors"
+          >
+            글쓰기
           </Link>
-          <h1 className="font-bold text-lg text-gray-900">커뮤니티</h1>
         </div>
       </header>
 
-      {/* 카테고리 탭 */}
-      <div className="bg-white sticky top-14 z-40 border-b border-gray-100">
-        <div className="max-w-lg mx-auto px-4 flex gap-1 overflow-x-auto py-3">
+      <div className="bg-white border-b border-gray-200 sticky top-14 z-40">
+        <div className="max-w-3xl mx-auto px-4 flex gap-1 overflow-x-auto py-3">
           {categories.map((category) => (
             <button
               key={category}
               onClick={() => setSelectedCategory(category)}
-              className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+              className={`px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-colors ${
                 selectedCategory === category
-                  ? "bg-green-600 text-white"
-                  : "bg-gray-100 text-gray-600"
+                  ? "bg-gray-900 text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
               {category}
@@ -78,48 +88,49 @@ export default function CommunityPage() {
         </div>
       </div>
 
-      {/* 게시글 목록 */}
-      <main className="max-w-lg mx-auto">
+      <main className="max-w-3xl mx-auto px-4 py-4">
         {loading ? (
           <div className="flex justify-center py-20">
-            <div className="w-8 h-8 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
+            <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
           </div>
         ) : posts.length === 0 ? (
-          <div className="text-center py-20">
-            <p className="text-gray-400">게시글이 없습니다</p>
+          <div className="text-center py-20 bg-white rounded-xl shadow-md">
+            <p className="text-gray-500 font-medium">게시글이 없습니다</p>
+            <Link
+              href={user ? "/community/write" : "/login"}
+              className="inline-block mt-4 px-6 py-2 bg-amber-500 text-gray-900 font-bold rounded-lg hover:bg-amber-400 transition-colors"
+            >
+              첫 글 작성하기
+            </Link>
           </div>
         ) : (
-          <div className="bg-white divide-y divide-gray-100">
+          <div className="space-y-3">
             {posts.map((post) => (
               <Link
                 key={post.id}
                 href={`/community/${post.id}`}
-                className="block px-4 py-4 hover:bg-gray-50"
+                className="block bg-white rounded-xl p-4 shadow-md hover:shadow-lg transition-all border-l-4 border-amber-500"
               >
-                <div className="flex items-start gap-3">
+                <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-0.5 rounded">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xs font-bold text-white bg-gray-800 px-2 py-1 rounded">
                         {post.category || "자유"}
                       </span>
+                      <span className="text-xs text-gray-500 font-medium">{formatDate(post.created_at)}</span>
                     </div>
-                    <h3 className="font-medium text-gray-900 line-clamp-1">
-                      {post.title}
-                    </h3>
-                    <p className="text-sm text-gray-500 mt-1 line-clamp-2">
-                      {post.content}
-                    </p>
-                    <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
-                      <span>{formatDate(post.created_at)}</span>
+                    <h3 className="font-bold text-gray-900 mb-1 truncate">{post.title}</h3>
+                    <p className="text-sm text-gray-600 line-clamp-2">{post.content}</p>
+                    <div className="flex items-center gap-4 mt-2 text-xs text-gray-500 font-medium">
                       <span className="flex items-center gap-1">
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                         </svg>
                         {post.view_count || 0}
                       </span>
                       <span className="flex items-center gap-1">
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                         </svg>
                         {post.like_count || 0}
@@ -127,12 +138,8 @@ export default function CommunityPage() {
                     </div>
                   </div>
                   {post.image_url && (
-                    <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
-                      <img
-                        src={post.image_url}
-                        alt=""
-                        className="w-full h-full object-cover"
-                      />
+                    <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 bg-gray-200">
+                      <img src={post.image_url} alt="" className="w-full h-full object-cover" />
                     </div>
                   )}
                 </div>
@@ -142,38 +149,38 @@ export default function CommunityPage() {
         )}
       </main>
 
-      {/* 하단 네비게이션 */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50">
-        <div className="max-w-lg mx-auto flex">
-          <Link href="/" className="flex-1 py-3 flex flex-col items-center gap-1 text-gray-400">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 z-50">
+        <div className="flex">
+          <Link href="/" className="flex-1 py-3 flex flex-col items-center gap-1">
+            <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
             </svg>
-            <span className="text-xs">홈</span>
+            <span className="text-xs text-gray-500">홈</span>
           </Link>
-          <Link href="/community" className="flex-1 py-3 flex flex-col items-center gap-1 text-green-600">
-            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+          <Link href="/community" className="flex-1 py-3 flex flex-col items-center gap-1">
+            <svg className="w-6 h-6 text-amber-500" fill="currentColor" viewBox="0 0 24 24">
               <path d="M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
             </svg>
-            <span className="text-xs font-medium">커뮤니티</span>
+            <span className="text-xs font-bold text-amber-500">커뮤니티</span>
           </Link>
-          <Link href="/market" className="flex-1 py-3 flex flex-col items-center gap-1 text-gray-400">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <Link href="/market" className="flex-1 py-3 flex flex-col items-center gap-1">
+            <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
             </svg>
-            <span className="text-xs">마켓</span>
+            <span className="text-xs text-gray-500">마켓</span>
           </Link>
-          <Link href="/videos" className="flex-1 py-3 flex flex-col items-center gap-1 text-gray-400">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          <Link href="/videos" className="flex-1 py-3 flex flex-col items-center gap-1">
+            <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span className="text-xs">영상</span>
+            <span className="text-xs text-gray-500">영상</span>
           </Link>
-          <Link href="/login" className="flex-1 py-3 flex flex-col items-center gap-1 text-gray-400">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <Link href="/login" className="flex-1 py-3 flex flex-col items-center gap-1">
+            <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
-            <span className="text-xs">마이</span>
+            <span className="text-xs text-gray-500">MY</span>
           </Link>
         </div>
       </nav>
