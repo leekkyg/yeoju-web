@@ -10,25 +10,69 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: 뉴스 수집 및 저장
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: 뉴스 수집
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: |
-          # 네이버 뉴스 검색
-          NEWS=$(curl -s "https://search.naver.com/search.naver?where=news&query=%EC%97%AC%EC%A3%BC%EC%8B%9C&sort=1" \
-            -H "User-Agent: Mozilla/5.0")
+          node << 'EOF'
+          const https = require('https');
           
-          # 뉴스 제목과 링크 추출 후 Supabase에 저장
-          echo "$NEWS" | grep -oP 'href="(https://n\.news\.naver\.com[^"]+)"[^>]*class="news_tit"[^>]*title="([^"]+)"' | head -10 | while read line; do
-            LINK=$(echo "$line" | grep -oP 'https://n\.news\.naver\.com[^"]+')
-            TITLE=$(echo "$line" | grep -oP 'title="[^"]+"' | sed 's/title="//;s/"$//')
-            
-            if [ -n "$LINK" ] && [ -n "$TITLE" ]; then
-              curl -X POST "${{ secrets.SUPABASE_URL }}/rest/v1/news" \
-                -H "apikey: ${{ secrets.SUPABASE_KEY }}" \
-                -H "Authorization: Bearer ${{ secrets.SUPABASE_KEY }}" \
-                -H "Content-Type: application/json" \
-                -H "Prefer: resolution=ignore-duplicates" \
-                -d "{\"title\": \"$TITLE\", \"source\": \"네이버뉴스\", \"link\": \"$LINK\"}"
-            fi
-          done
+          const url = 'https://news.google.com/rss/search?q=여주시&hl=ko&gl=KR&ceid=KR:ko';
           
-          echo "뉴스 수집 완료"
+          https.get(url, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+              const titleRegex = /<title><!\[CDATA\[(.*?)\]\]><\/title>/g;
+              const linkRegex = /<link>(https:\/\/news\.google\.com\/[^<]+)<\/link>/g;
+              
+              const titles = [];
+              const links = [];
+              let match;
+              
+              while ((match = titleRegex.exec(data)) !== null) {
+                titles.push(match[1]);
+              }
+              while ((match = linkRegex.exec(data)) !== null) {
+                links.push(match[1]);
+              }
+              
+              const supabaseHost = process.env.SUPABASE_URL.replace('https://', '');
+              
+              for (let i = 1; i < Math.min(titles.length, 11); i++) {
+                const title = titles[i].replace(/"/g, '\\"').replace(/'/g, '');
+                const link = links[i] || '';
+                
+                console.log('저장:', title);
+                
+                const postData = JSON.stringify({
+                  title: title,
+                  source: '구글뉴스',
+                  link: link
+                });
+                
+                const req = https.request({
+                  hostname: supabaseHost,
+                  path: '/rest/v1/news',
+                  method: 'POST',
+                  headers: {
+                    'apikey': process.env.SUPABASE_KEY,
+                    'Authorization': 'Bearer ' + process.env.SUPABASE_KEY,
+                    'Content-Type': 'application/json',
+                    'Prefer': 'resolution=ignore-duplicates'
+                  }
+                });
+                req.write(postData);
+                req.end();
+              }
+              
+              console.log('완료!');
+            });
+          });
+          EOF
