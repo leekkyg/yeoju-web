@@ -8,62 +8,138 @@ on:
 jobs:
   collect-news:
     runs-on: ubuntu-latest
-    
+
     steps:
-      - name: 뉴스 수집
+      - name: Python 설치
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: 의존성 설치
+        run: pip install requests feedparser
+
+      - name: 뉴스 수집 스크립트 생성 및 실행
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: |
-          collect_and_save() {
-            local name=$1
-            local url=$2
-            
-            echo "=== $name 수집 ==="
-            curl -s "$url" -A "Mozilla/5.0" -L --connect-timeout 10 -o rss.xml || true
-            
-            grep -oP '(?<=<title><!\[CDATA\[)[^\]]+' rss.xml > titles.txt 2>/dev/null || true
-            if [ ! -s titles.txt ]; then
-              grep -oP '(?<=<title>)[^<]+' rss.xml > titles.txt 2>/dev/null || true
-            fi
-            
-            grep -oP '(?<=<link>)http[s]?://[^<]+' rss.xml > links.txt 2>/dev/null || true
-            
-            grep -n "여주" titles.txt > filtered.txt 2>/dev/null || true
-            
-            count=$(wc -l < filtered.txt 2>/dev/null || echo "0")
-            echo "$name: 여주 관련 $count개 기사 발견"
-            
-            while IFS=: read -r linenum title; do
-              link=$(sed -n "${linenum}p" links.txt)
-              if [ -n "$title" ] && [ -n "$link" ]; then
-                title=$(echo "$title" | sed 's/"/\\"/g' | tr -d '\n\r')
-                echo "저장: $title"
-                curl -s -X POST "${SUPABASE_URL}/rest/v1/news" \
-                  -H "apikey: ${SUPABASE_KEY}" \
-                  -H "Authorization: Bearer ${SUPABASE_KEY}" \
-                  -H "Content-Type: application/json" \
-                  -H "Prefer: resolution=ignore-duplicates" \
-                  -d "{\"title\": \"${title}\", \"source\": \"${name}\", \"link\": \"${link}\"}" || true
-              fi
-            done < filtered.txt
-          }
-          
-          collect_and_save "경기일보" "https://www.kyeonggi.com/rss/S1N14.xml"
-          collect_and_save "경인일보" "https://www.kyeongin.com/rss/allArticle.xml"
-          collect_and_save "중부일보" "http://www.joongboo.com/rss/allArticle.xml"
-          collect_and_save "기호일보" "http://www.kihoilbo.co.kr/rss/allArticle.xml"
-          collect_and_save "인천일보" "http://www.incheonilbo.com/rss/allArticle.xml"
-          collect_and_save "중도일보" "https://www.joongdo.co.kr/rss/allArticle.xml"
-          collect_and_save "메트로신문" "https://www.metroseoul.co.kr/rss/allArticle.xml"
-          collect_and_save "남한강뉴스" "http://www.news114.kr/rss/allArticle.xml"
-          collect_and_save "미디어연합" "https://www.mediayonhap.com/rss/allArticle.xml"
-          collect_and_save "세종신문" "https://www.sejongnewspaper.com/rss/allArticle.xml"
-          collect_and_save "팔당유역신문" "https://www.hanaronews.kr/rss/allArticle.xml"
-          collect_and_save "하나로신문" "https://www.hnrsm.com/rss/allArticle.xml"
-          collect_and_save "전국매일신문" "https://www.jeonmae.co.kr/rss/allArticle.xml"
-          collect_and_save "시사매거진" "https://www.sisamagazine.co.kr/rss/allArticle.xml"
-          collect_and_save "경기뉴스통신" "https://www.kyungginews.com/rss/allArticle.xml"
-          collect_and_save "새로나신문" "http://seronanews.com/rss/allArticle.xml"
-          
-          echo "=== 전체 완료 ==="
+          cat << 'EOF' > collect_news.py
+          import os
+          import requests
+          import feedparser
+          from difflib import SequenceMatcher
+
+          SUPABASE_URL = os.environ['SUPABASE_URL']
+          SUPABASE_KEY = os.environ['SUPABASE_KEY']
+
+          # 언론사 RSS 목록
+          RSS_FEEDS = [
+              ("경기일보", "https://www.kyeonggi.com/rss/S1N14.xml"),
+              ("경인일보", "https://www.kyeongin.com/rss/allArticle.xml"),
+              ("중부일보", "http://www.joongboo.com/rss/allArticle.xml"),
+              ("기호일보", "http://www.kihoilbo.co.kr/rss/allArticle.xml"),
+              ("인천일보", "http://www.incheonilbo.com/rss/allArticle.xml"),
+              ("중도일보", "https://www.joongdo.co.kr/rss/allArticle.xml"),
+              ("메트로신문", "https://www.metroseoul.co.kr/rss/allArticle.xml"),
+              ("대한강원", "http://www.news114.kr/rss/allArticle.xml"),
+              ("미디어연합", "https://www.mediayonhap.com/rss/allArticle.xml"),
+              ("세종신문", "https://www.sejongnewspaper.com/rss/allArticle.xml"),
+              ("당당뉴스", "https://www.hanaronews.kr/rss/allArticle.xml"),
+              ("하나로신문", "https://www.hnrsm.com/rss/allArticle.xml"),
+              ("전국매일신문", "https://www.jeonmae.co.kr/rss/allArticle.xml"),
+              ("시사매거진", "https://www.sisamagazine.co.kr/rss/allArticle.xml"),
+              ("경기뉴스통신", "https://www.kyungginews.com/rss/allArticle.xml"),
+              ("새로난신문", "http://seronanews.com/rss/allArticle.xml"),
+          ]
+
+          def get_existing_news():
+              """기존 뉴스 제목과 링크 가져오기"""
+              headers = {
+                  "apikey": SUPABASE_KEY,
+                  "Authorization": f"Bearer {SUPABASE_KEY}"
+              }
+              # 최근 500개만 가져와서 비교
+              url = f"{SUPABASE_URL}/rest/v1/news?select=title,link&order=created_at.desc&limit=500"
+              try:
+                  resp = requests.get(url, headers=headers, timeout=10)
+                  if resp.status_code == 200:
+                      return resp.json()
+              except:
+                  pass
+              return []
+
+          def is_similar(title1, title2, threshold=0.7):
+              """두 제목의 유사도 비교 (70% 이상이면 유사)"""
+              # 공백, 특수문자 정리
+              t1 = ''.join(title1.split()).lower()
+              t2 = ''.join(title2.split()).lower()
+              ratio = SequenceMatcher(None, t1, t2).ratio()
+              return ratio >= threshold
+
+          def is_duplicate(new_title, new_link, existing_news):
+              """중복 체크: 링크 동일 또는 제목 유사"""
+              for item in existing_news:
+                  # 링크 완전 일치
+                  if item.get('link') == new_link:
+                      return True
+                  # 제목 유사도 70% 이상
+                  if is_similar(new_title, item.get('title', '')):
+                      return True
+              return False
+
+          def save_news(title, link, source, existing_news):
+              """뉴스 저장 (중복 아닐 때만)"""
+              if is_duplicate(title, link, existing_news):
+                  print(f"  [중복] {title[:40]}...")
+                  return False
+              
+              headers = {
+                  "apikey": SUPABASE_KEY,
+                  "Authorization": f"Bearer {SUPABASE_KEY}",
+                  "Content-Type": "application/json",
+                  "Prefer": "resolution=ignore-duplicates"
+              }
+              data = {"title": title, "source": source, "link": link}
+              try:
+                  resp = requests.post(f"{SUPABASE_URL}/rest/v1/news", headers=headers, json=data, timeout=10)
+                  if resp.status_code in [200, 201]:
+                      print(f"  [저장] {title[:40]}...")
+                      # 새로 저장한 것도 existing_news에 추가 (같은 실행 내 중복 방지)
+                      existing_news.append({"title": title, "link": link})
+                      return True
+              except Exception as e:
+                  print(f"  [에러] {e}")
+              return False
+
+          def collect_from_rss(name, url, existing_news):
+              """RSS에서 여주 관련 뉴스 수집"""
+              print(f"\n=== {name} 수집 ===")
+              try:
+                  feed = feedparser.parse(url)
+                  count = 0
+                  for entry in feed.entries:
+                      title = entry.get('title', '')
+                      link = entry.get('link', '')
+                      # 여주 키워드 포함된 것만
+                      if '여주' in title and title and link:
+                          if save_news(title, link, name, existing_news):
+                              count += 1
+                  print(f"  → {name}: {count}개 새 기사 저장")
+              except Exception as e:
+                  print(f"  → {name} 에러: {e}")
+
+          def main():
+              print("=== 뉴스 수집 시작 ===")
+              existing_news = get_existing_news()
+              print(f"기존 뉴스: {len(existing_news)}개")
+              
+              for name, url in RSS_FEEDS:
+                  collect_from_rss(name, url, existing_news)
+              
+              print("\n=== 완료 ===")
+
+          if __name__ == "__main__":
+              main()
+          EOF
+
+          python collect_news.py
