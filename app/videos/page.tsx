@@ -37,7 +37,7 @@ export default function VideosPage() {
     <div className="min-h-screen bg-gray-100 pb-24 md:pb-10">
       {/* 헤더 */}
       <header className="bg-gray-900 sticky top-0 z-50">
-        <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
+        <div className="max-w-[631px] mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link href="/" className="text-gray-400 hover:text-white">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -49,7 +49,7 @@ export default function VideosPage() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 py-4">
+      <main className="max-w-[631px] mx-auto px-4 py-4">
         {loading ? (
           <div className="flex justify-center py-20">
             <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>

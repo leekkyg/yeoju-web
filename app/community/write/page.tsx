@@ -76,7 +76,7 @@ export default function WritePage() {
   return (
     <div className="min-h-screen bg-gray-100">
       <header className="bg-gray-900 sticky top-0 z-50">
-        <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
+        <div className="max-w-[631px] mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link href="/community" className="text-gray-400 hover:text-white">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -95,7 +95,7 @@ export default function WritePage() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 py-6">
+      <main className="max-w-[631px] mx-auto px-4 py-6">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="bg-white rounded-xl p-4 shadow-md">
             <label className="block text-sm font-bold text-gray-700 mb-2">카테고리</label>

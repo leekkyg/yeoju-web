@@ -187,7 +187,7 @@ export default function CommunityPage() {
 
       {/* 헤더 */}
       <header className="bg-gray-900 sticky top-0 z-50">
-        <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
+        <div className="max-w-[631px] mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link href="/" className="text-gray-400 hover:text-white">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -199,7 +199,7 @@ export default function CommunityPage() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 py-4">
+      <main className="max-w-[631px] mx-auto px-4 py-4">
         {/* 글쓰기 박스 */}
         {user ? (
           <div className="bg-white rounded-xl p-4 shadow-md mb-4">

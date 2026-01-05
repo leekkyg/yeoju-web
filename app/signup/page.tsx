@@ -63,7 +63,7 @@ export default function SignupPage() {
   return (
     <div className="min-h-screen bg-gray-100">
       <header className="bg-gray-900 sticky top-0 z-50">
-        <div className="max-w-3xl mx-auto px-4 h-14 flex items-center">
+        <div className="max-w-[631px] mx-auto px-4 h-14 flex items-center">
           <Link href="/" className="text-gray-400 hover:text-white mr-3">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -73,7 +73,7 @@ export default function SignupPage() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 py-8">
+      <main className="max-w-[631px] mx-auto px-4 py-8">
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
             <span className="text-gray-900 font-black text-xl">여주</span>

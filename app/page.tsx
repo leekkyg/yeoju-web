@@ -68,7 +68,7 @@ export default function Home() {
     <div className="min-h-screen bg-gray-100">
       {/* 헤더 */}
       <header className="bg-gray-900 sticky top-0 z-50">
-        <div className="max-w-3xl mx-auto px-4 h-16 flex items-center justify-between">
+        <div className="max-w-[631px] mx-auto px-4 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
             <div className="w-9 h-9 bg-amber-500 rounded-lg flex items-center justify-center">
               <span className="text-gray-900 font-black text-sm">여주</span>
@@ -97,7 +97,7 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 pb-24 md:pb-10">
+      <main className="max-w-[631px] mx-auto px-4 pb-24 md:pb-10">
         {/* 광고 배너 */}
         <div className="mt-6">
           <div className="relative rounded-xl overflow-hidden bg-gray-800 aspect-[2.5/1] shadow-xl">
@@ -316,7 +316,7 @@ export default function Home() {
 
       {/* 푸터 */}
       <footer className="bg-gray-900 text-white py-10 border-t-4 border-amber-500">
-        <div className="max-w-3xl mx-auto px-4">
+        <div className="max-w-[631px] mx-auto px-4">
           <div className="flex flex-col md:flex-row justify-between gap-8">
             <div>
               <div className="flex items-center gap-2 mb-3">
