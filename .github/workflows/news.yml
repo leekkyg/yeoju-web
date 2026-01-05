@@ -15,29 +15,62 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: |
-          echo "=== 경기일보 수집 ==="
-          curl -s "https://www.kyeonggi.com/rss/S1N14.xml" -A "Mozilla/5.0" -o rss.xml
-          
-          grep -oP '(?<=<title><!\[CDATA\[)[^]]+' rss.xml | head -10 > titles.txt || true
-          grep -oP '(?<=<link>)https://www.kyeonggi.com[^<]+' rss.xml | head -10 > links.txt || true
-          
-          echo "제목들:"
-          cat titles.txt
-          
-          echo "링크들:"
-          cat links.txt
-          
-          while IFS= read -r title && IFS= read -r link <&3; do
-            if [ -n "$title" ] && [ -n "$link" ]; then
-              echo "저장: $title"
-              title=$(echo "$title" | sed 's/"/\\"/g')
-              curl -s -X POST "${SUPABASE_URL}/rest/v1/news" \
-                -H "apikey: ${SUPABASE_KEY}" \
-                -H "Authorization: Bearer ${SUPABASE_KEY}" \
-                -H "Content-Type: application/json" \
-                -H "Prefer: resolution=ignore-duplicates" \
-                -d "{\"title\": \"${title}\", \"source\": \"경기일보\", \"link\": \"${link}\"}"
+          collect_and_save() {
+            local name=$1
+            local url=$2
+            
+            echo "=== $name 수집 ==="
+            curl -s "$url" -A "Mozilla/5.0" -L --connect-timeout 10 -o rss.xml || true
+            
+            # 여러 패턴으로 제목 추출 시도
+            grep -oP '(?<=<title><!\[CDATA\[)[^\]]+' rss.xml > titles.txt 2>/dev/null || true
+            if [ ! -s titles.txt ]; then
+              grep -oP '(?<=<title>)[^<]+' rss.xml > titles.txt 2>/dev/null || true
             fi
-          done < titles.txt 3< links.txt
+            
+            # 링크 추출
+            grep -oP '(?<=<link>)http[s]?://[^<]+' rss.xml > links.txt 2>/dev/null || true
+            
+            count=$(wc -l < titles.txt)
+            echo "$name: $count개 기사 발견"
+            
+            # 저장
+            head -10 titles.txt > t.txt
+            head -10 links.txt > l.txt
+            
+            i=1
+            while IFS= read -r title; do
+              link=$(sed -n "${i}p" l.txt)
+              if [ -n "$title" ] && [ -n "$link" ]; then
+                title=$(echo "$title" | sed 's/"/\\"/g' | tr -d '\n\r')
+                echo "저장: $title"
+                curl -s -X POST "${SUPABASE_URL}/rest/v1/news" \
+                  -H "apikey: ${SUPABASE_KEY}" \
+                  -H "Authorization: Bearer ${SUPABASE_KEY}" \
+                  -H "Content-Type: application/json" \
+                  -H "Prefer: resolution=ignore-duplicates" \
+                  -d "{\"title\": \"${title}\", \"source\": \"${name}\", \"link\": \"${link}\"}" || true
+              fi
+              i=$((i+1))
+            done < t.txt
+          }
           
-          echo "=== 완료 ==="
+          # 여주 지역 언론사들
+          collect_and_save "경기일보" "https://www.kyeonggi.com/rss/S1N14.xml"
+          collect_and_save "경인일보" "https://www.kyeongin.com/rss/allArticle.xml"
+          collect_and_save "중부일보" "http://www.joongboo.com/rss/allArticle.xml"
+          collect_and_save "기호일보" "http://www.kihoilbo.co.kr/rss/allArticle.xml"
+          collect_and_save "인천일보" "http://www.incheonilbo.com/rss/allArticle.xml"
+          collect_and_save "중도일보" "https://www.joongdo.co.kr/rss/allArticle.xml"
+          collect_and_save "메트로신문" "https://www.metroseoul.co.kr/rss/allArticle.xml"
+          collect_and_save "남한강뉴스" "http://www.news114.kr/rss/allArticle.xml"
+          collect_and_save "미디어연합" "https://www.mediayonhap.com/rss/allArticle.xml"
+          collect_and_save "세종신문" "https://www.sejongnewspaper.com/rss/allArticle.xml"
+          collect_and_save "팔당유역신문" "https://www.hanaronews.kr/rss/allArticle.xml"
+          collect_and_save "하나로신문" "https://www.hnrsm.com/rss/allArticle.xml"
+          collect_and_save "전국매일신문" "https://www.jeonmae.co.kr/rss/allArticle.xml"
+          collect_and_save "시사매거진" "https://www.sisamagazine.co.kr/rss/allArticle.xml"
+          collect_and_save "경기뉴스통신" "https://www.kyungginews.com/rss/allArticle.xml"
+          collect_and_save "새로나신문" "http://seronanews.com/rss/allArticle.xml"
+          
+          echo "=== 전체 완료 ==="
