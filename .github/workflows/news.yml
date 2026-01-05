@@ -22,22 +22,18 @@ jobs:
             echo "=== $name 수집 ==="
             curl -s "$url" -A "Mozilla/5.0" -L --connect-timeout 10 -o rss.xml || true
             
-            # 여러 패턴으로 제목 추출 시도
             grep -oP '(?<=<title><!\[CDATA\[)[^\]]+' rss.xml > titles.txt 2>/dev/null || true
             if [ ! -s titles.txt ]; then
               grep -oP '(?<=<title>)[^<]+' rss.xml > titles.txt 2>/dev/null || true
             fi
             
-            # 링크 추출
             grep -oP '(?<=<link>)http[s]?://[^<]+' rss.xml > links.txt 2>/dev/null || true
             
-            # 여주 관련 기사만 필터링
             grep -n "여주" titles.txt > filtered.txt 2>/dev/null || true
             
             count=$(wc -l < filtered.txt 2>/dev/null || echo "0")
             echo "$name: 여주 관련 $count개 기사 발견"
             
-            # 저장
             while IFS=: read -r linenum title; do
               link=$(sed -n "${linenum}p" links.txt)
               if [ -n "$title" ] && [ -n "$link" ]; then
@@ -53,7 +49,6 @@ jobs:
             done < filtered.txt
           }
           
-          # 여주 지역 언론사들
           collect_and_save "경기일보" "https://www.kyeonggi.com/rss/S1N14.xml"
           collect_and_save "경인일보" "https://www.kyeongin.com/rss/allArticle.xml"
           collect_and_save "중부일보" "http://www.joongboo.com/rss/allArticle.xml"
