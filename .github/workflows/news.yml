@@ -10,69 +10,44 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          
       - name: 뉴스 수집
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: |
-          node << 'EOF'
-          const https = require('https');
+          # 구글 뉴스 RSS 가져오기
+          curl -s "https://news.google.com/rss/search?q=여주시&hl=ko&gl=KR&ceid=KR:ko" > rss.xml
           
-          const url = 'https://news.google.com/rss/search?q=여주시&hl=ko&gl=KR&ceid=KR:ko';
+          echo "=== RSS 내용 확인 ==="
+          head -100 rss.xml
           
-          https.get(url, (res) => {
-            let data = '';
-            res.on('data', chunk => data += chunk);
-            res.on('end', () => {
-              const titleRegex = /<title><!\[CDATA\[(.*?)\]\]><\/title>/g;
-              const linkRegex = /<link>(https:\/\/news\.google\.com\/[^<]+)<\/link>/g;
+          # 제목과 링크 추출
+          grep -oP '(?<=<title>).*?(?=</title>)' rss.xml | tail -n +2 | head -10 > titles.txt
+          grep -oP '(?<=<link>)https://news.google.com[^<]*(?=</link>)' rss.xml | head -10 > links.txt
+          
+          echo "=== 추출된 제목 ==="
+          cat titles.txt
+          
+          echo "=== 추출된 링크 ==="
+          cat links.txt
+          
+          # 저장
+          paste titles.txt links.txt | while IFS=$'\t' read -r title link; do
+            if [ -n "$title" ] && [ -n "$link" ]; then
+              echo "저장 중: $title"
               
-              const titles = [];
-              const links = [];
-              let match;
+              # 특수문자 처리
+              title=$(echo "$title" | sed 's/"/\\"/g' | sed "s/'/\\'/g")
               
-              while ((match = titleRegex.exec(data)) !== null) {
-                titles.push(match[1]);
-              }
-              while ((match = linkRegex.exec(data)) !== null) {
-                links.push(match[1]);
-              }
+              curl -s -X POST "${SUPABASE_URL}/rest/v1/news" \
+                -H "apikey: ${SUPABASE_KEY}" \
+                -H "Authorization: Bearer ${SUPABASE_KEY}" \
+                -H "Content-Type: application/json" \
+                -H "Prefer: resolution=ignore-duplicates" \
+                -d "{\"title\": \"${title}\", \"source\": \"구글뉴스\", \"link\": \"${link}\"}"
               
-              const supabaseHost = process.env.SUPABASE_URL.replace('https://', '');
-              
-              for (let i = 1; i < Math.min(titles.length, 11); i++) {
-                const title = titles[i].replace(/"/g, '\\"').replace(/'/g, '');
-                const link = links[i] || '';
-                
-                console.log('저장:', title);
-                
-                const postData = JSON.stringify({
-                  title: title,
-                  source: '구글뉴스',
-                  link: link
-                });
-                
-                const req = https.request({
-                  hostname: supabaseHost,
-                  path: '/rest/v1/news',
-                  method: 'POST',
-                  headers: {
-                    'apikey': process.env.SUPABASE_KEY,
-                    'Authorization': 'Bearer ' + process.env.SUPABASE_KEY,
-                    'Content-Type': 'application/json',
-                    'Prefer': 'resolution=ignore-duplicates'
-                  }
-                });
-                req.write(postData);
-                req.end();
-              }
-              
-              console.log('완료!');
-            });
-          });
-          EOF
+              echo " -> 완료"
+            fi
+          done
+          
+          echo "=== 전체 완료 ==="
