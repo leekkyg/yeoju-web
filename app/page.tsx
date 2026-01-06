@@ -298,8 +298,12 @@ export default function HomePage() {
                 // DB에서 가져온 메뉴
                 displayMenus.map((menu) => (
                   <Link key={menu.id} href={menu.link || "#"} className="flex flex-col items-center gap-2 py-2 group">
-                    <div className={`w-12 h-12 ${menu.color || 'bg-emerald-500'} rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform text-xl`}>
-                      {menuIconEmoji[menu.icon] || "📋"}
+                    <div className={`w-12 h-12 ${menu.icon_url ? 'bg-white shadow-md' : menu.color || 'bg-emerald-500'} rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform overflow-hidden`}>
+                      {menu.icon_url ? (
+                        <img src={menu.icon_url} alt={menu.title} className="w-8 h-8 object-contain" />
+                      ) : (
+                        <span className="text-xl">{menuIconEmoji[menu.icon] || "📋"}</span>
+                      )}
                     </div>
                     <span className="text-xs font-bold text-gray-700">{menu.title}</span>
                   </Link>
