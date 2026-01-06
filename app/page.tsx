@@ -182,6 +182,11 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-white">
+      {/* Material Icons 폰트 로드 */}
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,1,0"
+      />
       <style jsx global>{`
         @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
         * {
@@ -296,18 +301,25 @@ export default function HomePage() {
             <div className="grid grid-cols-4 gap-2">
               {displayMenus ? (
                 // DB에서 가져온 메뉴
-                displayMenus.map((menu) => (
-                  <Link key={menu.id} href={menu.link || "#"} className="flex flex-col items-center gap-2 py-2 group">
-                    <div className={`w-12 h-12 ${menu.icon_url ? 'bg-white shadow-md' : menu.color || 'bg-emerald-500'} rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform overflow-hidden`}>
-                      {menu.icon_url ? (
-                        <img src={menu.icon_url} alt={menu.title} className="w-8 h-8 object-contain" />
-                      ) : (
-                        <span className="text-xl">{menuIconEmoji[menu.icon] || "📋"}</span>
-                      )}
-                    </div>
-                    <span className="text-xs font-bold text-gray-700">{menu.title}</span>
-                  </Link>
-                ))
+                displayMenus.map((menu) => {
+                  const iconType = menu.icon_type || "material";
+                  return (
+                    <Link key={menu.id} href={menu.link || "#"} className="flex flex-col items-center gap-2 py-2 group">
+                      <div className={`w-12 h-12 ${iconType === 'image' && menu.icon_url ? 'bg-white shadow-md border' : menu.color || 'bg-emerald-500'} rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform overflow-hidden`}>
+                        {iconType === "image" && menu.icon_url ? (
+                          <img src={menu.icon_url} alt={menu.title} className="w-8 h-8 object-contain" />
+                        ) : iconType === "material" ? (
+                          <span className="material-symbols-outlined text-white text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+                            {menu.icon_code || "edit"}
+                          </span>
+                        ) : (
+                          <span className="text-xl">{menuIconEmoji[menu.icon] || "📋"}</span>
+                        )}
+                      </div>
+                      <span className="text-xs font-bold text-gray-700">{menu.title}</span>
+                    </Link>
+                  );
+                })
               ) : (
                 // 기본 하드코딩 메뉴
                 menuItems.map((item) => (
