@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
@@ -10,33 +10,58 @@ export default function VideoDetailPage() {
   const [video, setVideo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [relatedVideos, setRelatedVideos] = useState<any[]>([]);
+  
+  // 광고 관련 상태
+  const [midAd, setMidAd] = useState<any>(null);
+  const [showAd, setShowAd] = useState(false);
+  const [adCountdown, setAdCountdown] = useState(5);
+  const [adShown, setAdShown] = useState(false);
+  const [adTriggerTime, setAdTriggerTime] = useState(30);
+  const [adVideoEnded, setAdVideoEnded] = useState(false);
+  
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const adVideoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     if (params.id) {
       fetchVideo();
+      fetchMidAd();
     }
   }, [params.id]);
 
+  // 광고 카운트다운
+  useEffect(() => {
+    if (showAd && adCountdown > 0) {
+      const timer = setTimeout(() => {
+        setAdCountdown(adCountdown - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [showAd, adCountdown]);
+
   const fetchVideo = async () => {
     setLoading(true);
-    
-    // 영상 조회
+
     const { data } = await supabase
       .from("videos")
       .select("*")
       .eq("id", params.id)
       .single();
-    
+
     if (data) {
       setVideo(data);
       
-      // 조회수 증가
+      // 영상 길이에 따라 광고 시점 설정 (중간 또는 30초)
+      if (data.duration) {
+        const midPoint = Math.floor(data.duration / 2);
+        setAdTriggerTime(Math.min(midPoint, 30)); // 중간 또는 30초 중 작은 값
+      }
+
       await supabase
         .from("videos")
         .update({ view_count: (data.view_count || 0) + 1 })
         .eq("id", params.id);
-      
-      // 관련 영상
+
       const { data: related } = await supabase
         .from("videos")
         .select("*")
@@ -45,8 +70,78 @@ export default function VideoDetailPage() {
         .limit(4);
       setRelatedVideos(related || []);
     }
-    
+
     setLoading(false);
+  };
+
+  // 영상 중간 광고 가져오기 (고정 우선, 타겟팅 적용)
+  const fetchMidAd = async () => {
+    const today = new Date().toISOString().split('T')[0];
+    const { data } = await supabase
+      .from("ads")
+      .select("*")
+      .eq("position", "video_mid")
+      .eq("is_active", true)
+      .or(`start_date.is.null,start_date.lte.${today}`)
+      .or(`end_date.is.null,end_date.gte.${today}`);
+    
+    if (data && data.length > 0) {
+      // 타겟팅 필터링
+      const filteredAds = data.filter(ad => {
+        if (!ad.target_type || ad.target_type === "all") return true;
+        
+        // 페이지 타겟팅 (영상은 videos 페이지)
+        if (ad.target_type === "page" && ad.target_pages?.length) {
+          return ad.target_pages.includes("videos");
+        }
+        
+        return true;
+      });
+
+      if (filteredAds.length === 0) return;
+
+      // 고정 광고 있으면 고정 먼저, 없으면 랜덤
+      const pinned = filteredAds.filter(ad => ad.is_pinned).sort((a, b) => (a.pin_order || 0) - (b.pin_order || 0));
+      let selectedAd;
+      if (pinned.length > 0) {
+        selectedAd = pinned[0];
+      } else {
+        const randomIndex = Math.floor(Math.random() * filteredAds.length);
+        selectedAd = filteredAds[randomIndex];
+      }
+      setMidAd(selectedAd);
+      setAdTriggerTime(selectedAd.trigger_time || 30);
+    }
+  };
+
+  // 영상 재생 시간 체크
+  const handleTimeUpdate = () => {
+    if (!videoRef.current || !midAd || adShown) return;
+    
+    const currentTime = videoRef.current.currentTime;
+    
+    // 설정된 시간에 도달하면 광고 표시
+    if (currentTime >= adTriggerTime) {
+      videoRef.current.pause();
+      setShowAd(true);
+      setAdShown(true);
+      setAdCountdown(5);
+    }
+  };
+
+  // 광고 스킵 또는 종료
+  const closeAd = () => {
+    setShowAd(false);
+    if (videoRef.current) {
+      videoRef.current.play();
+    }
+  };
+
+  // 광고 클릭
+  const handleAdClick = () => {
+    if (midAd?.link_url) {
+      window.open(midAd.link_url, "_blank");
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -61,7 +156,7 @@ export default function VideoDetailPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -71,7 +166,7 @@ export default function VideoDetailPage() {
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="text-center">
           <p className="text-white text-xl mb-4">영상을 찾을 수 없습니다</p>
-          <Link href="/videos" className="text-amber-500 font-bold">목록으로</Link>
+          <Link href="/videos" className="text-emerald-500 font-bold">목록으로</Link>
         </div>
       </div>
     );
@@ -95,13 +190,76 @@ export default function VideoDetailPage() {
         {/* 비디오 플레이어 */}
         <div className="relative aspect-video bg-black">
           {video.video_url ? (
-            <video
-              src={video.video_url}
-              controls
-              autoPlay
-              className="w-full h-full"
-              poster={video.thumbnail_url}
-            />
+            <>
+              <video
+                ref={videoRef}
+                src={video.video_url}
+                controls
+                autoPlay
+                className="w-full h-full"
+                poster={video.thumbnail_url}
+                onTimeUpdate={handleTimeUpdate}
+              />
+              
+              {/* 광고 오버레이 */}
+              {showAd && midAd && (
+                <div className="absolute inset-0 bg-black/90 flex flex-col items-center justify-center z-20">
+                  {/* 광고 라벨 */}
+                  <div className="absolute top-4 left-4 bg-yellow-500 text-black text-xs font-bold px-2 py-1 rounded">
+                    광고
+                  </div>
+                  
+                  {/* 스킵/카운트다운 버튼 */}
+                  <button
+                    onClick={adCountdown === 0 ? closeAd : undefined}
+                    className={`absolute top-4 right-4 px-4 py-2 rounded text-sm font-bold transition-all ${
+                      adCountdown === 0 
+                        ? "bg-white text-black hover:bg-gray-200 cursor-pointer" 
+                        : "bg-gray-700 text-gray-300 cursor-not-allowed"
+                    }`}
+                  >
+                    {adCountdown > 0 ? `${adCountdown}초 후 스킵 가능` : "광고 스킵 ▶"}
+                  </button>
+                  
+                  {/* 광고 콘텐츠 */}
+                  <div 
+                    className="max-w-lg w-full mx-4 cursor-pointer"
+                    onClick={handleAdClick}
+                  >
+                    {midAd.video_url ? (
+                      // 영상 광고
+                      <video
+                        src={midAd.video_url}
+                        autoPlay
+                        muted
+                        className="w-full rounded-xl shadow-2xl"
+                        onEnded={() => setAdCountdown(0)}
+                      />
+                    ) : midAd.image_url ? (
+                      // 이미지 광고
+                      <img 
+                        src={midAd.image_url} 
+                        alt={midAd.title} 
+                        className="w-full rounded-xl shadow-2xl hover:scale-105 transition-transform"
+                      />
+                    ) : (
+                      <div className="bg-gradient-to-r from-emerald-500 to-teal-500 p-8 rounded-xl text-center">
+                        <p className="text-white text-2xl font-bold">{midAd.title}</p>
+                      </div>
+                    )}
+                    
+                    {/* 광고 제목 */}
+                    <p className="text-white text-center mt-4 font-medium">{midAd.title}</p>
+                    
+                    {midAd.link_url && (
+                      <p className="text-emerald-400 text-center text-sm mt-2">
+                        클릭하여 자세히 보기 →
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
           ) : (
             <div className="w-full h-full flex items-center justify-center">
               <p className="text-gray-500">영상을 불러올 수 없습니다</p>
@@ -117,12 +275,12 @@ export default function VideoDetailPage() {
             <span>•</span>
             <span>{formatDate(video.created_at)}</span>
           </div>
-          
+
           {video.description && (
             <p className="text-gray-300 whitespace-pre-wrap mb-4">{video.description}</p>
           )}
 
-          {/* 좋아요/공유 버튼 */}
+          {/* 좋아요 공유 버튼 */}
           <div className="flex items-center gap-4 py-4 border-t border-gray-800">
             <button className="flex items-center gap-2 text-gray-400 hover:text-red-500 transition-colors">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -130,7 +288,7 @@ export default function VideoDetailPage() {
               </svg>
               <span>좋아요</span>
             </button>
-            <button className="flex items-center gap-2 text-gray-400 hover:text-amber-500 transition-colors">
+            <button className="flex items-center gap-2 text-gray-400 hover:text-emerald-500 transition-colors">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
               </svg>
@@ -161,7 +319,7 @@ export default function VideoDetailPage() {
                       </div>
                     )}
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 bg-black/40 transition-opacity">
-                      <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center">
+                      <div className="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center">
                         <svg className="w-5 h-5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24">
                           <path d="M8 5v14l11-7z"/>
                         </svg>
@@ -199,11 +357,11 @@ export default function VideoDetailPage() {
             <span className="text-xs text-gray-500">마켓</span>
           </Link>
           <Link href="/videos" className="flex-1 py-3 flex flex-col items-center gap-1">
-            <svg className="w-6 h-6 text-amber-500" fill="currentColor" viewBox="0 0 24 24">
+            <svg className="w-6 h-6 text-emerald-500" fill="currentColor" viewBox="0 0 24 24">
               <path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               <path d="M15.91 11.672a.375.375 0 010 .656l-5.603 3.113a.375.375 0 01-.557-.328V8.887c0-.286.307-.466.557-.327l5.603 3.112z" />
             </svg>
-            <span className="text-xs font-bold text-amber-500">영상</span>
+            <span className="text-xs font-bold text-emerald-500">영상</span>
           </Link>
           <Link href="/login" className="flex-1 py-3 flex flex-col items-center gap-1">
             <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
