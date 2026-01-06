@@ -1,356 +1,326 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 export default function PostDetailPage() {
   const params = useParams();
+  const postId = params.id;
+  
   const [post, setPost] = useState<any>(null);
-  const [comments, setComments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [newComment, setNewComment] = useState("");
   const [user, setUser] = useState<any>(null);
-  const [midAds, setMidAds] = useState<any[]>([]);
+  const [userProfile, setUserProfile] = useState<any>(null);
+  
+  // 이미지 슬라이드 상태
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [touchStart, setTouchStart] = useState(0);
+  const [touchEnd, setTouchEnd] = useState(0);
+  const sliderRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetchPost();
-    fetchComments();
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    if (postId) {
+      fetchPost();
+      incrementViewCount();
+    }
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
       setUser(user);
+      if (user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", user.id)
+          .single();
+        setUserProfile(profile);
+      }
     });
-  }, [params.id]);
+  }, [postId]);
 
   const fetchPost = async () => {
+    setLoading(true);
     const { data } = await supabase
       .from("posts")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", postId)
       .single();
-
-    if (data) {
-      setPost(data);
-      await supabase
-        .from("posts")
-        .update({ view_count: (data.view_count || 0) + 1 })
-        .eq("id", params.id);
-    }
+    setPost(data);
     setLoading(false);
   };
 
-  const fetchComments = async () => {
-    const { data } = await supabase
-      .from("comments")
-      .select("*, profiles(nickname)")
-      .eq("post_id", params.id)
-      .order("created_at", { ascending: true });
-    setComments(data || []);
-  };
-
-  // 게시물 중간 광고 모두 가져오기 (타겟팅 적용)
-  const fetchMidAds = async () => {
-    const today = new Date().toISOString().split('T')[0];
-    const { data } = await supabase
-      .from("ads")
-      .select("*")
-      .eq("position", "post_mid")
-      .eq("is_active", true)
-      .or(`start_date.is.null,start_date.lte.${today}`)
-      .or(`end_date.is.null,end_date.gte.${today}`);
-    
-    if (data && data.length > 0 && post) {
-      // 타겟팅 필터링
-      const filteredAds = data.filter(ad => {
-        // 타겟 타입이 없거나 all이면 모든 곳에 표시
-        if (!ad.target_type || ad.target_type === "all") return true;
-        
-        // 카테고리 타겟팅
-        if (ad.target_type === "category" && ad.target_categories?.length) {
-          return ad.target_categories.includes(post.category);
-        }
-        
-        // 게시물 ID 타겟팅
-        if (ad.target_type === "post" && ad.target_post_ids?.length) {
-          return ad.target_post_ids.includes(String(post.id));
-        }
-        
-        // 페이지 타겟팅 (게시물 상세는 community 페이지)
-        if (ad.target_type === "page" && ad.target_pages?.length) {
-          return ad.target_pages.includes("community");
-        }
-        
-        return true;
-      });
-
-      // 고정 광고 먼저, 나머지 랜덤 셔플
-      const pinned = filteredAds.filter(ad => ad.is_pinned).sort((a, b) => (a.pin_order || 0) - (b.pin_order || 0));
-      const random = shuffleArray(filteredAds.filter(ad => !ad.is_pinned));
-      setMidAds([...pinned, ...random]);
-    }
-  };
-
-  // post가 로드된 후 광고 가져오기
-  useEffect(() => {
-    if (post) {
-      fetchMidAds();
-    }
-  }, [post]);
-
-  // Fisher-Yates 셔플 알고리즘
-  const shuffleArray = (array: any[]) => {
-    for (let i = array.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [array[i], array[j]] = [array[j], array[i]];
-    }
-    return array;
-  };
-
-  const handleSubmitComment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newComment.trim() || !user) return;
-
-    await supabase.from("comments").insert({
-      post_id: params.id,
-      user_id: user.id,
-      content: newComment,
-    });
-
-    setNewComment("");
-    fetchComments();
+  const incrementViewCount = async () => {
+    await supabase.rpc('increment_view_count', { post_id: postId });
   };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString("ko-KR", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
     });
   };
 
-  // 본문을 단락으로 나누고 중간에 여러 광고 삽입
-  const renderContentWithAds = (content: string) => {
-    if (!content) return null;
-    
-    // 줄바꿈 기준으로 단락 분리
-    const paragraphs = content.split('\n').filter(p => p.trim());
-    
-    // 광고가 없으면 그냥 본문만 출력
-    if (midAds.length === 0) {
-      return (
-        <div className="text-gray-700 whitespace-pre-wrap leading-relaxed">
-          {content}
-        </div>
-      );
-    }
-    
-    // 몇 단락마다 광고를 넣을지 (기본: 3단락마다)
-    const AD_INTERVAL = 3;
-    
-    // 표시할 광고 개수 계산
-    const maxAdsToShow = Math.floor(paragraphs.length / AD_INTERVAL);
-    const adsToShow = Math.min(maxAdsToShow, midAds.length);
-    
-    // 광고가 들어갈 위치 계산
-    const adPositions: number[] = [];
-    for (let i = 0; i < adsToShow; i++) {
-      adPositions.push((i + 1) * AD_INTERVAL);
-    }
-    
-    // 단락과 광고를 조합하여 렌더링
-    const result: JSX.Element[] = [];
-    let adIndex = 0;
-    
-    paragraphs.forEach((paragraph, index) => {
-      result.push(
-        <p key={`p-${index}`} className="text-gray-700 leading-relaxed mb-4">
-          {paragraph}
-        </p>
-      );
-      
-      if (adPositions.includes(index + 1) && adIndex < adsToShow) {
-        result.push(renderAdBanner(midAds[adIndex], adIndex));
-        adIndex++;
+  const getImages = (post: any): string[] => {
+    if (!post?.images) return [];
+    if (typeof post.images === 'string') {
+      try {
+        return JSON.parse(post.images);
+      } catch {
+        return [];
       }
-    });
-    
-    return <>{result}</>;
+    }
+    return post.images;
   };
 
-  // 광고 배너 렌더링
-  const renderAdBanner = (ad: any, index: number) => {
-    if (!ad) return null;
+  // 관리자 여부
+  const isAdmin = userProfile?.role === 'admin';
+
+  // 작성자 이름
+  const getAuthorName = () => {
+    if (!post) return '';
+    if (isAdmin) {
+      const name = post.author_nickname || '알수없음';
+      if (post.is_anonymous) {
+        return `익명 (${name})`;
+      }
+      return name;
+    } else {
+      if (post.is_anonymous) {
+        return '익명';
+      }
+      return post.author_nickname || '알수없음';
+    }
+  };
+
+  // 이미지 슬라이드 핸들러
+  const handlePrevImage = () => {
+    const images = getImages(post);
+    setCurrentImageIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1));
+  };
+
+  const handleNextImage = () => {
+    const images = getImages(post);
+    setCurrentImageIndex((prev) => (prev === images.length - 1 ? 0 : prev + 1));
+  };
+
+  // 터치 스와이프 핸들러
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchEnd = () => {
+    if (touchStart - touchEnd > 75) {
+      handleNextImage();
+    }
+    if (touchStart - touchEnd < -75) {
+      handlePrevImage();
+    }
+  };
+
+  // 공유 기능
+  const handleShare = async () => {
+    const shareUrl = window.location.href;
     
-    return (
-      <a 
-        key={`ad-${ad.id}-${index}`}
-        href={ad.link_url || "#"}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="block my-6"
-      >
-        <div className="relative rounded-xl overflow-hidden bg-gray-100">
-          <div className="absolute top-2 left-2 bg-gray-800/70 text-white text-[10px] font-medium px-1.5 py-0.5 rounded z-10">
-            AD
-          </div>
-          
-          {ad.image_url ? (
-            <img 
-              src={ad.image_url} 
-              alt={ad.title}
-              className="w-full h-auto"
-            />
-          ) : (
-            <div className="bg-gradient-to-r from-emerald-500 to-teal-500 p-6 text-center">
-              <p className="text-white font-bold text-lg">{ad.title}</p>
-            </div>
-          )}
-        </div>
-      </a>
-    );
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: post?.title || '커뮤니티 게시글',
+          text: post?.content?.slice(0, 100) || '',
+          url: shareUrl,
+        });
+      } catch (err) {}
+    } else {
+      await navigator.clipboard.writeText(shareUrl);
+      alert('링크가 복사되었습니다!');
+    }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
 
   if (!post) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-4">
-        <p className="text-gray-500 mb-4">게시글을 찾을 수 없습니다</p>
-        <Link href="/community" className="text-emerald-600 font-medium">
-          목록으로 돌아가기
-        </Link>
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-500 mb-4">게시글을 찾을 수 없습니다</p>
+          <Link href="/community" className="text-amber-600 font-bold">목록으로</Link>
+        </div>
       </div>
     );
   }
 
+  const postImages = getImages(post);
+
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
+    <div className="min-h-screen bg-gray-100">
       {/* 헤더 */}
-      <header className="bg-white sticky top-0 z-50 border-b border-gray-100">
-        <div className="max-w-lg mx-auto px-4 h-14 flex items-center">
-          <Link href="/community" className="mr-3">
-            <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+      <header className="bg-gray-900 sticky top-0 z-50">
+        <div className="max-w-[631px] mx-auto px-4 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Link href="/community" className="text-gray-400 hover:text-white">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </Link>
+            <h1 className="text-white font-bold text-lg">게시글</h1>
+          </div>
+          <button onClick={handleShare} className="text-gray-400 hover:text-white">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
             </svg>
-          </Link>
-          <h1 className="font-bold text-lg text-gray-900">게시글</h1>
+          </button>
         </div>
       </header>
 
-      <main className="max-w-lg mx-auto">
-        {/* 게시글 내용 */}
-        <article className="bg-white">
-          <div className="px-4 py-4">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
-                {post.category || "자유"}
-              </span>
-              <span className="text-xs text-gray-400">
-                {formatDate(post.created_at)}
+      <main className="max-w-[631px] mx-auto bg-white min-h-screen">
+        {/* 작성자 정보 */}
+        <div className="p-4 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-gray-800 rounded-full flex items-center justify-center">
+              <span className="text-white font-bold">
+                {post.is_anonymous ? '?' : (post.author_nickname?.[0]?.toUpperCase() || 'U')}
               </span>
             </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-gray-900">{getAuthorName()}</span>
+                {post.is_anonymous && (
+                  <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">익명</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500">{formatDate(post.created_at)}</span>
+                {/* 관리자만 IP 표시 */}
+                {isAdmin && post.ip_address && (
+                  <span className="text-xs text-red-400">IP: {post.ip_address}</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
 
-            <h1 className="text-xl font-bold text-gray-900 mb-4">
-              {post.title}
-            </h1>
+        {/* 이미지 슬라이드 */}
+        {postImages.length > 0 && (
+          <div className="relative bg-black">
+            <div 
+              ref={sliderRef}
+              className="relative overflow-hidden"
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+            >
+              <div 
+                className="flex transition-transform duration-300 ease-out"
+                style={{ transform: `translateX(-${currentImageIndex * 100}%)` }}
+              >
+                {postImages.map((imgUrl, idx) => (
+                  <div key={idx} className="w-full flex-shrink-0">
+                    <img 
+                      src={imgUrl} 
+                      alt={`이미지 ${idx + 1}`}
+                      className="w-full max-h-[500px] object-contain"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
 
-            {post.image_url && (
-              <div className="mb-4 rounded-lg overflow-hidden">
-                <img src={post.image_url} alt="" className="w-full" />
+            {/* 좌우 화살표 (PC용) */}
+            {postImages.length > 1 && (
+              <>
+                <button 
+                  onClick={handlePrevImage}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center text-white transition-colors hidden md:flex"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <button 
+                  onClick={handleNextImage}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center text-white transition-colors hidden md:flex"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </>
+            )}
+
+            {/* 이미지 인디케이터 */}
+            {postImages.length > 1 && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5">
+                {postImages.map((_, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setCurrentImageIndex(idx)}
+                    className={`w-2 h-2 rounded-full transition-colors ${
+                      idx === currentImageIndex ? 'bg-white' : 'bg-white/50'
+                    }`}
+                  />
+                ))}
               </div>
             )}
 
-            {/* 본문 + 중간 광고들 (랜덤) */}
-            {renderContentWithAds(post.content)}
-
-            {/* 통계 */}
-            <div className="flex items-center gap-4 mt-6 pt-4 border-t border-gray-100 text-sm text-gray-500">
-              <span className="flex items-center gap-1">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                </svg>
-                조회 {post.view_count || 0}
-              </span>
-              <span className="flex items-center gap-1">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                </svg>
-                좋아요 {post.like_count || 0}
-              </span>
-            </div>
-          </div>
-        </article>
-
-        {/* 댓글 */}
-        <section className="bg-white mt-2">
-          <div className="px-4 py-3 border-b border-gray-100">
-            <h2 className="font-bold text-gray-900">댓글 {comments.length}개</h2>
-          </div>
-
-          {comments.length > 0 ? (
-            <div className="divide-y divide-gray-100">
-              {comments.map((comment) => (
-                <div key={comment.id} className="px-4 py-3">
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="w-7 h-7 rounded-full bg-emerald-600 flex items-center justify-center text-white text-xs font-medium">
-                      {comment.profiles?.nickname?.[0] || "익"}
-                    </div>
-                    <span className="text-sm font-medium text-gray-900">
-                      {comment.profiles?.nickname || "익명"}
-                    </span>
-                    <span className="text-xs text-gray-400">
-                      {formatDate(comment.created_at)}
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-700 pl-9">
-                    {comment.content}
-                  </p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="px-4 py-8 text-center text-gray-400 text-sm">
-              첫 댓글을 남겨보세요
-            </div>
-          )}
-
-          {/* 댓글 입력 */}
-          {user ? (
-            <form onSubmit={handleSubmitComment} className="px-4 py-3 border-t border-gray-100">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="댓글을 입력하세요"
-                  className="flex-1 px-4 py-2 bg-gray-100 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-emerald-600 text-white rounded-full text-sm font-medium"
-                >
-                  등록
-                </button>
+            {/* 이미지 카운터 */}
+            {postImages.length > 1 && (
+              <div className="absolute top-4 right-4 bg-black/50 text-white text-sm px-2.5 py-1 rounded-full">
+                {currentImageIndex + 1} / {postImages.length}
               </div>
-            </form>
-          ) : (
-            <div className="px-4 py-4 border-t border-gray-100 text-center">
-              <Link href="/login" className="text-emerald-600 text-sm font-medium">
-                로그인하고 댓글 작성하기
-              </Link>
-            </div>
-          )}
-        </section>
+            )}
+          </div>
+        )}
+
+        {/* 본문 내용 */}
+        <div className="p-4">
+          <p className="text-gray-900 whitespace-pre-wrap leading-relaxed">{post.content}</p>
+        </div>
+
+        {/* 좋아요, 댓글, 조회수 */}
+        <div className="px-4 py-3 border-t border-gray-100 flex items-center gap-6 text-sm text-gray-500">
+          <button className="flex items-center gap-1.5 hover:text-blue-500 transition-colors">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
+            </svg>
+            좋아요 {post.like_count || 0}
+          </button>
+          
+          <button className="flex items-center gap-1.5 hover:text-blue-500 transition-colors">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            댓글 {post.comment_count || 0}
+          </button>
+          
+          <span className="flex items-center gap-1.5 ml-auto">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+            조회 {post.view_count || 0}
+          </span>
+        </div>
+
+        {/* 댓글 영역 (추후 구현) */}
+        <div className="p-4 border-t border-gray-100">
+          <h3 className="font-bold text-gray-900 mb-4">댓글</h3>
+          <div className="text-center py-8 text-gray-400">
+            <p>아직 댓글이 없습니다</p>
+          </div>
+        </div>
       </main>
     </div>
   );

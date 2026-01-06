@@ -4,19 +4,17 @@ import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
-const categories = ["전체", "자유", "질문", "정보", "일상", "맛집"];
-
 export default function CommunityPage() {
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedCategory, setSelectedCategory] = useState("전체");
   const [user, setUser] = useState<any>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
   const [expandedPosts, setExpandedPosts] = useState<Set<number>>(new Set());
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   
   // 글쓰기 상태
   const [content, setContent] = useState("");
-  const [postCategory, setPostCategory] = useState("자유");
+  const [isAnonymous, setIsAnonymous] = useState(false);
   const [images, setImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [posting, setPosting] = useState(false);
@@ -24,28 +22,33 @@ export default function CommunityPage() {
 
   useEffect(() => {
     fetchPosts();
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
       setUser(user);
+      if (user) {
+        // 유저 프로필 가져오기 (관리자 여부, 닉네임)
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", user.id)
+          .single();
+        setUserProfile(profile);
+      }
     });
-  }, [selectedCategory]);
+  }, []);
 
   const fetchPosts = async () => {
     setLoading(true);
-    let query = supabase
+    const { data } = await supabase
       .from("posts")
       .select("*")
       .order("created_at", { ascending: false });
-
-    if (selectedCategory !== "전체") {
-      query = query.eq("board_type", selectedCategory);
-    }
-
-    const { data } = await query;
     setPosts(data || []);
     setLoading(false);
   };
 
-  const togglePost = (postId: number) => {
+  const togglePost = (e: React.MouseEvent, postId: number) => {
+    e.preventDefault();
+    e.stopPropagation();
     setExpandedPosts(prev => {
       const newSet = new Set(prev);
       if (newSet.has(postId)) {
@@ -95,6 +98,17 @@ export default function CommunityPage() {
     return data.url;
   };
 
+  // IP 주소 가져오기
+  const getClientIP = async (): Promise<string> => {
+    try {
+      const res = await fetch('https://api.ipify.org?format=json');
+      const data = await res.json();
+      return data.ip;
+    } catch {
+      return '';
+    }
+  };
+
   const handlePost = async () => {
     if (!user) {
       alert("로그인이 필요합니다");
@@ -114,11 +128,17 @@ export default function CommunityPage() {
         imageUrls.push(url);
       }
 
+      const ipAddress = await getClientIP();
+      const nickname = userProfile?.nickname || user.email?.split('@')[0] || '사용자';
+
       const { error } = await supabase.from("posts").insert({
         title: content.slice(0, 50),
         content: content,
-        board_type: postCategory,
         images: imageUrls,
+        is_anonymous: isAnonymous,
+        author_nickname: nickname,
+        ip_address: ipAddress,
+        user_id: user.id,
       });
 
       if (error) throw error;
@@ -126,7 +146,7 @@ export default function CommunityPage() {
       setContent("");
       setImages([]);
       setImagePreviews([]);
-      setPostCategory("자유");
+      setIsAnonymous(false);
       
       fetchPosts();
     } catch (error: any) {
@@ -134,6 +154,26 @@ export default function CommunityPage() {
     }
 
     setPosting(false);
+  };
+
+  const handleShare = async (e: React.MouseEvent, post: any) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const shareUrl = `${window.location.origin}/community/${post.id}`;
+    
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: post.title || '커뮤니티 게시글',
+          text: post.content?.slice(0, 100) || '',
+          url: shareUrl,
+        });
+      } catch (err) {}
+    } else {
+      await navigator.clipboard.writeText(shareUrl);
+      alert('링크가 복사되었습니다!');
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -160,6 +200,27 @@ export default function CommunityPage() {
       }
     }
     return post.images;
+  };
+
+  // 관리자 여부 확인
+  const isAdmin = userProfile?.role === 'admin';
+
+  // 작성자 이름 표시
+  const getAuthorName = (post: any) => {
+    if (isAdmin) {
+      // 관리자는 익명이어도 실제 닉네임 보임
+      const name = post.author_nickname || '알수없음';
+      if (post.is_anonymous) {
+        return `익명 (${name})`;
+      }
+      return name;
+    } else {
+      // 일반 유저
+      if (post.is_anonymous) {
+        return '익명';
+      }
+      return post.author_nickname || '알수없음';
+    }
   };
 
   return (
@@ -206,7 +267,7 @@ export default function CommunityPage() {
             <div className="flex gap-3">
               <div className="w-10 h-10 bg-amber-500 rounded-full flex items-center justify-center flex-shrink-0">
                 <span className="text-gray-900 font-bold text-sm">
-                  {user.email?.[0]?.toUpperCase() || "U"}
+                  {userProfile?.nickname?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || "U"}
                 </span>
               </div>
               <div className="flex-1">
@@ -253,17 +314,16 @@ export default function CommunityPage() {
                       </svg>
                     </button>
                     
-                    <select
-                      value={postCategory}
-                      onChange={(e) => setPostCategory(e.target.value)}
-                      className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-500"
-                    >
-                      <option value="자유">자유</option>
-                      <option value="질문">질문</option>
-                      <option value="정보">정보</option>
-                      <option value="일상">일상</option>
-                      <option value="맛집">맛집</option>
-                    </select>
+                    {/* 익명/닉네임 선택 */}
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={isAnonymous}
+                        onChange={(e) => setIsAnonymous(e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-300 text-amber-500 focus:ring-amber-500"
+                      />
+                      <span className="text-sm text-gray-600">익명으로 작성</span>
+                    </label>
                   </div>
 
                   <button
@@ -284,23 +344,6 @@ export default function CommunityPage() {
           </div>
         )}
 
-        {/* 카테고리 필터 */}
-        <div className="flex gap-1 overflow-x-auto py-2 mb-4">
-          {categories.map((category) => (
-            <button
-              key={category}
-              onClick={() => setSelectedCategory(category)}
-              className={`px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-colors ${
-                selectedCategory === category
-                  ? "bg-gray-900 text-white"
-                  : "bg-white text-gray-600 hover:bg-gray-200"
-              }`}
-            >
-              {category}
-            </button>
-          ))}
-        </div>
-
         {/* 게시글 목록 */}
         {loading ? (
           <div className="flex justify-center py-20">
@@ -318,68 +361,77 @@ export default function CommunityPage() {
               const isLongText = post.content && post.content.length > 100;
               
               return (
-                <div
+                <Link
                   key={post.id}
-                  className="bg-white rounded-xl p-4 shadow-md"
+                  href={`/community/${post.id}`}
+                  className="block bg-white rounded-xl p-4 shadow-md hover:shadow-lg transition-shadow"
                 >
                   {/* 헤더 */}
                   <div className="flex items-center gap-2 mb-3">
                     <div className="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center">
-                      <span className="text-white text-sm font-bold">U</span>
+                      <span className="text-white text-sm font-bold">
+                        {post.is_anonymous ? '?' : (post.author_nickname?.[0]?.toUpperCase() || 'U')}
+                      </span>
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-gray-900 text-sm">익명</span>
-                        <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded">
-                          {post.board_type || "자유"}
-                        </span>
+                        <span className="font-bold text-gray-900 text-sm">{getAuthorName(post)}</span>
+                        {post.is_anonymous && (
+                          <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">익명</span>
+                        )}
                       </div>
-                      <span className="text-xs text-gray-500">{formatDate(post.created_at)}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500">{formatDate(post.created_at)}</span>
+                        {/* 관리자만 IP 표시 */}
+                        {isAdmin && post.ip_address && (
+                          <span className="text-xs text-red-400">IP: {post.ip_address}</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   
-                  {/* 텍스트 내용 */}
-                  <div className="mb-3">
+                  {/* 텍스트 내용 - 클릭하면 펼쳐짐 */}
+                  <div 
+                    className="mb-3 cursor-pointer"
+                    onClick={(e) => {
+                      if (isLongText) {
+                        togglePost(e, post.id);
+                      }
+                    }}
+                  >
                     {isLongText && !isExpanded ? (
-                      <>
-                        <p className="text-gray-900 whitespace-pre-wrap">{post.content.slice(0, 100)}...</p>
-                        <button 
-                          onClick={() => togglePost(post.id)}
-                          className="text-gray-500 hover:text-gray-700 text-sm font-medium mt-1"
-                        >
-                          더 보기
-                        </button>
-                      </>
+                      <p className="text-gray-900 whitespace-pre-wrap">{post.content.slice(0, 100)}... <span className="text-gray-500 text-sm">더 보기</span></p>
                     ) : (
                       <>
                         <p className="text-gray-900 whitespace-pre-wrap">{post.content}</p>
                         {isLongText && (
-                          <button 
-                            onClick={() => togglePost(post.id)}
-                            className="text-gray-500 hover:text-gray-700 text-sm font-medium mt-1"
-                          >
-                            접기
-                          </button>
+                          <span className="text-gray-500 text-sm">접기</span>
                         )}
                       </>
                     )}
                   </div>
                   
-                  {/* 이미지 - 항상 보임 */}
+                  {/* 이미지 */}
                   {postImages.length > 0 && (
-                    <div className={`mb-3 ${
-                      postImages.length === 1 ? '' : 
-                      postImages.length === 2 ? 'grid grid-cols-2 gap-1' :
-                      postImages.length === 3 ? 'grid grid-cols-2 gap-1' :
-                      'grid grid-cols-2 gap-1'
-                    }`}>
+                    <div 
+                      className={`mb-3 ${
+                        postImages.length === 1 ? '' : 
+                        postImages.length === 2 ? 'grid grid-cols-2 gap-1' :
+                        'grid grid-cols-2 gap-1'
+                      }`}
+                      onClick={(e) => e.preventDefault()}
+                    >
                       {postImages.slice(0, 4).map((imgUrl, idx) => (
                         <div 
                           key={idx} 
                           className={`relative overflow-hidden rounded-lg cursor-pointer ${
                             postImages.length === 3 && idx === 0 ? 'row-span-2' : ''
                           }`}
-                          onClick={() => setLightboxImage(imgUrl)}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setLightboxImage(imgUrl);
+                          }}
                         >
                           <img 
                             src={imgUrl} 
@@ -388,7 +440,6 @@ export default function CommunityPage() {
                               postImages.length === 1 ? 'max-h-96' : 'h-48'
                             }`}
                           />
-                          {/* 4장 이상일 때 마지막에 +N 표시 */}
                           {idx === 3 && postImages.length > 4 && (
                             <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
                               <span className="text-white text-2xl font-bold">+{postImages.length - 4}</span>
@@ -399,29 +450,50 @@ export default function CommunityPage() {
                     </div>
                   )}
 
-                  {/* 좋아요, 댓글, 조회수 */}
-                  <div className="flex items-center gap-4 text-sm text-gray-500 pt-3 border-t border-gray-100">
-                    <button className="flex items-center gap-1 hover:text-red-500 transition-colors">
+                  {/* 좋아요, 댓글, 조회수, 공유 */}
+                  <div 
+                    className="flex items-center gap-4 text-sm text-gray-500 pt-3 border-t border-gray-100"
+                    onClick={(e) => e.preventDefault()}
+                  >
+                    <button 
+                      className="flex items-center gap-1 hover:text-blue-500 transition-colors"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
                       </svg>
-                      좋아요 {post.like_count || 0}
+                      {post.like_count || 0}
                     </button>
-                    <button className="flex items-center gap-1 hover:text-blue-500 transition-colors">
+                    
+                    <button 
+                      className="flex items-center gap-1 hover:text-blue-500 transition-colors"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                       </svg>
-                      댓글
+                      {post.comment_count || 0}
                     </button>
-                    <span className="flex items-center gap-1 ml-auto">
+                    
+                    <span className="flex items-center gap-1">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                       </svg>
                       {post.view_count || 0}
                     </span>
+                    
+                    <button 
+                      className="flex items-center gap-1 ml-auto hover:text-emerald-500 transition-colors"
+                      onClick={(e) => handleShare(e, post)}
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                      </svg>
+                      공유
+                    </button>
                   </div>
-                </div>
+                </Link>
               );
             })}
           </div>
@@ -456,7 +528,7 @@ export default function CommunityPage() {
             </svg>
             <span className="text-xs text-gray-500">영상</span>
           </Link>
-          <Link href="/login" className="flex-1 py-3 flex flex-col items-center gap-1">
+          <Link href="/mypage" className="flex-1 py-3 flex flex-col items-center gap-1">
             <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
