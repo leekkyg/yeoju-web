@@ -497,11 +497,11 @@ export default function ShopGroupBuyDetailPage() {
       });
     }
 
-    setParticipants(prev => prev.map(p => 
-      p.id === cancelTarget.id 
-        ? { ...p, status: "cancelled" as const, cancelled_at: new Date().toISOString(), cancel_reason: reason }
-        : p
-    ));
+    setParticipants(prev => prev.map(p =>
+  p.id === participant.id
+    ? { ...p, ...updateData, status: "unpaid" as const } as unknown as Participant
+    : p
+));
 
     setShowCancelParticipantModal(false);
     setCancelTarget(null);
