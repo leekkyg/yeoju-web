@@ -3,12 +3,13 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { Play, ChevronRight, ChevronLeft, Pause, User, Bell, ShoppingBag, MessageCircle, Newspaper, Smartphone, Gift, Star, Megaphone, Search, Home, Eye, Heart } from "lucide-react";
+import { Play, ChevronRight, ChevronLeft, Pause, User, Bell, ShoppingBag, MessageCircle, Newspaper, Smartphone, Gift, Star, Megaphone, Search, Home, Eye, Heart, ShoppingCart } from "lucide-react";
 
 export default function HomePage() {
   const [recentPosts, setRecentPosts] = useState<any[]>([]);
   const [recentVideos, setRecentVideos] = useState<any[]>([]);
   const [recentNews, setRecentNews] = useState<any[]>([]);
+  const [recentGroupBuys, setRecentGroupBuys] = useState<any[]>([]);
   const [ads, setAds] = useState<any[]>([]);
   const [subBanner, setSubBanner] = useState<any>(null);
   const [headerMenus, setHeaderMenus] = useState<any[]>([]);
@@ -47,7 +48,7 @@ export default function HomePage() {
       .from("posts")
       .select("*")
       .order("created_at", { ascending: false })
-      .limit(5);
+      .limit(4);
     setRecentPosts(posts || []);
 
     const { data: videos } = await supabase
@@ -65,6 +66,16 @@ export default function HomePage() {
       .limit(4);
     setRecentNews(news || []);
 
+    // 공동구매 조회
+    const { data: groupBuys } = await supabase
+      .from("group_buys")
+      .select(`*, shops (id, name, logo_url)`)
+      .eq("status", "active")
+      .gte("end_at", new Date().toISOString())
+      .order("created_at", { ascending: false })
+      .limit(4);
+    setRecentGroupBuys(groupBuys || []);
+
     const { data: adsData } = await supabase
       .from("ads")
       .select("*")
@@ -72,7 +83,7 @@ export default function HomePage() {
       .eq("is_active", true)
       .or(`start_date.is.null,start_date.lte.${new Date().toISOString().split('T')[0]}`)
       .or(`end_date.is.null,end_date.gte.${new Date().toISOString().split('T')[0]}`);
-    
+
     if (adsData && adsData.length > 0) {
       const pinned = adsData.filter(ad => ad.is_pinned).sort((a, b) => (a.pin_order || 0) - (b.pin_order || 0));
       const random = adsData.filter(ad => !ad.is_pinned).sort(() => Math.random() - 0.5);
@@ -86,7 +97,7 @@ export default function HomePage() {
       .eq("is_active", true)
       .or(`start_date.is.null,start_date.lte.${today}`)
       .or(`end_date.is.null,end_date.gte.${today}`);
-    
+
     if (subBannersData && subBannersData.length > 0) {
       const pinned = subBannersData.filter(b => b.is_pinned).sort((a, b) => (a.pin_order || 0) - (b.pin_order || 0));
       if (pinned.length > 0) {
@@ -103,13 +114,27 @@ export default function HomePage() {
       .select("*")
       .eq("is_active", true)
       .order("sort_order", { ascending: true });
-    
+
     if (menuData) {
       // 상단 메뉴 필터링
       setHeaderMenus(menuData.filter(m => m.show_in_header));
       // 퀵메뉴 필터링
       setQuickMenus(menuData.filter(m => m.show_in_quick_menu));
     }
+  };
+
+  // 게시글 첫 번째 이미지 가져오기
+  const getPostThumbnail = (post: any): string | null => {
+    if (!post.images) return null;
+    try {
+      const images = typeof post.images === 'string' ? JSON.parse(post.images) : post.images;
+      if (Array.isArray(images) && images.length > 0) {
+        return images[0];
+      }
+    } catch {
+      return null;
+    }
+    return null;
   };
 
   const formatDate = (dateString: string) => {
@@ -126,20 +151,34 @@ export default function HomePage() {
     return date.toLocaleDateString("ko-KR");
   };
 
+  const formatPrice = (n: number) => n?.toLocaleString() + "원";
+  
+  const getDiscount = (original: number, sale: number) => {
+    return Math.round((1 - sale / original) * 100);
+  };
+
+  const getTimeLeft = (endAt: string) => {
+    const diff = new Date(endAt).getTime() - Date.now();
+    if (diff <= 0) return "마감";
+    const hours = Math.floor(diff / 3600000);
+    if (hours >= 24) return `${Math.floor(hours / 24)}일`;
+    return `${hours}시간`;
+  };
+
   // 기본 퀵메뉴 (DB에 없을 때 표시)
   const defaultMenuItems = [
     { href: "/community", label: "커뮤니티", iconBg: "bg-blue-500", icon: <MessageCircle className="w-6 h-6 text-white" strokeWidth={2} /> },
-    { href: "/market", label: "마켓", iconBg: "bg-orange-500", icon: <ShoppingBag className="w-6 h-6 text-white" strokeWidth={2} /> },
+    { href: "/groupbuy", label: "공동구매", iconBg: "bg-orange-500", icon: <ShoppingCart className="w-6 h-6 text-white" strokeWidth={2} /> },
     { href: "/news", label: "지역소식", iconBg: "bg-teal-500", icon: <Newspaper className="w-6 h-6 text-white" strokeWidth={2} /> },
     { href: "/videos", label: "영상", iconBg: "bg-rose-500", icon: <Play className="w-6 h-6 text-white fill-white" strokeWidth={0} /> },
   ];
 
   const menuIconEmoji: { [key: string]: string } = {
-    "edit": "✏️", "shopping-bag": "🛍️", "video": "📺", "ticket": "🎫",
+    "edit": "✏️", "shopping-bag": "🛍️", "video": "🎬", "ticket": "🎫",
     "building": "🏢", "utensils": "🍴", "calendar": "📅", "megaphone": "📢",
     "heart": "❤️", "star": "⭐", "gift": "🎁", "map-pin": "📍",
-    "phone": "📞", "mail": "✉️", "settings": "⚙️", "user": "👤",
-    "home": "🏠", "search": "🔍", "bell": "🔔", "dollar": "💰",
+    "phone": "📱", "mail": "📧", "settings": "⚙️", "user": "👤",
+    "home": "🏠", "search": "🔍", "bell": "🔔", "dollar": "💵",
     "briefcase": "💼", "graduation": "🎓", "hospital": "🏥", "bus": "🚌",
   };
 
@@ -229,7 +268,7 @@ export default function HomePage() {
               </>
             ) : (
               <div className="w-full h-full bg-gradient-to-r from-emerald-500 to-teal-500 flex items-center justify-center">
-                <div className="text-center"><p className="text-white/80 text-sm font-medium mb-1">YEOJU MARKET</p><p className="text-white text-xl font-black">여주시민의 프리미엄 커뮤니티</p></div>
+                <div className="text-center"><p className="text-white/80 text-sm font-medium mb-1">YEOJU MARKET</p><p className="text-white text-xl font-black">여주시민을 위한 프리미엄 커뮤니티</p></div>
               </div>
             )}
           </div>
@@ -243,7 +282,7 @@ export default function HomePage() {
                   return (
                     <Link key={menu.id} href={menu.link || "#"} className="flex flex-col items-center gap-2 py-2 group flex-shrink-0 w-16">
                       <div className={`w-12 h-12 ${iconType === 'image' && menu.icon_url ? 'bg-white shadow-md border' : menu.color || 'bg-emerald-500'} rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform overflow-hidden`}>
-                        {iconType === "image" && menu.icon_url ? <img src={menu.icon_url} alt={menu.title} className="w-8 h-8 object-contain" /> : iconType === "material" ? <span className="material-symbols-outlined text-white text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>{menu.icon_code || "edit"}</span> : <span className="text-xl">{menuIconEmoji[menu.icon] || "📋"}</span>}
+                        {iconType === "image" && menu.icon_url ? <img src={menu.icon_url} alt={menu.title} className="w-8 h-8 object-contain" /> : iconType === "material" ? <span className="material-symbols-outlined text-white text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>{menu.icon_code || "edit"}</span> : <span className="text-xl">{menuIconEmoji[menu.icon] || "📝"}</span>}
                       </div>
                       <span className="text-xs font-bold text-gray-700 text-center whitespace-nowrap">{menu.title}</span>
                     </Link>
@@ -274,6 +313,73 @@ export default function HomePage() {
             )}
           </a>
         )}
+
+        {/* 🛒 공동구매 섹션 */}
+        <section className="px-4 py-5 border-t border-gray-100">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-black text-gray-900">🛒 공동구매</h2>
+            <Link href="/groupbuy" className="text-sm text-gray-400 hover:text-emerald-600 font-semibold flex items-center gap-1">
+              더보기<ChevronRight className="w-4 h-4" />
+            </Link>
+          </div>
+          
+          {recentGroupBuys.length > 0 ? (
+            <div className="grid grid-cols-2 gap-3">
+              {recentGroupBuys.map((gb) => (
+                <Link key={gb.id} href={`/groupbuy/${gb.id}`} className="group">
+                  <div className="relative aspect-square rounded-xl overflow-hidden bg-gray-100">
+                    {gb.thumbnail_url ? (
+                      <img src={gb.thumbnail_url} alt={gb.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-orange-100 to-orange-200 flex items-center justify-center">
+                        <span className="text-4xl">🛍️</span>
+                      </div>
+                    )}
+                    {/* 할인율 배지 */}
+                    {getDiscount(gb.original_price, gb.sale_price) > 0 && (
+                      <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-0.5 rounded-md text-xs font-bold">
+                        {getDiscount(gb.original_price, gb.sale_price)}%
+                      </div>
+                    )}
+                    {/* 마감임박 */}
+                    {new Date(gb.end_at).getTime() - Date.now() < 3 * 3600000 && (
+                      <div className="absolute top-2 right-2 bg-orange-500 text-white px-2 py-0.5 rounded-md text-xs font-bold animate-pulse">
+                        마감임박
+                      </div>
+                    )}
+                  </div>
+                  {/* 상점명 */}
+                  <div className="flex items-center gap-1.5 mt-2">
+                    <div className="w-4 h-4 rounded-full bg-gray-200 overflow-hidden">
+                      {gb.shops?.logo_url ? (
+                        <img src={gb.shops.logo_url} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="w-full h-full flex items-center justify-center text-[8px]">🏪</span>
+                      )}
+                    </div>
+                    <span className="text-xs text-gray-500 truncate">{gb.shops?.name}</span>
+                  </div>
+                  <h3 className="text-sm font-bold text-gray-900 line-clamp-1 group-hover:text-emerald-600 transition-colors">{gb.title}</h3>
+                  <div className="flex items-baseline gap-1.5 mt-1">
+                    <span className="text-sm font-bold text-orange-600">{formatPrice(gb.sale_price)}</span>
+                    {gb.original_price > gb.sale_price && (
+                      <span className="text-xs text-gray-400 line-through">{formatPrice(gb.original_price)}</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">⏰ {getTimeLeft(gb.end_at)} 남음</p>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-10 bg-gray-50 rounded-xl">
+              <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center mx-auto mb-3">
+                <ShoppingCart className="w-6 h-6 text-orange-500" />
+              </div>
+              <p className="text-gray-500 text-sm font-medium">진행중인 공동구매가 없습니다</p>
+              <Link href="/shop/register" className="text-orange-500 text-xs mt-2 inline-block font-bold">사장님이세요? 입점하기 →</Link>
+            </div>
+          )}
+        </section>
 
         <section className="px-4 py-5 border-t border-gray-100">
           <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-black text-gray-900">영상 콘텐츠</h2><Link href="/videos" className="text-sm text-gray-400 hover:text-emerald-600 font-semibold flex items-center gap-1">더보기<ChevronRight className="w-4 h-4" /></Link></div>
@@ -306,25 +412,39 @@ export default function HomePage() {
         <section className="px-4 py-5 border-t border-gray-100">
           <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-black text-gray-900">커뮤니티</h2><Link href="/community" className="text-sm text-gray-400 hover:text-emerald-600 font-semibold flex items-center gap-1">더보기<ChevronRight className="w-4 h-4" /></Link></div>
           <div className="divide-y divide-gray-100">
-            {recentPosts.length > 0 ? recentPosts.map((post) => (
-              <Link key={post.id} href={`/community/${post.id}`} className="block py-3 group">
-                <div className="flex gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1"><span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">{post.category || "자유"}</span><span className="text-[11px] text-gray-400">{formatDate(post.created_at)}</span></div>
-                    <h3 className="font-bold text-gray-900 group-hover:text-emerald-600 transition-colors line-clamp-1 text-sm">{post.title}</h3>
-                    <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">{post.content}</p>
-                    <div className="flex items-center gap-3 mt-1.5"><span className="flex items-center gap-1 text-[11px] text-gray-400"><Eye className="w-3 h-3" />{post.view_count || 0}</span><span className="flex items-center gap-1 text-[11px] text-gray-400"><Heart className="w-3 h-3" />{post.like_count || 0}</span></div>
+            {recentPosts.length > 0 ? recentPosts.map((post) => {
+              const thumbnail = getPostThumbnail(post);
+              return (
+                <Link key={post.id} href={`/community/${post.id}`} className="block py-3 group">
+                  <div className="flex gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">{post.is_anonymous ? "익명" : "자유"}</span>
+                        <span className="text-[11px] text-gray-400">{formatDate(post.created_at)}</span>
+                      </div>
+                      <h3 className="font-bold text-gray-900 group-hover:text-emerald-600 transition-colors line-clamp-1 text-sm">{post.title || post.content?.slice(0, 30)}</h3>
+                      <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">{post.content}</p>
+                      <div className="flex items-center gap-3 mt-1.5">
+                        <span className="flex items-center gap-1 text-[11px] text-gray-400"><Eye className="w-3 h-3" />{post.view_count || 0}</span>
+                        <span className="flex items-center gap-1 text-[11px] text-gray-400"><Heart className="w-3 h-3" />{post.like_count || 0}</span>
+                        <span className="flex items-center gap-1 text-[11px] text-gray-400"><MessageCircle className="w-3 h-3" />{post.comment_count || 0}</span>
+                      </div>
+                    </div>
+                    {thumbnail && (
+                      <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
+                        <img src={thumbnail} alt="" className="w-full h-full object-cover" />
+                      </div>
+                    )}
                   </div>
-                  {post.image_url && <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100"><img src={post.image_url} alt="" className="w-full h-full object-cover" /></div>}
-                </div>
-              </Link>
-            )) : <div className="py-10 text-center"><p className="text-gray-400 text-sm">게시글이 없습니다</p></div>}
+                </Link>
+              );
+            }) : <div className="py-10 text-center"><p className="text-gray-400 text-sm">게시글이 없습니다</p></div>}
           </div>
         </section>
 
         <section className="px-4 py-5 border-t border-gray-100 pb-24 md:pb-8">
           <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-black text-gray-900">중고마켓</h2><Link href="/market" className="text-sm text-gray-400 hover:text-emerald-600 font-semibold flex items-center gap-1">더보기<ChevronRight className="w-4 h-4" /></Link></div>
-          <div className="text-center py-10 bg-gray-50 rounded-xl"><div className="w-12 h-12 bg-gray-200 rounded-xl flex items-center justify-center mx-auto mb-3"><ShoppingBag className="w-6 h-6 text-gray-400" /></div><p className="text-gray-500 text-sm font-medium">마켓이 곧 오픈됩니다</p><p className="text-gray-400 text-xs mt-1">중고거래를 기대해주세요!</p></div>
+          <div className="text-center py-10 bg-gray-50 rounded-xl"><div className="w-12 h-12 bg-gray-200 rounded-xl flex items-center justify-center mx-auto mb-3"><ShoppingBag className="w-6 h-6 text-gray-400" /></div><p className="text-gray-500 text-sm font-medium">마켓이 곧 오픈합니다</p><p className="text-gray-400 text-xs mt-1">중고거래를 기대해주세요!</p></div>
         </section>
       </main>
 
@@ -332,16 +452,17 @@ export default function HomePage() {
         <div className="max-w-[631px] mx-auto px-4">
           <div className="flex items-center gap-2 mb-3"><div className="w-6 h-6 bg-emerald-500 rounded flex items-center justify-center"><span className="text-white font-black text-[8px]">여주</span></div><span className="font-extrabold text-sm text-gray-900">마켓</span></div>
           <p className="text-xs text-gray-400 mb-4">여주시민을 위한 프리미엄 커뮤니티</p>
-          <div className="flex gap-4 text-xs text-gray-400"><Link href="/community" className="hover:text-gray-900">커뮤니티</Link><Link href="/market" className="hover:text-gray-900">마켓</Link><Link href="/news" className="hover:text-gray-900">지역소식</Link><Link href="/videos" className="hover:text-gray-900">영상</Link></div>
+          <div className="flex gap-4 text-xs text-gray-400"><Link href="/community" className="hover:text-gray-900">커뮤니티</Link><Link href="/groupbuy" className="hover:text-gray-900">공동구매</Link><Link href="/news" className="hover:text-gray-900">지역소식</Link><Link href="/videos" className="hover:text-gray-900">영상</Link></div>
           <div className="border-t border-gray-200 mt-4 pt-4 text-[11px] text-gray-300">© 2025 여주마켓. All rights reserved.</div>
         </div>
       </footer>
 
+      {/* 하단 네비게이션 - 공동구매 추가 */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50">
         <div className="max-w-[631px] mx-auto flex">
           <Link href="/" className="flex-1 py-2 flex flex-col items-center gap-0.5"><Home className="w-6 h-6 text-emerald-600" /><span className="text-[10px] font-bold text-emerald-600">홈</span></Link>
           <Link href="/community" className="flex-1 py-2 flex flex-col items-center gap-0.5"><MessageCircle className="w-6 h-6 text-gray-400" /><span className="text-[10px] font-bold text-gray-400">커뮤니티</span></Link>
-          <Link href="/news" className="flex-1 py-2 flex flex-col items-center gap-0.5"><Newspaper className="w-6 h-6 text-gray-400" /><span className="text-[10px] font-bold text-gray-400">지역소식</span></Link>
+          <Link href="/groupbuy" className="flex-1 py-2 flex flex-col items-center gap-0.5"><ShoppingCart className="w-6 h-6 text-gray-400" /><span className="text-[10px] font-bold text-gray-400">공동구매</span></Link>
           <Link href="/videos" className="flex-1 py-2 flex flex-col items-center gap-0.5"><Play className="w-6 h-6 text-gray-400" /><span className="text-[10px] font-bold text-gray-400">영상</span></Link>
           <Link href={user ? "/mypage" : "/login"} className="flex-1 py-2 flex flex-col items-center gap-0.5"><User className="w-6 h-6 text-gray-400" /><span className="text-[10px] font-bold text-gray-400">MY</span></Link>
         </div>

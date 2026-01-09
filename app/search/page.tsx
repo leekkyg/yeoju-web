@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { Search, ArrowLeft, FileText, Video, MessageCircle, ChevronRight } from "lucide-react";
 
-export default function SearchPage() {
+function SearchContent() {
   const searchParams = useSearchParams();
   const query = searchParams.get("q") || "";
-  
+
   const [searchQuery, setSearchQuery] = useState(query);
   const [posts, setPosts] = useState<any[]>([]);
   const [videos, setVideos] = useState<any[]>([]);
@@ -28,7 +28,6 @@ export default function SearchPage() {
   const performSearch = async (q: string) => {
     setLoading(true);
 
-    // 게시글 검색
     const { data: postsData } = await supabase
       .from("posts")
       .select("*")
@@ -36,7 +35,6 @@ export default function SearchPage() {
       .order("created_at", { ascending: false })
       .limit(20);
 
-    // 영상 검색
     const { data: videosData } = await supabase
       .from("videos")
       .select("*")
@@ -74,20 +72,12 @@ export default function SearchPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <style jsx global>{`
-        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
-        * {
-          font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
-        }
-      `}</style>
-
-      {/* 헤더 */}
       <header className="bg-white border-b border-gray-100 sticky top-0 z-50">
         <div className="max-w-[631px] mx-auto px-4 h-14 flex items-center gap-3">
           <Link href="/" className="p-2 -ml-2 hover:bg-gray-100 rounded-full">
             <ArrowLeft className="w-5 h-5 text-gray-700" />
           </Link>
-          
+
           <form onSubmit={handleSearch} className="flex-1">
             <div className="relative">
               <input
@@ -110,7 +100,6 @@ export default function SearchPage() {
       </header>
 
       <main className="max-w-[631px] mx-auto bg-white min-h-screen">
-        {/* 탭 */}
         <div className="flex border-b border-gray-100">
           <button
             onClick={() => setActiveTab("all")}
@@ -161,7 +150,6 @@ export default function SearchPage() {
           </div>
         ) : (
           <div>
-            {/* 게시글 결과 */}
             {(activeTab === "all" || activeTab === "posts") && posts.length > 0 && (
               <div className="border-b border-gray-100">
                 {activeTab === "all" && (
@@ -220,7 +208,6 @@ export default function SearchPage() {
               </div>
             )}
 
-            {/* 영상 결과 */}
             {(activeTab === "all" || activeTab === "videos") && videos.length > 0 && (
               <div>
                 {activeTab === "all" && (
@@ -273,5 +260,13 @@ export default function SearchPage() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div></div>}>
+      <SearchContent />
+    </Suspense>
   );
 }

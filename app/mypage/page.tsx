@@ -10,8 +10,8 @@ export default function MyPage() {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [myPosts, setMyPosts] = useState<any[]>([]);
+  const [myShop, setMyShop] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"posts" | "likes">("posts");
 
   useEffect(() => {
     checkUser();
@@ -41,6 +41,14 @@ export default function MyPage() {
       .select("*")
       .order("created_at", { ascending: false });
     setMyPosts(posts || []);
+
+    // 내 상점 조회
+    const { data: shop } = await supabase
+      .from("shops")
+      .select("*")
+      .eq("user_id", user.id)
+      .single();
+    setMyShop(shop);
     
     setLoading(false);
   };
@@ -121,6 +129,77 @@ export default function MyPage() {
           </div>
         </div>
 
+        {/* 🏪 자영업자 섹션 */}
+        {!myShop ? (
+          /* 상점 없음 → 입점 유도 배너 */
+          <Link href="/shop/register" className="block bg-gradient-to-r from-amber-500 to-orange-500 rounded-xl p-5 mb-4 shadow-md">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-white font-black text-lg">🏪 사장님이세요?</p>
+                <p className="text-white/80 text-sm mt-1">여주마켓에서 공동구매를 시작해보세요!</p>
+              </div>
+              <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+            </div>
+          </Link>
+        ) : myShop.approval_status === "pending" ? (
+          /* 승인 대기중 */
+          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-5 mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
+                <span className="text-2xl">⏳</span>
+              </div>
+              <div>
+                <p className="font-bold text-yellow-800">상점 승인 대기중</p>
+                <p className="text-yellow-600 text-sm">관리자 승인 후 이용 가능합니다</p>
+              </div>
+            </div>
+          </div>
+        ) : myShop.approval_status === "rejected" ? (
+          /* 승인 거절 */
+          <Link href="/shop/register" className="block bg-red-50 border border-red-200 rounded-xl p-5 mb-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                  <span className="text-2xl">❌</span>
+                </div>
+                <div>
+                  <p className="font-bold text-red-800">상점 등록 거절</p>
+                  <p className="text-red-600 text-sm">{myShop.approval_note || "다시 신청해주세요"}</p>
+                </div>
+              </div>
+              <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          </Link>
+        ) : (
+          /* 승인됨 → 내 상점 관리 */
+          <Link href="/shop/dashboard" className="block bg-gradient-to-r from-emerald-500 to-teal-500 rounded-xl p-5 mb-4 shadow-md">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-white/20 rounded-xl overflow-hidden flex items-center justify-center">
+                  {myShop.logo_url ? (
+                    <img src={myShop.logo_url} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-white font-bold text-xl">{myShop.name?.[0]}</span>
+                  )}
+                </div>
+                <div>
+                  <p className="text-white font-black text-lg">{myShop.name}</p>
+                  <p className="text-white/80 text-sm">내 상점 관리하기</p>
+                </div>
+              </div>
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          </Link>
+        )}
+
         {/* 메뉴 */}
         <div className="bg-white rounded-xl shadow-md mb-4 overflow-hidden">
           <Link href="/mypage/edit" className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors border-b border-gray-100">
@@ -134,6 +213,33 @@ export default function MyPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
           </Link>
+
+          {/* 단골 업체 */}
+          <Link href="/favorites" className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors border-b border-gray-100">
+            <div className="flex items-center gap-3">
+              <svg className="w-5 h-5 text-red-500" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+              </svg>
+              <span className="text-gray-900 font-medium">단골 업체</span>
+            </div>
+            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </Link>
+
+          {/* 공동구매 참여내역 */}
+          <Link href="/mypage/groupbuys" className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors border-b border-gray-100">
+            <div className="flex items-center gap-3">
+              <svg className="w-5 h-5 text-amber-500" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49c.08-.14.12-.31.12-.48 0-.55-.45-1-1-1H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z"/>
+              </svg>
+              <span className="text-gray-900 font-medium">공동구매 참여내역</span>
+            </div>
+            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </Link>
+
           <Link href="/mypage/bookmarks" className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors border-b border-gray-100">
             <div className="flex items-center gap-3">
               <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -145,6 +251,7 @@ export default function MyPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
           </Link>
+
           <Link href="/mypage/settings" className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
             <div className="flex items-center gap-3">
               <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -203,7 +310,7 @@ export default function MyPage() {
         </div>
       </main>
 
-      {/* 하단 네비게이션 */}
+      {/* 하단 네비게이션 - 공동구매 추가 */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 z-50">
         <div className="flex">
           <Link href="/" className="flex-1 py-3 flex flex-col items-center gap-1">
@@ -218,11 +325,11 @@ export default function MyPage() {
             </svg>
             <span className="text-xs text-gray-500">커뮤니티</span>
           </Link>
-          <Link href="/market" className="flex-1 py-3 flex flex-col items-center gap-1">
-            <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+          <Link href="/groupbuy" className="flex-1 py-3 flex flex-col items-center gap-1">
+            <svg className="w-6 h-6 text-gray-500" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49c.08-.14.12-.31.12-.48 0-.55-.45-1-1-1H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z"/>
             </svg>
-            <span className="text-xs text-gray-500">마켓</span>
+            <span className="text-xs text-gray-500">공동구매</span>
           </Link>
           <Link href="/videos" className="flex-1 py-3 flex flex-col items-center gap-1">
             <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
