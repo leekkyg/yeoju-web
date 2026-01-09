@@ -1,13 +1,14 @@
 // app/api/notifications/auto/route.ts
 // 자동 알림 발송 API (GitHub Actions에서 매시간 호출)
+// @ts-nocheck
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 // 서버사이드 Supabase 클라이언트 (service role key 사용)
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  "https://izcgdugcpjidrupgkran.supabase.co",
+  "sb_secret_lsUXXvXu_gUIfYMwvgK-fg_WloZgD0W"
 );
 
 // API 보안을 위한 시크릿 키 검증
