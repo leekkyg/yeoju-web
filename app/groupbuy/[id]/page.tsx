@@ -32,7 +32,7 @@ interface GroupBuy {
     bank_name: string;
     bank_account: string;
     bank_holder: string;
-    owner_id: string | null;
+    :user_id string | null;
   };
 }
 
