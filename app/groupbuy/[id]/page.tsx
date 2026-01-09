@@ -42,6 +42,7 @@ export default function GroupBuyDetailPage() {
   const [groupBuy, setGroupBuy] = useState<GroupBuy | null>(null);
   const [loading, setLoading] = useState(true);
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0, ms: 0 });
+  const [user, setUser] = useState<any>(null);
   const [isFavorite, setIsFavorite] = useState(false);
   
   const [showModal, setShowModal] = useState(false);
