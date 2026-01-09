@@ -449,10 +449,10 @@ export default function ShopGroupBuyDetailPage() {
       return;
     }
 
-    setParticipants(prev => prev.map(p => 
-      p.id === participant.id 
-        ? { ...p, ...updateData, status: "unpaid" as const }
-        : p
+    setParticipants(prev => prev.map(p =>
+  p.id === participant.id
+    ? { ...p, ...updateData, status: "unpaid" as const } as Participant
+    : p
     ));
     
     setSelectedParticipant(null);
