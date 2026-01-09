@@ -183,10 +183,14 @@ const handleFinalSubmit = async () => {
       setShowModal(false);
       setShowComplete(true);
       
-      // 데이터 새로고침
+// 데이터 새로고침
       fetchGroupBuy();
     } catch (error: any) {
-      alert("신청 중 오류가 발생했습니다: " + error.message);
+      if (error.message.includes("duplicate")) {
+        alert("이미 신청한 공구입니다");
+      } else {
+        alert("신청 중 오류가 발생했습니다: " + error.message);
+      }
       setSubmitting(false);
     }
   };
