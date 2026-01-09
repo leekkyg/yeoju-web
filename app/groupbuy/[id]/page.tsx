@@ -58,6 +58,12 @@ export default function GroupBuyDetailPage() {
   }, [params.id]);
 
   useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user);
+    });
+  }, []);
+
+  useEffect(() => {
     if (!groupBuy?.end_at) return;
     
     const timer = setInterval(() => {
@@ -123,7 +129,6 @@ export default function GroupBuyDetailPage() {
     return time.slice(0, 5);
   };
 
-  // 연락처 자동 포맷팅
   const formatPhoneNumber = (value: string) => {
     const numbers = value.replace(/[^0-9]/g, '');
     if (numbers.length <= 3) {
@@ -135,19 +140,32 @@ export default function GroupBuyDetailPage() {
     }
   };
 
-const handleFinalSubmit = async () => {
-  if (!user) {
-    alert("로그인이 필요합니다");
-    router.push("/login");
-    return;
-  }
-  setSubmitting(true);
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatPhoneNumber(e.target.value);
+    setPhone(formatted);
+  };
+
+  const handleSubmitClick = () => {
+    if (!name.trim()) {
+      alert("이름을 입력해주세요");
+      return;
+    }
+    if (!phone.trim() || phone.replace(/[^0-9]/g, '').length < 10) {
+      alert("연락처를 정확히 입력해주세요");
+      return;
+    }
+    setShowConfirm(true);
+  };
+
+  const handleFinalSubmit = async () => {
+    if (!user) {
+      alert("로그인이 필요합니다");
+      router.push("/login");
+      return;
+    }
+    setSubmitting(true);
     
     try {
-      // 현재 로그인한 유저 확인
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      // 실제 DB에 저장
       const { error } = await supabase.from("group_buy_participants").insert({
         group_buy_id: groupBuy?.id,
         user_id: user?.id || null,
@@ -160,13 +178,11 @@ const handleFinalSubmit = async () => {
 
       if (error) throw error;
 
-      // 공동구매 현재 수량 업데이트
       await supabase
         .from("group_buys")
         .update({ current_quantity: (groupBuy?.current_quantity || 0) + quantity })
         .eq("id", groupBuy?.id);
 
-      // 🔔 셀러에게 새 주문 알림 발송
       if (groupBuy?.shop?.user_id) {
         await supabase.from("notifications").insert({
           user_id: groupBuy.shop.user_id,
@@ -184,7 +200,6 @@ const handleFinalSubmit = async () => {
       setShowModal(false);
       setShowComplete(true);
       
-// 데이터 새로고침
       fetchGroupBuy();
     } catch (error: any) {
       if (error.message.includes("duplicate")) {
@@ -196,7 +211,6 @@ const handleFinalSubmit = async () => {
     }
   };
 
-  // 계좌번호 복사
   const copyAccount = () => {
     const accountInfo = `${groupBuy?.shop?.bank_name || "국민은행"} ${groupBuy?.shop?.bank_account || "123-456-789012"}`;
     navigator.clipboard.writeText(accountInfo);
@@ -213,7 +227,6 @@ const handleFinalSubmit = async () => {
 
   const totalPrice = groupBuy ? groupBuy.sale_price * quantity : 0;
 
-  // 테스트용 계좌정보
   const bankName = groupBuy?.shop?.bank_name || "국민은행";
   const bankAccount = groupBuy?.shop?.bank_account || "123-456-789012";
   const bankHolder = groupBuy?.shop?.bank_holder || groupBuy?.shop?.name || "여주맛집";
@@ -540,7 +553,6 @@ const handleFinalSubmit = async () => {
         </div>
       </div>
 
-      {/* 주문서 모달 */}
       {showModal && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center">
           <div 
@@ -565,7 +577,6 @@ const handleFinalSubmit = async () => {
             </div>
             
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
-              {/* 수량 선택 */}
               <div>
                 <label className="block text-sm font-semibold text-[#19643D] mb-3">주문 수량</label>
                 <div className="flex items-center gap-4">
@@ -588,7 +599,6 @@ const handleFinalSubmit = async () => {
                 </div>
               </div>
 
-              {/* 이름 입력 */}
               <div>
                 <label className="block text-sm font-semibold text-[#19643D] mb-3">이름</label>
                 <input
@@ -600,7 +610,6 @@ const handleFinalSubmit = async () => {
                 />
               </div>
 
-              {/* 연락처 입력 */}
               <div>
                 <label className="block text-sm font-semibold text-[#19643D] mb-3">연락처</label>
                 <input
@@ -614,7 +623,6 @@ const handleFinalSubmit = async () => {
                 <p className="text-xs text-[#19643D]/50 mt-2">픽업 안내 문자가 발송됩니다</p>
               </div>
 
-              {/* 입금 계좌 정보 */}
               <div className="bg-[#19643D] rounded-2xl p-5 text-white">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-[#F2D38D] text-sm font-medium">입금 계좌</span>
@@ -629,7 +637,6 @@ const handleFinalSubmit = async () => {
                 <p className="text-[#F2D38D]/80">{bankName} | 예금주: {bankHolder}</p>
               </div>
 
-              {/* 입금액 안내 */}
               <div className="bg-[#F2D38D]/30 rounded-2xl p-5">
                 <div className="flex items-center justify-between">
                   <span className="text-[#19643D] font-medium">입금하실 금액</span>
@@ -639,7 +646,6 @@ const handleFinalSubmit = async () => {
                 </div>
               </div>
 
-              {/* 경고 문구 */}
               <div className="bg-[#DA451F]/10 rounded-2xl p-4 border border-[#DA451F]/20">
                 <div className="flex gap-3">
                   <span className="text-xl">⚠️</span>
@@ -668,7 +674,6 @@ const handleFinalSubmit = async () => {
         </div>
       )}
 
-      {/* 확인 모달 */}
       {showConfirm && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-5">
           <div 
@@ -730,7 +735,6 @@ const handleFinalSubmit = async () => {
         </div>
       )}
 
-      {/* 완료 모달 */}
       {showComplete && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-5">
           <div className="absolute inset-0 bg-black/70" />
