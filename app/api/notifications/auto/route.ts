@@ -12,7 +12,7 @@ const supabase = createClient(
 );
 
 // API 보안을 위한 시크릿 키 검증
-const API_SECRET = process.env.CRON_API_SECRET;
+const API_SECRET = "yeoju-auto-notify-2026";
 
 export async function POST(request: NextRequest) {
   try {
