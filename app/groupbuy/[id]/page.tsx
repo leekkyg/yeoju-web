@@ -97,7 +97,7 @@ export default function GroupBuyDetailPage() {
       .from("group_buys")
       .select(`
         *,
-        shop:shops(id, name, category, logo_url, address, phone, bank_name, bank_account, bank_holder, owner_id)
+        shop:shops(id, name, category, logo_url, address, phone, bank_name, bank_account, bank_holder, user_id)
       `)
       .eq("id", params.id)
       .single();
@@ -180,9 +180,9 @@ export default function GroupBuyDetailPage() {
         .eq("id", groupBuy?.id);
 
       // 🔔 셀러에게 새 주문 알림 발송
-      if (groupBuy?.shop?.owner_id) {
+      if (groupBuy?.shop?.user_id) {
         await supabase.from("notifications").insert({
-          user_id: groupBuy.shop.owner_id,
+          user_id: groupBuy.shop.user_id,
           title: "새로운 주문이 들어왔습니다! 🛒",
           message: `${name}님이 [${groupBuy.title}] ${quantity}개를 주문했습니다. 입금 확인 후 처리해주세요.`,
           type: "general",
