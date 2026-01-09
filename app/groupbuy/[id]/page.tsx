@@ -134,27 +134,13 @@ export default function GroupBuyDetailPage() {
     }
   };
 
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const formatted = formatPhoneNumber(e.target.value);
-    setPhone(formatted);
-  };
-
-  // 입금 후 신청 완료 클릭
-  const handleSubmitClick = () => {
-    if (!name.trim()) {
-      alert("이름을 입력해주세요");
-      return;
-    }
-    if (!phone.trim() || phone.replace(/[^0-9]/g, '').length < 10) {
-      alert("연락처를 정확히 입력해주세요");
-      return;
-    }
-    setShowConfirm(true);
-  };
-
-  // 최종 확인 후 신청
-  const handleFinalSubmit = async () => {
-    setSubmitting(true);
+const handleFinalSubmit = async () => {
+  if (!user) {
+    alert("로그인이 필요합니다");
+    router.push("/login");
+    return;
+  }
+  setSubmitting(true);
     
     try {
       // 현재 로그인한 유저 확인
