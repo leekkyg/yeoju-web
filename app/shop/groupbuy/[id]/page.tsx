@@ -259,7 +259,7 @@ export default function ShopGroupBuyDetailPage() {
         alert("모든 참여자의 처리가 완료되지 않았습니다.\n픽업완료 또는 취소 처리 후 종료해주세요.");
         return;
       }
-    } else if (statusAction !== "complete" && !selectedReason) {
+    } else if (statusAction === "cancel" && !selectedReason) {
       alert("사유를 선택해주세요");
       return;
     }
