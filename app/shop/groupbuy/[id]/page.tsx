@@ -451,9 +451,9 @@ export default function ShopGroupBuyDetailPage() {
 
     setParticipants(prev => prev.map(p =>
   p.id === participant.id
-    ? { ...p, ...updateData, status: "unpaid" as const } as Participant
+    ? { ...p, ...updateData, status: "unpaid" as const } as unknown as Participant
     : p
-    ));
+));
     
     setSelectedParticipant(null);
     alert(`${participant.name}님의 주문이 복구되었습니다.`);
