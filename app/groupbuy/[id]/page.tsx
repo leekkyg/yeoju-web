@@ -41,9 +41,11 @@ export default function GroupBuyDetailPage() {
   const router = useRouter();
   const [groupBuy, setGroupBuy] = useState<GroupBuy | null>(null);
   const [loading, setLoading] = useState(true);
-  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0, ms: 0 });
+  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
   const [user, setUser] = useState<any>(null);
   const [isFavorite, setIsFavorite] = useState(false);
+  const [isParticipant, setIsParticipant] = useState(false);
+  const [isOwner, setIsOwner] = useState(false);
   
   const [showModal, setShowModal] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -60,8 +62,29 @@ export default function GroupBuyDetailPage() {
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       setUser(data.user);
+      if (data.user && groupBuy) {
+        checkParticipation(data.user.id);
+        checkOwnership(data.user.id);
+      }
     });
-  }, []);
+  }, [groupBuy]);
+
+  const checkParticipation = async (userId: string) => {
+    const { data } = await supabase
+      .from("group_buy_participants")
+      .select("id")
+      .eq("group_buy_id", params.id)
+      .eq("user_id", userId)
+      .single();
+    
+    setIsParticipant(!!data);
+  };
+
+  const checkOwnership = (userId: string) => {
+    if (groupBuy?.shop?.user_id === userId) {
+      setIsOwner(true);
+    }
+  };
 
   useEffect(() => {
     if (!groupBuy?.end_at) return;
@@ -72,7 +95,7 @@ export default function GroupBuyDetailPage() {
       const diff = end - now;
 
       if (diff <= 0) {
-        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0, ms: 0 });
+        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
         return;
       }
 
@@ -81,9 +104,8 @@ export default function GroupBuyDetailPage() {
         hours: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
         minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)),
         seconds: Math.floor((diff % (1000 * 60)) / 1000),
-        ms: Math.floor((diff % 1000) / 10),
       });
-    }, 10);
+    }, 1000);
 
     return () => clearInterval(timer);
   }, [groupBuy?.end_at]);
@@ -199,6 +221,7 @@ export default function GroupBuyDetailPage() {
       setShowConfirm(false);
       setShowModal(false);
       setShowComplete(true);
+      setIsParticipant(true);
       
       fetchGroupBuy();
     } catch (error: any) {
@@ -217,8 +240,35 @@ export default function GroupBuyDetailPage() {
     alert("계좌번호가 복사되었습니다");
   };
 
-  const discountPercent = groupBuy 
+  const copyAddress = () => {
+    const address = groupBuy?.pickup_location || groupBuy?.shop?.address || "";
+    navigator.clipboard.writeText(address);
+    alert("주소가 복사되었습니다");
+  };
+
+  const openKakaoMap = () => {
+    const address = encodeURIComponent(groupBuy?.pickup_location || groupBuy?.shop?.address || "");
+    window.open(`https://map.kakao.com/?q=${address}`, '_blank');
+  };
+
+  const openNaverMap = () => {
+    const address = encodeURIComponent(groupBuy?.pickup_location || groupBuy?.shop?.address || "");
+    window.open(`https://map.naver.com/v5/search/${address}`, '_blank');
+  };
+
+  const openTMap = () => {
+    const address = encodeURIComponent(groupBuy?.pickup_location || groupBuy?.shop?.address || "");
+    window.open(`https://apis.openapi.sk.com/tmap/app/routes?appKey=&name=${address}&lon=&lat=`, '_blank');
+    // 또는 딥링크
+    window.location.href = `tmap://search?name=${address}`;
+  };
+
+  const hasDiscount = groupBuy && groupBuy.original_price > groupBuy.sale_price;
+  const discountPercent = groupBuy && hasDiscount
     ? Math.round((1 - groupBuy.sale_price / groupBuy.original_price) * 100) 
+    : 0;
+  const discountAmount = groupBuy && hasDiscount
+    ? groupBuy.original_price - groupBuy.sale_price
     : 0;
 
   const progress = groupBuy 
@@ -260,26 +310,7 @@ export default function GroupBuyDetailPage() {
           text-shadow: 
             0 0 10px rgba(218, 69, 31, 0.8),
             0 0 20px rgba(218, 69, 31, 0.6),
-            0 0 30px rgba(218, 69, 31, 0.4),
-            0 0 40px rgba(218, 69, 31, 0.2);
-        }
-        
-        .timer-pulse {
-          animation: pulse 1s ease-in-out infinite;
-        }
-        
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.7; }
-        }
-        
-        .ms-flicker {
-          animation: flicker 0.1s linear infinite;
-        }
-        
-        @keyframes flicker {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.8; }
+            0 0 30px rgba(218, 69, 31, 0.4);
         }
 
         @keyframes slideUp {
@@ -341,9 +372,11 @@ export default function GroupBuyDetailPage() {
               <span className="text-7xl drop-shadow-lg">🛒</span>
             </div>
           )}
-          <div className="absolute top-4 left-4 bg-[#DA451F] text-white px-3 py-1.5 rounded-full text-sm font-bold shadow-lg">
-            {discountPercent}% 할인
-          </div>
+          {hasDiscount && (
+            <div className="absolute top-4 left-4 bg-[#DA451F] text-white px-3 py-1.5 rounded-full text-sm font-bold shadow-lg">
+              {discountPercent}% 할인
+            </div>
+          )}
         </div>
 
         <div className="px-5 py-4 bg-white border-b border-[#19643D]/10">
@@ -373,6 +406,7 @@ export default function GroupBuyDetailPage() {
           </h1>
         </div>
 
+        {/* 타이머 - 한글 표시 */}
         <div className="mx-5 my-4 bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f0f23] rounded-3xl p-6 shadow-2xl overflow-hidden relative">
           <div className="absolute top-0 left-0 w-full h-full opacity-10">
             <div className="absolute top-4 left-4 w-20 h-20 bg-[#DA451F] rounded-full blur-3xl" />
@@ -384,62 +418,73 @@ export default function GroupBuyDetailPage() {
           </p>
           
           <div className="relative z-10 text-center">
-            <div className="timer-font flex items-baseline justify-center gap-1 flex-wrap">
+            <div className="timer-font flex items-baseline justify-center gap-2 flex-wrap">
               {timeLeft.days > 0 && (
-                <>
-                  <span className="text-5xl md:text-6xl font-black text-white timer-glow">
+                <div className="flex items-baseline">
+                  <span className="text-4xl md:text-5xl font-black text-white timer-glow">
                     {timeLeft.days}
                   </span>
-                  <span className="text-xl text-[#F2D38D] mr-3">일</span>
-                </>
+                  <span className="text-lg text-[#F2D38D] ml-1">일</span>
+                </div>
               )}
-              <span className="text-5xl md:text-6xl font-black text-white timer-glow">
-                {String(timeLeft.hours).padStart(2, '0')}
-              </span>
-              <span className="text-3xl text-[#DA451F] timer-pulse mx-1">:</span>
-              <span className="text-5xl md:text-6xl font-black text-white timer-glow">
-                {String(timeLeft.minutes).padStart(2, '0')}
-              </span>
-              <span className="text-3xl text-[#DA451F] timer-pulse mx-1">:</span>
-              <span className="text-5xl md:text-6xl font-black text-white timer-glow">
-                {String(timeLeft.seconds).padStart(2, '0')}
-              </span>
-              <span className="text-3xl text-[#F2D38D] mx-1">.</span>
-              <span className="text-4xl md:text-5xl font-black text-[#DA451F] ms-flicker">
-                {String(timeLeft.ms).padStart(2, '0')}
-              </span>
-            </div>
-            
-            <div className="flex justify-center gap-6 mt-3 text-xs text-[#F2D38D]/60 tracking-wider">
-              {timeLeft.days > 0 && <span className="w-12">DAYS</span>}
-              <span className="w-12">HOURS</span>
-              <span className="w-12">MIN</span>
-              <span className="w-12">SEC</span>
-              <span className="w-10">MS</span>
+              <div className="flex items-baseline">
+                <span className="text-4xl md:text-5xl font-black text-white timer-glow">
+                  {String(timeLeft.hours).padStart(2, '0')}
+                </span>
+                <span className="text-lg text-[#F2D38D] ml-1">시간</span>
+              </div>
+              <div className="flex items-baseline">
+                <span className="text-4xl md:text-5xl font-black text-white timer-glow">
+                  {String(timeLeft.minutes).padStart(2, '0')}
+                </span>
+                <span className="text-lg text-[#F2D38D] ml-1">분</span>
+              </div>
+              <div className="flex items-baseline">
+                <span className="text-4xl md:text-5xl font-black text-white timer-glow">
+                  {String(timeLeft.seconds).padStart(2, '0')}
+                </span>
+                <span className="text-lg text-[#F2D38D] ml-1">초</span>
+              </div>
             </div>
           </div>
         </div>
 
+        {/* 가격 표시 - 개선된 디자인 */}
         <div className="px-5 py-5 bg-white">
-          <div className="flex items-end justify-between mb-3">
-            <div>
-              <p className="text-sm text-[#19643D]/40 line-through mb-1">
-                {groupBuy.original_price.toLocaleString()}원
-              </p>
+          <div className="bg-gradient-to-r from-[#19643D]/5 to-[#F2D38D]/20 rounded-2xl p-5">
+            {hasDiscount ? (
+              <>
+                <div className="flex items-center gap-3 mb-2">
+                  <p className="text-lg text-[#19643D]/50 line-through">
+                    {groupBuy.original_price.toLocaleString()}원
+                  </p>
+                  <span className="px-2 py-1 bg-[#DA451F] text-white text-sm font-bold rounded-lg">
+                    {discountPercent}% OFF
+                  </span>
+                </div>
+                <div className="flex items-end justify-between">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-4xl font-black text-[#DA451F]">
+                      {groupBuy.sale_price.toLocaleString()}
+                    </span>
+                    <span className="text-xl font-bold text-[#DA451F]">원</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 bg-[#19643D] text-white px-4 py-2 rounded-full text-sm font-bold">
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                    {discountAmount.toLocaleString()}원 절약
+                  </div>
+                </div>
+              </>
+            ) : (
               <div className="flex items-baseline gap-1">
-                <span className="text-3xl font-black text-[#19643D]">
+                <span className="text-4xl font-black text-[#19643D]">
                   {groupBuy.sale_price.toLocaleString()}
                 </span>
                 <span className="text-xl font-bold text-[#19643D]">원</span>
               </div>
-            </div>
-            
-            <div className="inline-flex items-center gap-1.5 bg-[#DA451F]/10 text-[#DA451F] px-4 py-2 rounded-full text-sm font-bold">
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-              </svg>
-              {(groupBuy.original_price - groupBuy.sale_price).toLocaleString()}원 절약
-            </div>
+            )}
           </div>
         </div>
 
@@ -465,21 +510,22 @@ export default function GroupBuyDetailPage() {
           </p>
         </div>
 
+        {/* 수령 안내 - 글씨 크기 키움 */}
         <div className="mx-5 mb-4 bg-white rounded-2xl overflow-hidden border border-[#19643D]/10">
           <div className="px-5 py-4 border-b border-[#19643D]/10">
-            <h3 className="font-bold text-[#19643D]">📍 수령 안내</h3>
+            <h3 className="font-bold text-[#19643D] text-lg">📍 수령 안내</h3>
           </div>
-          <div className="p-5 space-y-4">
+          <div className="p-5 space-y-5">
             <div className="flex">
-              <span className="w-20 text-sm text-[#19643D]/50 flex-shrink-0">수령일</span>
-              <span className="font-medium text-[#19643D]">
+              <span className="w-24 text-base text-[#19643D]/60 flex-shrink-0">수령일</span>
+              <span className="font-medium text-[#19643D] text-base">
                 {groupBuy.pickup_date ? formatDate(groupBuy.pickup_date) : "공구 성공 후 안내"}
               </span>
             </div>
             
             <div className="flex">
-              <span className="w-20 text-sm text-[#19643D]/50 flex-shrink-0">수령시간</span>
-              <span className="font-medium text-[#19643D]">
+              <span className="w-24 text-base text-[#19643D]/60 flex-shrink-0">수령시간</span>
+              <span className="font-medium text-[#19643D] text-base">
                 {groupBuy.pickup_start_time && groupBuy.pickup_end_time 
                   ? `${formatTime(groupBuy.pickup_start_time)} ~ ${formatTime(groupBuy.pickup_end_time)}`
                   : "공구 성공 후 안내"
@@ -488,22 +534,34 @@ export default function GroupBuyDetailPage() {
             </div>
 
             <div className="flex">
-              <span className="w-20 text-sm text-[#19643D]/50 flex-shrink-0">픽업장소</span>
+              <span className="w-24 text-base text-[#19643D]/60 flex-shrink-0">픽업장소</span>
               <div className="flex-1">
-                <p className="font-medium text-[#19643D] mb-3">
+                <p className="font-medium text-[#19643D] text-base mb-4">
                   {groupBuy.pickup_location || groupBuy.shop?.address || "매장 방문"}
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  <button className="px-3 py-1.5 bg-[#19643D]/5 border border-[#19643D]/20 rounded-lg text-xs text-[#19643D] hover:bg-[#19643D] hover:text-white transition-colors">
+                  <button 
+                    onClick={copyAddress}
+                    className="px-4 py-2 bg-[#19643D]/5 border border-[#19643D]/20 rounded-lg text-sm text-[#19643D] hover:bg-[#19643D] hover:text-white transition-colors"
+                  >
                     주소 복사
                   </button>
-                  <button className="px-3 py-1.5 bg-[#FEE500] rounded-lg text-xs text-[#3C1E1E] font-medium">
+                  <button 
+                    onClick={openKakaoMap}
+                    className="px-4 py-2 bg-[#FEE500] rounded-lg text-sm text-[#3C1E1E] font-medium hover:brightness-95 transition-all"
+                  >
                     카카오맵
                   </button>
-                  <button className="px-3 py-1.5 bg-[#03C75A] rounded-lg text-xs text-white font-medium">
-                    네이버
+                  <button 
+                    onClick={openNaverMap}
+                    className="px-4 py-2 bg-[#03C75A] rounded-lg text-sm text-white font-medium hover:brightness-95 transition-all"
+                  >
+                    네이버맵
                   </button>
-                  <button className="px-3 py-1.5 bg-[#4285F4] rounded-lg text-xs text-white font-medium">
+                  <button 
+                    onClick={openTMap}
+                    className="px-4 py-2 bg-[#4285F4] rounded-lg text-sm text-white font-medium hover:brightness-95 transition-all"
+                  >
                     T맵
                   </button>
                 </div>
@@ -514,18 +572,18 @@ export default function GroupBuyDetailPage() {
 
         <div className="mx-5 mb-4 bg-white rounded-2xl overflow-hidden border border-[#19643D]/10">
           <div className="px-5 py-4 border-b border-[#19643D]/10">
-            <h3 className="font-bold text-[#19643D]">📝 상품 설명</h3>
+            <h3 className="font-bold text-[#19643D] text-lg">📝 상품 설명</h3>
           </div>
           <div className="p-5">
-            <p className="text-[#19643D]/70 leading-relaxed whitespace-pre-wrap">
+            <p className="text-[#19643D]/70 leading-relaxed whitespace-pre-wrap text-base">
               {groupBuy.description || "상세 설명이 없습니다."}
             </p>
           </div>
         </div>
 
         <div className="mx-5 mb-4 bg-[#DA451F]/5 rounded-2xl p-5">
-          <h3 className="font-bold text-[#DA451F] mb-3">⚠️ 구매 전 확인</h3>
-          <ul className="space-y-2 text-sm text-[#DA451F]/70">
+          <h3 className="font-bold text-[#DA451F] mb-3 text-lg">⚠️ 구매 전 확인</h3>
+          <ul className="space-y-2 text-base text-[#DA451F]/70">
             <li>• 최소 인원 미달 시 공동구매가 취소될 수 있어요</li>
             <li>• 픽업 시간 내 미방문 시 환불이 불가해요</li>
             <li>• 결제는 계좌이체로 진행됩니다</li>
@@ -533,6 +591,7 @@ export default function GroupBuyDetailPage() {
         </div>
       </main>
 
+      {/* 하단 버튼 - 셀러/참여자/일반 사용자 구분 */}
       <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-[#19643D]/10">
         <div className="max-w-[640px] mx-auto px-5 py-4 flex items-center gap-3">
           <a 
@@ -544,15 +603,38 @@ export default function GroupBuyDetailPage() {
             </svg>
           </a>
           
-          <button 
-            onClick={() => setShowModal(true)}
-            className="flex-1 h-14 bg-[#DA451F] hover:bg-[#c23d1b] text-white font-bold text-lg rounded-2xl transition-colors shadow-lg shadow-[#DA451F]/20 active:scale-[0.98]"
-          >
-            신청하기
-          </button>
+          {isOwner ? (
+            <Link 
+              href={`/shop/groupbuy/${groupBuy.id}`}
+              className="flex-1 h-14 bg-[#19643D] hover:bg-[#145231] text-white font-bold text-lg rounded-2xl transition-colors shadow-lg flex items-center justify-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+              참여자 관리
+            </Link>
+          ) : isParticipant ? (
+            <button 
+              disabled
+              className="flex-1 h-14 bg-gray-300 text-gray-500 font-bold text-lg rounded-2xl cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+              이미 참여한 공구입니다
+            </button>
+          ) : (
+            <button 
+              onClick={() => setShowModal(true)}
+              className="flex-1 h-14 bg-[#DA451F] hover:bg-[#c23d1b] text-white font-bold text-lg rounded-2xl transition-colors shadow-lg shadow-[#DA451F]/20 active:scale-[0.98]"
+            >
+              신청하기
+            </button>
+          )}
         </div>
       </div>
 
+      {/* 주문서 모달 */}
       {showModal && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center">
           <div 
@@ -674,6 +756,7 @@ export default function GroupBuyDetailPage() {
         </div>
       )}
 
+      {/* 확인 모달 */}
       {showConfirm && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-5">
           <div 
@@ -735,6 +818,7 @@ export default function GroupBuyDetailPage() {
         </div>
       )}
 
+      {/* 완료 모달 */}
       {showComplete && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-5">
           <div className="absolute inset-0 bg-black/70" />
