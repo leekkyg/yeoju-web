@@ -177,7 +177,6 @@ export default function ShopDashboardPage() {
   const unpaidOrders = filteredParticipants.filter(p => p.status === "unpaid").length;
   const cancelledOrders = filteredParticipants.filter(p => p.status === "cancelled").length;
   
-  // 픽업 완료 (is_paid이고 pickup_date가 지난 것)
   const pickedUpOrders = filteredParticipants.filter(p => {
     if (!p.is_paid || !p.group_buy?.pickup_date) return false;
     return new Date(p.group_buy.pickup_date) < new Date();
@@ -187,10 +186,7 @@ export default function ShopDashboardPage() {
   const completedGroupBuys = groupBuys.filter(g => g.status === "ended" || g.status === "completed").length;
   const totalGroupBuys = groupBuys.length;
 
-  // 평균 주문 금액
   const avgOrderAmount = paidOrders > 0 ? Math.round(totalRevenue / paidOrders) : 0;
-
-  // 그래프 최대값
   const maxRevenue = Math.max(...dailyStats.map(s => s.revenue), 1);
 
   const formatDate = (dateStr: string) => {
@@ -237,8 +233,8 @@ export default function ShopDashboardPage() {
       </header>
 
       <main className="pt-14 pb-32 max-w-[640px] mx-auto">
-        {/* 상점 정보 */}
-        <div className="px-5 py-5 bg-white border-b border-[#19643D]/10">
+        {/* 상점 정보 - 클릭 가능 */}
+        <Link href="/shop/info" className="block px-5 py-5 bg-white border-b border-[#19643D]/10 hover:bg-[#19643D]/5 transition-colors">
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 rounded-2xl bg-[#19643D] flex items-center justify-center text-[#F2D38D] font-bold text-xl overflow-hidden">
               {shop?.logo_url ? (
@@ -251,8 +247,14 @@ export default function ShopDashboardPage() {
               <h1 className="text-lg font-bold text-[#19643D]">{shop?.name}</h1>
               <p className="text-sm text-[#19643D]/50">{shop?.category}</p>
             </div>
+            <div className="flex items-center gap-1 text-[#19643D]/40">
+              <span className="text-xs">상점 관리</span>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
           </div>
-        </div>
+        </Link>
 
         {/* 기간 선택 */}
         <div className="px-5 py-3 bg-white border-b border-[#19643D]/10 sticky top-14 z-40">
@@ -369,7 +371,6 @@ export default function ShopDashboardPage() {
                   ))}
                 </div>
                 
-                {/* 범례 */}
                 <div className="mt-4 pt-4 border-t border-[#19643D]/10">
                   <div className="flex justify-between text-sm">
                     <span className="text-[#19643D]/50">기간 내 최고 매출</span>
@@ -385,7 +386,6 @@ export default function ShopDashboardPage() {
         <div className="px-5 py-4">
           <h2 className="text-lg font-bold text-[#19643D] mb-3">📈 주문 분석</h2>
           <div className="bg-white rounded-2xl p-5 border border-[#19643D]/10">
-            {/* 주문 상태 바 */}
             <div className="mb-4">
               <div className="flex justify-between text-sm mb-2">
                 <span className="text-[#19643D]/60">주문 상태 비율</span>
@@ -425,7 +425,6 @@ export default function ShopDashboardPage() {
               </div>
             </div>
 
-            {/* 전환율 */}
             <div className="pt-4 border-t border-[#19643D]/10 space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-[#19643D]/60">입금 전환율</span>
@@ -443,52 +442,13 @@ export default function ShopDashboardPage() {
           </div>
         </div>
 
-        {/* 인기 공동구매 */}
-        <div className="px-5 py-4">
-          <h2 className="text-lg font-bold text-[#19643D] mb-3">🏆 인기 공동구매</h2>
-          <div className="bg-white rounded-2xl border border-[#19643D]/10 overflow-hidden">
-            {groupBuys.length === 0 ? (
-              <p className="text-center text-[#19643D]/40 py-8">등록된 공동구매가 없습니다</p>
-            ) : (
-              groupBuys
-                .sort((a, b) => b.current_quantity - a.current_quantity)
-                .slice(0, 5)
-                .map((g, index) => (
-                  <div key={g.id} className="flex items-center gap-3 p-4 border-b border-[#19643D]/5 last:border-0">
-                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                      index === 0 ? "bg-[#F2D38D] text-[#19643D]" :
-                      index === 1 ? "bg-gray-200 text-gray-600" :
-                      index === 2 ? "bg-orange-200 text-orange-700" :
-                      "bg-gray-100 text-gray-500"
-                    }`}>
-                      {index + 1}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-[#19643D] truncate">{g.title}</p>
-                      <p className="text-xs text-[#19643D]/50">
-                        {g.current_quantity}명 참여 · {g.sale_price.toLocaleString()}원
-                      </p>
-                    </div>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      g.status === "active" 
-                        ? "bg-[#19643D]/10 text-[#19643D]" 
-                        : "bg-gray-100 text-gray-500"
-                    }`}>
-                      {g.status === "active" ? "진행중" : "종료"}
-                    </span>
-                  </div>
-                ))
-            )}
-          </div>
-        </div>
-
-        {/* 빠른 메뉴 */}
+        {/* 빠른 메뉴 - 순서 변경 */}
         <div className="px-5 py-4">
           <h2 className="text-lg font-bold text-[#19643D] mb-3">⚡ 빠른 메뉴</h2>
           <div className="grid grid-cols-2 gap-3">
             <Link 
               href="/shop/orders"
-              className="bg-white rounded-2xl p-4 border border-[#19643D]/10 flex items-center gap-3 hover:bg-[#19643D]/5 transition-colors"
+              className="bg-white rounded-2xl p-4 border border-[#DA451F]/20 flex items-center gap-3 hover:bg-[#DA451F]/5 transition-colors"
             >
               <div className="w-10 h-10 bg-[#DA451F]/10 rounded-xl flex items-center justify-center">
                 <svg className="w-5 h-5 text-[#DA451F]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -500,6 +460,21 @@ export default function ShopDashboardPage() {
                 {unpaidOrders > 0 && (
                   <p className="text-xs text-[#DA451F]">{unpaidOrders}건 입금 대기중</p>
                 )}
+              </div>
+            </Link>
+            
+            <Link 
+              href="/shop/notifications"
+              className="bg-white rounded-2xl p-4 border border-[#19643D]/10 flex items-center gap-3 hover:bg-[#19643D]/5 transition-colors"
+            >
+              <div className="w-10 h-10 bg-[#F2D38D]/30 rounded-xl flex items-center justify-center">
+                <svg className="w-5 h-5 text-[#19643D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+              </div>
+              <div>
+                <p className="font-medium text-[#19643D]">알림 발송</p>
+                <p className="text-xs text-[#19643D]/50">미입금자 알림</p>
               </div>
             </Link>
             
@@ -522,7 +497,7 @@ export default function ShopDashboardPage() {
               href="/shop/info"
               className="bg-white rounded-2xl p-4 border border-[#19643D]/10 flex items-center gap-3 hover:bg-[#19643D]/5 transition-colors"
             >
-              <div className="w-10 h-10 bg-[#F2D38D]/30 rounded-xl flex items-center justify-center">
+              <div className="w-10 h-10 bg-[#19643D]/10 rounded-xl flex items-center justify-center">
                 <svg className="w-5 h-5 text-[#19643D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
@@ -532,21 +507,49 @@ export default function ShopDashboardPage() {
                 <p className="text-xs text-[#19643D]/50">수정하기</p>
               </div>
             </Link>
-            
-            <Link 
-              href="/shop/notifications"
-              className="bg-white rounded-2xl p-4 border border-[#19643D]/10 flex items-center gap-3 hover:bg-[#19643D]/5 transition-colors"
-            >
-              <div className="w-10 h-10 bg-[#19643D]/10 rounded-xl flex items-center justify-center">
-                <svg className="w-5 h-5 text-[#19643D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-              </div>
-              <div>
-                <p className="font-medium text-[#19643D]">알림 설정</p>
-                <p className="text-xs text-[#19643D]/50">알림톡 관리</p>
-              </div>
-            </Link>
+          </div>
+        </div>
+
+        {/* 인기 공동구매 */}
+        <div className="px-5 py-4">
+          <h2 className="text-lg font-bold text-[#19643D] mb-3">🏆 인기 공동구매</h2>
+          <div className="bg-white rounded-2xl border border-[#19643D]/10 overflow-hidden">
+            {groupBuys.length === 0 ? (
+              <p className="text-center text-[#19643D]/40 py-8">등록된 공동구매가 없습니다</p>
+            ) : (
+              groupBuys
+                .sort((a, b) => b.current_quantity - a.current_quantity)
+                .slice(0, 5)
+                .map((g, index) => (
+                  <Link 
+                    key={g.id} 
+                    href={`/shop/groupbuy/${g.id}`}
+                    className="flex items-center gap-3 p-4 border-b border-[#19643D]/5 last:border-0 hover:bg-[#19643D]/5 transition-colors"
+                  >
+                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                      index === 0 ? "bg-[#F2D38D] text-[#19643D]" :
+                      index === 1 ? "bg-gray-200 text-gray-600" :
+                      index === 2 ? "bg-orange-200 text-orange-700" :
+                      "bg-gray-100 text-gray-500"
+                    }`}>
+                      {index + 1}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-[#19643D] truncate">{g.title}</p>
+                      <p className="text-xs text-[#19643D]/50">
+                        {g.current_quantity}명 참여 · {g.sale_price.toLocaleString()}원
+                      </p>
+                    </div>
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      g.status === "active" 
+                        ? "bg-[#19643D]/10 text-[#19643D]" 
+                        : "bg-gray-100 text-gray-500"
+                    }`}>
+                      {g.status === "active" ? "진행중" : "종료"}
+                    </span>
+                  </Link>
+                ))
+            )}
           </div>
         </div>
       </main>
