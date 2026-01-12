@@ -50,34 +50,22 @@ export default function ShopGroupBuyDetailPage() {
   const [groupBuy, setGroupBuy] = useState<GroupBuy | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [activeTab, setActiveTab] = useState<"info" | "participants">("participants");
+  const [myShopId, setMyShopId] = useState<number | null>(null);
   
-  // 필터
   const [filter, setFilter] = useState<FilterType>("all");
-  
-  // 타이머
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
   
-  // 모달 상태
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [statusAction, setStatusAction] = useState<"cancel" | "pause" | "complete" | null>(null);
   const [selectedReason, setSelectedReason] = useState("");
   const [customReason, setCustomReason] = useState("");
   const [processing, setProcessing] = useState(false);
 
-  // 참여자 상세 모달
   const [selectedParticipant, setSelectedParticipant] = useState<Participant | null>(null);
   
-  // 참여자 취소 모달
   const [showCancelParticipantModal, setShowCancelParticipantModal] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<Participant | null>(null);
   const [cancelReason, setCancelReason] = useState("");
-
-  // 알림 발송 모달
-  const [showNotificationModal, setShowNotificationModal] = useState(false);
-  const [notificationType, setNotificationType] = useState<"unpaid" | "paid" | "custom">("unpaid");
-  const [customNotifTitle, setCustomNotifTitle] = useState("");
-  const [customNotifMessage, setCustomNotifMessage] = useState("");
-  const [sendingNotification, setSendingNotification] = useState(false);
 
   const cancelReasons = [
     "최소 인원 미달",
@@ -103,7 +91,6 @@ export default function ShopGroupBuyDetailPage() {
     fetchData();
   }, [params.id]);
 
-  // 타이머 업데이트
   useEffect(() => {
     if (!groupBuy?.end_at) return;
     
@@ -129,16 +116,34 @@ export default function ShopGroupBuyDetailPage() {
   }, [groupBuy?.end_at]);
 
   const fetchData = async () => {
+    // 1. 로그인 체크
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       router.push("/login");
       return;
     }
 
+    // 2. 내 상점 조회
+    const { data: myShop, error: shopError } = await supabase
+      .from("shops")
+      .select("id")
+      .eq("user_id", user.id)
+      .single();
+
+    if (shopError || !myShop) {
+      alert("등록된 상점이 없습니다");
+      router.push("/shop/register");
+      return;
+    }
+
+    setMyShopId(myShop.id);
+
+    // 3. 공구 조회 + 내 상점 공구인지 확인
     const { data: gbData, error } = await supabase
       .from("group_buys")
       .select("*")
       .eq("id", params.id)
+      .eq("shop_id", myShop.id)
       .single();
 
     if (error || !gbData) {
@@ -291,13 +296,12 @@ export default function ShopGroupBuyDetailPage() {
           ? `총 ${pickedCount}건 픽업완료, ${totalPicked.toLocaleString()}원 정산 - 공동구매가 정상 종료되었습니다.`
           : reason
       })
-      .eq("id", params.id);
+      .eq("id", params.id)
+      .eq("shop_id", myShopId);
 
-    // 🔔 참여자 전체에게 알림 발송
     const activeParticipants = participants.filter(p => p.status !== "cancelled" && p.user_id);
     
     if (statusAction === "cancel" && activeParticipants.length > 0) {
-      // 공구 취소 알림
       const notifications = activeParticipants.map(p => ({
         user_id: p.user_id,
         title: "공동구매가 취소되었습니다 😢",
@@ -308,7 +312,6 @@ export default function ShopGroupBuyDetailPage() {
       }));
       await supabase.from("notifications").insert(notifications);
     } else if (statusAction === "complete" && activeParticipants.length > 0) {
-      // 공구 완료 알림 (픽업 완료된 사람들에게)
       const pickedParticipants = participants.filter(p => p.status === "picked" && p.user_id);
       if (pickedParticipants.length > 0) {
         const notifications = pickedParticipants.map(p => ({
@@ -335,7 +338,22 @@ export default function ShopGroupBuyDetailPage() {
     fetchData();
   };
 
-  // 참여자 상태 변경
+  const handleResumeGroupBuy = async () => {
+    if (!confirm("공동구매를 다시 재개하시겠습니까?")) return;
+    
+    await supabase
+      .from("group_buys")
+      .update({ 
+        status: "active",
+        status_reason: null
+      })
+      .eq("id", params.id)
+      .eq("shop_id", myShopId);
+
+    alert("공동구매가 재개되었습니다!");
+    fetchData();
+  };
+
   const handleChangeParticipantStatus = async (participant: Participant) => {
     if (participant.status === "cancelled") return;
     
@@ -358,14 +376,14 @@ export default function ShopGroupBuyDetailPage() {
     const { error } = await supabase
       .from("group_buy_participants")
       .update(updateData)
-      .eq("id", participant.id);
+      .eq("id", participant.id)
+      .eq("group_buy_id", params.id);
 
     if (error) {
       alert("상태 변경 중 오류가 발생했습니다: " + error.message);
       return;
     }
 
-    // 알림 발송 (user_id가 있는 경우에만)
     if (participant.user_id) {
       const notifData = {
         user_id: participant.user_id,
@@ -391,7 +409,6 @@ export default function ShopGroupBuyDetailPage() {
     alert(successMessage);
   };
 
-  // 이전 단계로 되돌리기
   const handleRevertParticipantStatus = async (participant: Participant) => {
     let newStatus: Participant["status"];
     let updateData: any = {};
@@ -412,7 +429,8 @@ export default function ShopGroupBuyDetailPage() {
     const { error } = await supabase
       .from("group_buy_participants")
       .update(updateData)
-      .eq("id", participant.id);
+      .eq("id", participant.id)
+      .eq("group_buy_id", params.id);
 
     if (error) {
       alert("상태 변경 중 오류가 발생했습니다: " + error.message);
@@ -429,7 +447,6 @@ export default function ShopGroupBuyDetailPage() {
     alert(successMessage);
   };
 
-  // 취소된 주문 복구
   const handleRestoreParticipant = async (participant: Participant) => {
     const updateData = { 
       status: "unpaid", 
@@ -443,7 +460,8 @@ export default function ShopGroupBuyDetailPage() {
     const { error } = await supabase
       .from("group_buy_participants")
       .update(updateData)
-      .eq("id", participant.id);
+      .eq("id", participant.id)
+      .eq("group_buy_id", params.id);
 
     if (error) {
       alert("복구 중 오류가 발생했습니다: " + error.message);
@@ -451,16 +469,15 @@ export default function ShopGroupBuyDetailPage() {
     }
 
     setParticipants(prev => prev.map(p =>
-  p.id === participant.id
-    ? { ...p, ...updateData, status: "unpaid" as const } as unknown as Participant
-    : p
-));
+      p.id === participant.id
+        ? { ...p, ...updateData, status: "unpaid" as const } as unknown as Participant
+        : p
+    ));
     
     setSelectedParticipant(null);
     alert(`${participant.name}님의 주문이 복구되었습니다.`);
   };
 
-  // 참여자 취소 처리
   const openCancelParticipantModal = (participant: Participant) => {
     setCancelTarget(participant);
     setCancelReason("");
@@ -483,9 +500,9 @@ export default function ShopGroupBuyDetailPage() {
         cancelled_at: new Date().toISOString(),
         cancel_reason: reason
       })
-      .eq("id", cancelTarget.id);
+      .eq("id", cancelTarget.id)
+      .eq("group_buy_id", params.id);
 
-    // 🔔 이용자에게 주문 취소 알림 발송
     if (cancelTarget.user_id) {
       await supabase.from("notifications").insert({
         user_id: cancelTarget.user_id,
@@ -499,137 +516,16 @@ export default function ShopGroupBuyDetailPage() {
     }
 
     setParticipants(prev => prev.map(p =>
-  p.id === participant.id
-    ? { ...p, ...updateData, status: "unpaid" as const } as unknown as Participant
-    : p
-));
+      p.id === cancelTarget.id
+        ? { ...p, status: "cancelled" as const, cancelled_at: new Date().toISOString(), cancel_reason: reason } as Participant
+        : p
+    ));
 
     setShowCancelParticipantModal(false);
     setCancelTarget(null);
     alert("주문이 취소되었습니다");
   };
 
-  // 엑셀(CSV) 다운로드
-  const handleDownloadExcel = () => {
-    if (participants.length === 0) {
-      alert("다운로드할 참여자가 없습니다");
-      return;
-    }
-
-    // CSV 헤더
-    const headers = ["번호", "이름", "연락처", "수량", "금액", "상태", "신청일", "입금확인일", "픽업완료일", "취소사유"];
-    
-    // 상태 한글 변환
-    const statusKorean: Record<string, string> = {
-      unpaid: "미입금",
-      paid: "입금확인",
-      picked: "픽업완료",
-      cancelled: "취소"
-    };
-
-    // CSV 데이터 생성
-    const csvData = participants.map((p, idx) => [
-      idx + 1,
-      p.name,
-      p.phone,
-      p.quantity,
-      (p.quantity * (groupBuy?.sale_price || 0)).toLocaleString() + "원",
-      statusKorean[p.status] || p.status,
-      formatDate(p.created_at),
-      p.paid_at ? formatDate(p.paid_at) : "-",
-      p.picked_at ? formatDate(p.picked_at) : "-",
-      p.cancel_reason || "-"
-    ]);
-
-    // CSV 문자열 생성 (BOM 추가로 한글 깨짐 방지)
-    const BOM = "\uFEFF";
-    const csvContent = BOM + [
-      headers.join(","),
-      ...csvData.map(row => row.map(cell => `"${cell}"`).join(","))
-    ].join("\n");
-
-    // 다운로드
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${groupBuy?.title || "공동구매"}_참여자목록_${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  // 알림 발송
-  const handleSendNotification = async () => {
-    setSendingNotification(true);
-    
-    let targetParticipants: Participant[] = [];
-    let title = "";
-    let message = "";
-    let notifType = "general";
-    
-    if (notificationType === "unpaid") {
-      // 미입금자에게 독촉
-      targetParticipants = participants.filter(p => p.status === "unpaid" && p.user_id);
-      title = "입금 확인 요청 💳";
-      message = `${groupBuy?.title} 공동구매 입금이 아직 확인되지 않았습니다. 빠른 입금 부탁드립니다!`;
-      notifType = "reminder";
-    } else if (notificationType === "paid") {
-      // 입금완료자에게 픽업 안내
-      targetParticipants = participants.filter(p => p.status === "paid" && p.user_id);
-      title = "픽업 안내 📦";
-      const pickupInfo = groupBuy?.pickup_date 
-        ? `픽업일: ${formatDate(groupBuy.pickup_date)}`
-        : "";
-      message = `${groupBuy?.title} 상품이 준비되었습니다! ${pickupInfo} 장소: ${groupBuy?.pickup_location || "매장"}`;
-      notifType = "pickup";
-    } else {
-      // 커스텀 메시지 (전체 참여자)
-      targetParticipants = participants.filter(p => p.status !== "cancelled" && p.user_id);
-      title = customNotifTitle;
-      message = customNotifMessage;
-      
-      if (!title || !message) {
-        alert("제목과 내용을 입력해주세요");
-        setSendingNotification(false);
-        return;
-      }
-    }
-    
-    if (targetParticipants.length === 0) {
-      alert("알림을 보낼 대상이 없습니다");
-      setSendingNotification(false);
-      return;
-    }
-
-    try {
-      // 대량 알림 발송
-      const notifications = targetParticipants.map(p => ({
-        user_id: p.user_id,
-        title,
-        message,
-        type: notifType,
-        group_buy_id: groupBuy?.id,
-        link: `/groupbuy/${params.id}`,
-      }));
-
-      const { error } = await supabase.from("notifications").insert(notifications);
-      
-      if (error) throw error;
-
-      alert(`${targetParticipants.length}명에게 알림을 발송했습니다!`);
-      setShowNotificationModal(false);
-      setCustomNotifTitle("");
-      setCustomNotifMessage("");
-    } catch (error: any) {
-      alert("알림 발송 실패: " + error.message);
-    }
-    
-    setSendingNotification(false);
-  };
-
-  // 통계 계산
   const unpaidCount = participants.filter(p => p.status === "unpaid").length;
   const paidCount = participants.filter(p => p.status === "paid").length;
   const pickedCount = participants.filter(p => p.status === "picked").length;
@@ -641,7 +537,6 @@ export default function ShopGroupBuyDetailPage() {
     .filter(p => p.status === "paid" || p.status === "picked")
     .reduce((sum, p) => sum + (p.quantity * (groupBuy?.sale_price || 0)), 0);
 
-  // 필터링된 참여자
   const filteredParticipants = participants.filter(p => {
     if (filter === "all") return true;
     if (filter === "unpaid") return p.status === "unpaid";
@@ -727,7 +622,7 @@ export default function ShopGroupBuyDetailPage() {
           )}
         </div>
 
-        {/* 마감까지 남은 시간 - 심플 버전 */}
+        {/* 마감까지 남은 시간 */}
         <div className="px-5 py-4 bg-white border-b border-[#19643D]/10">
           <p className="text-center text-[#19643D]/60 text-sm mb-2">
             {isEnded ? "⏰ 마감됨" : "⏰ 마감까지 남은 시간"}
@@ -751,25 +646,25 @@ export default function ShopGroupBuyDetailPage() {
           </p>
         </div>
 
-        {/* 탭 */}
+        {/* 탭 - 테두리 스타일 */}
         <div className="px-5 py-3 bg-white border-b border-[#19643D]/10 sticky top-14 z-40">
           <div className="flex gap-2">
             <button
               onClick={() => setActiveTab("participants")}
-              className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all ${
+              className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all border-2 ${
                 activeTab === "participants"
-                  ? "bg-[#19643D] text-white"
-                  : "bg-[#19643D]/5 text-[#19643D]/60"
+                  ? "border-[#19643D] bg-[#19643D]/5 text-[#19643D]"
+                  : "border-gray-200 bg-white text-gray-400 hover:border-gray-300"
               }`}
             >
               참여자 목록 ({activeParticipants.length}명)
             </button>
             <button
               onClick={() => setActiveTab("info")}
-              className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all ${
+              className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all border-2 ${
                 activeTab === "info"
-                  ? "bg-[#19643D] text-white"
-                  : "bg-[#19643D]/5 text-[#19643D]/60"
+                  ? "border-[#19643D] bg-[#19643D]/5 text-[#19643D]"
+                  : "border-gray-200 bg-white text-gray-400 hover:border-gray-300"
               }`}
             >
               상세 정보
@@ -780,94 +675,72 @@ export default function ShopGroupBuyDetailPage() {
         {/* 참여자 목록 탭 */}
         {activeTab === "participants" && (
           <div className="px-5 py-4">
-            {/* 필터 박스 - 클릭 가능 */}
+            {/* 필터 박스 - 테두리 스타일 */}
             <div className="grid grid-cols-5 gap-1.5 mb-4">
               <button
                 onClick={() => setFilter("all")}
-                className={`rounded-xl p-2 text-center transition-all ${
+                className={`rounded-xl p-2 text-center transition-all border-2 ${
                   filter === "all" 
-                    ? "bg-[#19643D] ring-2 ring-[#19643D] ring-offset-2" 
-                    : "bg-white border border-[#19643D]/10 hover:border-[#19643D]/30"
+                    ? "border-[#19643D] bg-[#19643D]/5" 
+                    : "border-gray-200 bg-white hover:border-gray-300"
                 }`}
               >
-                <p className={`text-lg font-black ${filter === "all" ? "text-white" : "text-[#19643D]"}`}>
+                <p className={`text-lg font-black ${filter === "all" ? "text-[#19643D]" : "text-gray-400"}`}>
                   {participants.length}
                 </p>
-                <p className={`text-[10px] ${filter === "all" ? "text-white/80" : "text-[#19643D]/50"}`}>전체</p>
+                <p className={`text-[10px] ${filter === "all" ? "text-[#19643D]" : "text-gray-400"}`}>전체</p>
               </button>
               <button
                 onClick={() => setFilter("unpaid")}
-                className={`rounded-xl p-2 text-center transition-all ${
+                className={`rounded-xl p-2 text-center transition-all border-2 ${
                   filter === "unpaid" 
-                    ? "bg-red-500 ring-2 ring-red-500 ring-offset-2" 
-                    : "bg-white border border-red-200 hover:border-red-300"
+                    ? "border-red-500 bg-red-50" 
+                    : "border-gray-200 bg-white hover:border-red-200"
                 }`}
               >
-                <p className={`text-lg font-black ${filter === "unpaid" ? "text-white" : "text-red-500"}`}>
+                <p className={`text-lg font-black ${filter === "unpaid" ? "text-red-500" : "text-gray-400"}`}>
                   {unpaidCount}
                 </p>
-                <p className={`text-[10px] ${filter === "unpaid" ? "text-white/80" : "text-red-400"}`}>미입금</p>
+                <p className={`text-[10px] ${filter === "unpaid" ? "text-red-500" : "text-gray-400"}`}>미입금</p>
               </button>
               <button
                 onClick={() => setFilter("paid")}
-                className={`rounded-xl p-2 text-center transition-all ${
+                className={`rounded-xl p-2 text-center transition-all border-2 ${
                   filter === "paid" 
-                    ? "bg-[#19643D] ring-2 ring-[#19643D] ring-offset-2" 
-                    : "bg-white border border-[#19643D]/20 hover:border-[#19643D]/40"
+                    ? "border-[#19643D] bg-[#19643D]/5" 
+                    : "border-gray-200 bg-white hover:border-[#19643D]/30"
                 }`}
               >
-                <p className={`text-lg font-black ${filter === "paid" ? "text-white" : "text-[#19643D]"}`}>
+                <p className={`text-lg font-black ${filter === "paid" ? "text-[#19643D]" : "text-gray-400"}`}>
                   {paidCount}
                 </p>
-                <p className={`text-[10px] ${filter === "paid" ? "text-white/80" : "text-[#19643D]/50"}`}>입금확인</p>
+                <p className={`text-[10px] ${filter === "paid" ? "text-[#19643D]" : "text-gray-400"}`}>입금확인</p>
               </button>
               <button
                 onClick={() => setFilter("picked")}
-                className={`rounded-xl p-2 text-center transition-all ${
+                className={`rounded-xl p-2 text-center transition-all border-2 ${
                   filter === "picked" 
-                    ? "bg-blue-500 ring-2 ring-blue-500 ring-offset-2" 
-                    : "bg-white border border-blue-200 hover:border-blue-300"
+                    ? "border-blue-500 bg-blue-50" 
+                    : "border-gray-200 bg-white hover:border-blue-200"
                 }`}
               >
-                <p className={`text-lg font-black ${filter === "picked" ? "text-white" : "text-blue-500"}`}>
+                <p className={`text-lg font-black ${filter === "picked" ? "text-blue-500" : "text-gray-400"}`}>
                   {pickedCount}
                 </p>
-                <p className={`text-[10px] ${filter === "picked" ? "text-white/80" : "text-blue-400"}`}>픽업완료</p>
+                <p className={`text-[10px] ${filter === "picked" ? "text-blue-500" : "text-gray-400"}`}>픽업완료</p>
               </button>
               <button
                 onClick={() => setFilter("cancelled")}
-                className={`rounded-xl p-2 text-center transition-all ${
+                className={`rounded-xl p-2 text-center transition-all border-2 ${
                   filter === "cancelled" 
-                    ? "bg-gray-500 ring-2 ring-gray-500 ring-offset-2" 
-                    : "bg-white border border-gray-200 hover:border-gray-300"
+                    ? "border-gray-500 bg-gray-100" 
+                    : "border-gray-200 bg-white hover:border-gray-300"
                 }`}
               >
-                <p className={`text-lg font-black ${filter === "cancelled" ? "text-white" : "text-gray-500"}`}>
+                <p className={`text-lg font-black ${filter === "cancelled" ? "text-gray-500" : "text-gray-400"}`}>
                   {cancelledCount}
                 </p>
-                <p className={`text-[10px] ${filter === "cancelled" ? "text-white/80" : "text-gray-400"}`}>취소</p>
-              </button>
-            </div>
-
-            {/* 엑셀 다운로드 & 알림 발송 버튼 */}
-            <div className="flex gap-2 mb-4">
-              <button
-                onClick={handleDownloadExcel}
-                className="flex-1 h-11 bg-white border-2 border-[#19643D] text-[#19643D] font-bold rounded-xl hover:bg-[#19643D]/5 transition-colors flex items-center justify-center gap-2"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                엑셀
-              </button>
-              <button
-                onClick={() => setShowNotificationModal(true)}
-                className="flex-1 h-11 bg-[#19643D] text-white font-bold rounded-xl hover:bg-[#145231] transition-colors flex items-center justify-center gap-2"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-                알림 발송
+                <p className={`text-[10px] ${filter === "cancelled" ? "text-gray-500" : "text-gray-400"}`}>취소</p>
               </button>
             </div>
 
@@ -992,7 +865,7 @@ export default function ShopGroupBuyDetailPage() {
                             </span>
                           </div>
                           <div className="flex items-center gap-2">
-                            {/* 되돌리기 버튼 - 입금확인/픽업완료 상태일 때만 표시 */}
+                            {/* 되돌리기 버튼 */}
                             {(p.status === "paid" || p.status === "picked") && (
                               <button
                                 onClick={() => {
@@ -1036,16 +909,17 @@ export default function ShopGroupBuyDetailPage() {
                           </div>
                         </div>
                         
+                        {/* 안내 문구 개선 */}
                         {p.status === "unpaid" && (
                           <div className="mt-2 flex items-center gap-2 text-xs text-red-500">
                             <span className="text-yellow-500">⚠️</span>
-                            <span>미입금자입니다. 입금이 확인되면 버튼을 눌러 <strong>'입금확인'</strong>으로 구분해주세요.</span>
+                            <span>미입금자입니다. 입금이 확인되면 <strong>'미입금'</strong> 버튼을 눌러 <strong>'입금확인'</strong>으로 전환해주세요.</span>
                           </div>
                         )}
                         {p.status === "paid" && (
                           <div className="mt-2 flex items-center gap-2 text-xs text-[#19643D]">
                             <span>💡</span>
-                            <span>픽업이 완료되면 <strong>'입금확인'</strong> 버튼을 눌러주세요. 잘못 처리했다면 <strong>'되돌리기'</strong> 버튼을 누르세요.</span>
+                            <span>픽업이 완료되면 <strong>'입금확인'</strong> 버튼을 눌러 <strong>'픽업완료'</strong>로 전환해주세요.</span>
                           </div>
                         )}
                         {p.status === "cancelled" && p.cancel_reason && (
@@ -1167,6 +1041,17 @@ export default function ShopGroupBuyDetailPage() {
                 }`}
               >
                 공구종료
+              </button>
+            </div>
+          )}
+          
+          {groupBuy.status === "paused" && (
+            <div className="px-5 py-3 bg-white">
+              <button
+                onClick={handleResumeGroupBuy}
+                className="w-full h-12 bg-[#19643D] text-white font-bold rounded-xl hover:bg-[#145231] transition-colors"
+              >
+                ▶️ 공동구매 재개하기
               </button>
             </div>
           )}
@@ -1508,164 +1393,6 @@ export default function ShopGroupBuyDetailPage() {
                 className="w-full h-12 bg-[#19643D] text-white font-bold rounded-xl hover:bg-[#145231] transition-colors"
               >
                 확인
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 알림 발송 모달 */}
-      {showNotificationModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-5">
-          <div 
-            className="absolute inset-0 bg-black/60"
-            onClick={() => setShowNotificationModal(false)}
-          />
-          
-          <div className="relative w-full max-w-[400px] bg-white rounded-3xl overflow-hidden">
-            <div className="px-6 py-5 bg-[#19643D] text-white">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold">🔔 알림 발송</h3>
-                <button 
-                  onClick={() => setShowNotificationModal(false)}
-                  className="w-8 h-8 flex items-center justify-center text-white/60 hover:text-white"
-                >
-                  ✕
-                </button>
-              </div>
-              <p className="text-sm text-white/70 mt-1">참여자들에게 알림을 보냅니다</p>
-            </div>
-
-            <div className="p-6 space-y-4">
-              {/* 알림 타입 선택 */}
-              <div className="space-y-2">
-                <button
-                  onClick={() => setNotificationType("unpaid")}
-                  className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
-                    notificationType === "unpaid"
-                      ? "border-red-500 bg-red-50"
-                      : "border-gray-200 hover:border-gray-300"
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl">💳</span>
-                    <div>
-                      <p className={`font-bold ${notificationType === "unpaid" ? "text-red-600" : "text-gray-700"}`}>
-                        미입금자 독촉
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        미입금 상태인 {participants.filter(p => p.status === "unpaid").length}명에게 발송
-                      </p>
-                    </div>
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => setNotificationType("paid")}
-                  className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
-                    notificationType === "paid"
-                      ? "border-blue-500 bg-blue-50"
-                      : "border-gray-200 hover:border-gray-300"
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl">📦</span>
-                    <div>
-                      <p className={`font-bold ${notificationType === "paid" ? "text-blue-600" : "text-gray-700"}`}>
-                        픽업 안내
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        입금완료 상태인 {participants.filter(p => p.status === "paid").length}명에게 발송
-                      </p>
-                    </div>
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => setNotificationType("custom")}
-                  className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
-                    notificationType === "custom"
-                      ? "border-[#19643D] bg-[#19643D]/5"
-                      : "border-gray-200 hover:border-gray-300"
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl">✏️</span>
-                    <div>
-                      <p className={`font-bold ${notificationType === "custom" ? "text-[#19643D]" : "text-gray-700"}`}>
-                        직접 작성
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        전체 참여자 {participants.filter(p => p.status !== "cancelled").length}명에게 발송
-                      </p>
-                    </div>
-                  </div>
-                </button>
-              </div>
-
-              {/* 커스텀 메시지 입력 */}
-              {notificationType === "custom" && (
-                <div className="space-y-3 pt-2">
-                  <input
-                    type="text"
-                    value={customNotifTitle}
-                    onChange={(e) => setCustomNotifTitle(e.target.value)}
-                    placeholder="알림 제목"
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-[#19643D]"
-                  />
-                  <textarea
-                    value={customNotifMessage}
-                    onChange={(e) => setCustomNotifMessage(e.target.value)}
-                    placeholder="알림 내용을 입력하세요"
-                    rows={3}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-[#19643D] resize-none"
-                  />
-                </div>
-              )}
-
-              {/* 미리보기 */}
-              {notificationType !== "custom" && (
-                <div className="bg-gray-50 rounded-xl p-4">
-                  <p className="text-xs text-gray-500 mb-2">📱 미리보기</p>
-                  <p className="font-bold text-[#19643D] text-sm">
-                    {notificationType === "unpaid" ? "입금 확인 요청 💳" : "픽업 안내 📦"}
-                  </p>
-                  <p className="text-xs text-gray-600 mt-1">
-                    {notificationType === "unpaid" 
-                      ? `${groupBuy?.title} 공동구매 입금이 아직 확인되지 않았습니다. 빠른 입금 부탁드립니다!`
-                      : `${groupBuy?.title} 상품이 준비되었습니다! 장소: ${groupBuy?.pickup_location || "매장"}`
-                    }
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="px-6 pb-6 flex gap-3">
-              <button
-                onClick={() => setShowNotificationModal(false)}
-                className="flex-1 h-12 bg-gray-100 text-gray-600 font-medium rounded-xl hover:bg-gray-200 transition-colors"
-              >
-                취소
-              </button>
-              <button
-                onClick={handleSendNotification}
-                disabled={sendingNotification}
-                className="flex-1 h-12 bg-[#19643D] text-white font-bold rounded-xl hover:bg-[#145231] transition-colors disabled:bg-gray-300 flex items-center justify-center gap-2"
-              >
-                {sendingNotification ? (
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <>
-                    <span>발송하기</span>
-                    <span className="text-sm opacity-70">
-                      ({notificationType === "unpaid" 
-                        ? participants.filter(p => p.status === "unpaid").length
-                        : notificationType === "paid"
-                        ? participants.filter(p => p.status === "paid").length
-                        : participants.filter(p => p.status !== "cancelled").length}명)
-                    </span>
-                  </>
-                )}
               </button>
             </div>
           </div>

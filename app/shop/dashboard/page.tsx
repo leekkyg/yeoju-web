@@ -13,6 +13,7 @@ interface Shop {
   description: string;
   phone: string;
   address: string;
+  approval_status: string;
 }
 
 interface GroupBuy {
@@ -53,7 +54,7 @@ export default function ShopDashboardPage() {
   const [shop, setShop] = useState<Shop | null>(null);
   const [groupBuys, setGroupBuys] = useState<GroupBuy[]>([]);
   const [participants, setParticipants] = useState<Participant[]>([]);
-  const [dateRange, setDateRange] = useState<"week" | "month" | "all">("month");
+  const [dateRange, setDateRange] = useState<"7days" | "30days" | "6months" | "1year" | "all">("30days");
   const [dailyStats, setDailyStats] = useState<DailyStat[]>([]);
 
   useEffect(() => {
@@ -122,12 +123,22 @@ export default function ShopDashboardPage() {
     const now = new Date();
     let startDate = new Date();
     
-    if (dateRange === "week") {
-      startDate.setDate(now.getDate() - 7);
-    } else if (dateRange === "month") {
-      startDate.setDate(now.getDate() - 30);
-    } else {
-      startDate.setFullYear(now.getFullYear() - 1);
+    switch (dateRange) {
+      case "7days":
+        startDate.setDate(now.getDate() - 7);
+        break;
+      case "30days":
+        startDate.setDate(now.getDate() - 30);
+        break;
+      case "6months":
+        startDate.setMonth(now.getMonth() - 6);
+        break;
+      case "1year":
+        startDate.setFullYear(now.getFullYear() - 1);
+        break;
+      case "all":
+        startDate = new Date(0);
+        break;
     }
 
     const filteredParticipants = participants.filter(p => {
@@ -154,12 +165,22 @@ export default function ShopDashboardPage() {
     const now = new Date();
     let startDate = new Date();
     
-    if (dateRange === "week") {
-      startDate.setDate(now.getDate() - 7);
-    } else if (dateRange === "month") {
-      startDate.setDate(now.getDate() - 30);
-    } else {
-      startDate.setFullYear(now.getFullYear() - 1);
+    switch (dateRange) {
+      case "7days":
+        startDate.setDate(now.getDate() - 7);
+        break;
+      case "30days":
+        startDate.setDate(now.getDate() - 30);
+        break;
+      case "6months":
+        startDate.setMonth(now.getMonth() - 6);
+        break;
+      case "1year":
+        startDate.setFullYear(now.getFullYear() - 1);
+        break;
+      case "all":
+        startDate = new Date(0);
+        break;
     }
 
     return participants.filter(p => new Date(p.created_at) >= startDate);
@@ -199,6 +220,11 @@ export default function ShopDashboardPage() {
     return `${date.getMonth() + 1}월 ${date.getDate()}일`;
   };
 
+  // 승인 상태 체크
+  const isApproved = shop?.approval_status === "approved";
+  const isPending = shop?.approval_status === "pending";
+  const isRejected = shop?.approval_status === "rejected";
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center">
@@ -233,6 +259,40 @@ export default function ShopDashboardPage() {
       </header>
 
       <main className="pt-14 pb-32 max-w-[640px] mx-auto">
+        {/* 승인 대기 배너 */}
+        {isPending && (
+          <div className="mx-5 mt-4 bg-[#F2D38D] rounded-2xl p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-[#19643D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <p className="font-bold text-[#19643D]">승인 대기 중</p>
+                <p className="text-sm text-[#19643D]/70">관리자 승인 후 공동구매를 등록할 수 있습니다</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 승인 거절 배너 */}
+        {isRejected && (
+          <div className="mx-5 mt-4 bg-[#DA451F]/10 border border-[#DA451F]/30 rounded-2xl p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-[#DA451F] rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </div>
+              <div>
+                <p className="font-bold text-[#DA451F]">승인 거절됨</p>
+                <p className="text-sm text-[#DA451F]/70">관리자에게 문의해주세요</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 상점 정보 - 클릭 가능 */}
         <Link href="/shop/info" className="block px-5 py-5 bg-white border-b border-[#19643D]/10 hover:bg-[#19643D]/5 transition-colors">
           <div className="flex items-center gap-4">
@@ -244,7 +304,18 @@ export default function ShopDashboardPage() {
               )}
             </div>
             <div className="flex-1">
-              <h1 className="text-lg font-bold text-[#19643D]">{shop?.name}</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-bold text-[#19643D]">{shop?.name}</h1>
+                {isApproved && (
+                  <span className="px-2 py-0.5 bg-[#19643D] text-white text-xs font-medium rounded-full">승인됨</span>
+                )}
+                {isPending && (
+                  <span className="px-2 py-0.5 bg-[#F2D38D] text-[#19643D] text-xs font-medium rounded-full">대기중</span>
+                )}
+                {isRejected && (
+                  <span className="px-2 py-0.5 bg-[#DA451F] text-white text-xs font-medium rounded-full">거절됨</span>
+                )}
+              </div>
               <p className="text-sm text-[#19643D]/50">{shop?.category}</p>
             </div>
             <div className="flex items-center gap-1 text-[#19643D]/40">
@@ -256,39 +327,28 @@ export default function ShopDashboardPage() {
           </div>
         </Link>
 
-        {/* 기간 선택 */}
+        {/* 기간 선택 - 확장됨 */}
         <div className="px-5 py-3 bg-white border-b border-[#19643D]/10 sticky top-14 z-40">
-          <div className="flex gap-2">
-            <button
-              onClick={() => setDateRange("week")}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                dateRange === "week" 
-                  ? "bg-[#19643D] text-white" 
-                  : "bg-[#19643D]/5 text-[#19643D]"
-              }`}
-            >
-              최근 7일
-            </button>
-            <button
-              onClick={() => setDateRange("month")}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                dateRange === "month" 
-                  ? "bg-[#19643D] text-white" 
-                  : "bg-[#19643D]/5 text-[#19643D]"
-              }`}
-            >
-              최근 30일
-            </button>
-            <button
-              onClick={() => setDateRange("all")}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                dateRange === "all" 
-                  ? "bg-[#19643D] text-white" 
-                  : "bg-[#19643D]/5 text-[#19643D]"
-              }`}
-            >
-              전체
-            </button>
+          <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+            {[
+              { key: "7days", label: "7일" },
+              { key: "30days", label: "30일" },
+              { key: "6months", label: "6개월" },
+              { key: "1year", label: "1년" },
+              { key: "all", label: "전체" },
+            ].map((item) => (
+              <button
+                key={item.key}
+                onClick={() => setDateRange(item.key as typeof dateRange)}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
+                  dateRange === item.key 
+                    ? "bg-[#19643D] text-white" 
+                    : "bg-[#19643D]/5 text-[#19643D]"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -442,54 +502,22 @@ export default function ShopDashboardPage() {
           </div>
         </div>
 
-        {/* 빠른 메뉴 - 순서 변경 */}
+        {/* 빠른 메뉴 - 주문관리, 알림발송 제거 */}
         <div className="px-5 py-4">
           <h2 className="text-lg font-bold text-[#19643D] mb-3">⚡ 빠른 메뉴</h2>
           <div className="grid grid-cols-2 gap-3">
             <Link 
-              href="/shop/orders"
+              href="/shop/groupbuys"
               className="bg-white rounded-2xl p-4 border border-[#DA451F]/20 flex items-center gap-3 hover:bg-[#DA451F]/5 transition-colors"
             >
               <div className="w-10 h-10 bg-[#DA451F]/10 rounded-xl flex items-center justify-center">
                 <svg className="w-5 h-5 text-[#DA451F]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
-              </div>
-              <div>
-                <p className="font-medium text-[#19643D]">주문 관리</p>
-                {unpaidOrders > 0 && (
-                  <p className="text-xs text-[#DA451F]">{unpaidOrders}건 입금 대기중</p>
-                )}
-              </div>
-            </Link>
-            
-            <Link 
-              href="/shop/notifications"
-              className="bg-white rounded-2xl p-4 border border-[#19643D]/10 flex items-center gap-3 hover:bg-[#19643D]/5 transition-colors"
-            >
-              <div className="w-10 h-10 bg-[#F2D38D]/30 rounded-xl flex items-center justify-center">
-                <svg className="w-5 h-5 text-[#19643D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-              </div>
-              <div>
-                <p className="font-medium text-[#19643D]">알림 발송</p>
-                <p className="text-xs text-[#19643D]/50">미입금자 알림</p>
-              </div>
-            </Link>
-            
-            <Link 
-              href="/shop/groupbuys"
-              className="bg-white rounded-2xl p-4 border border-[#19643D]/10 flex items-center gap-3 hover:bg-[#19643D]/5 transition-colors"
-            >
-              <div className="w-10 h-10 bg-[#19643D]/10 rounded-xl flex items-center justify-center">
-                <svg className="w-5 h-5 text-[#19643D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                 </svg>
               </div>
               <div>
-                <p className="font-medium text-[#19643D]">공동구매 목록</p>
-                <p className="text-xs text-[#19643D]/50">{activeGroupBuys}개 진행중</p>
+                <p className="font-medium text-[#19643D]">공동구매 관리</p>
+                <p className="text-xs text-[#DA451F]">{activeGroupBuys}개 진행중</p>
               </div>
             </Link>
             
@@ -554,15 +582,24 @@ export default function ShopDashboardPage() {
         </div>
       </main>
 
-      {/* 하단 버튼 */}
+      {/* 하단 버튼 - 승인 상태에 따라 */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-[#19643D]/10">
         <div className="max-w-[640px] mx-auto px-5 py-4">
-          <Link
-            href="/shop/groupbuy/new"
-            className="block w-full py-4 bg-[#DA451F] text-white font-bold text-center rounded-2xl"
-          >
-            + 새 공동구매 등록
-          </Link>
+          {isApproved ? (
+            <Link
+              href="/shop/groupbuy/create"
+              className="block w-full py-4 bg-[#DA451F] text-white font-bold text-center rounded-2xl hover:bg-[#c23d1b] transition-colors"
+            >
+              + 새 공동구매 등록
+            </Link>
+          ) : (
+            <button
+              disabled
+              className="block w-full py-4 bg-gray-300 text-gray-500 font-bold text-center rounded-2xl cursor-not-allowed"
+            >
+              {isPending ? "승인 대기 중..." : "승인 후 등록 가능"}
+            </button>
+          )}
         </div>
       </div>
     </div>

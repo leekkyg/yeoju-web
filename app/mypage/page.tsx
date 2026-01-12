@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import BottomNav from "@/components/BottomNav";
 
 export default function MyPage() {
   const router = useRouter();
@@ -12,6 +13,11 @@ export default function MyPage() {
   const [myPosts, setMyPosts] = useState<any[]>([]);
   const [myShop, setMyShop] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  
+  // 저장한 글 팝업
+  const [showBookmarks, setShowBookmarks] = useState(false);
+  const [bookmarkedPosts, setBookmarkedPosts] = useState<any[]>([]);
+  const [loadingBookmarks, setLoadingBookmarks] = useState(false);
 
   useEffect(() => {
     checkUser();
@@ -39,7 +45,9 @@ export default function MyPage() {
     const { data: posts } = await supabase
       .from("posts")
       .select("*")
-      .order("created_at", { ascending: false });
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(5);
     setMyPosts(posts || []);
 
     // 내 상점 조회
@@ -51,6 +59,52 @@ export default function MyPage() {
     setMyShop(shop);
     
     setLoading(false);
+  };
+
+  // 저장한 글 불러오기
+  const fetchBookmarkedPosts = async () => {
+    if (!user) return;
+    setLoadingBookmarks(true);
+    
+    // 북마크 목록 조회 (post_id만)
+    const { data: bookmarks } = await supabase
+      .from("post_bookmarks")
+      .select("post_id, created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+    
+    if (!bookmarks || bookmarks.length === 0) {
+      setBookmarkedPosts([]);
+      setLoadingBookmarks(false);
+      return;
+    }
+    
+    // 해당 게시글들 조회
+    const postIds = bookmarks.map(b => b.post_id);
+    const { data: posts } = await supabase
+      .from("posts")
+      .select("id, content, created_at, user_id, is_anonymous, like_count, comment_count")
+      .in("id", postIds);
+    
+    // 북마크 순서대로 정렬 + 삭제된 글 표시
+    const postsMap = new Map((posts || []).map(p => [p.id, p]));
+    const result = bookmarks.map(b => {
+      const post = postsMap.get(b.post_id);
+      if (post) {
+        return { ...post, bookmarked_at: b.created_at, is_deleted: false };
+      } else {
+        return { id: b.post_id, bookmarked_at: b.created_at, is_deleted: true };
+      }
+    });
+    
+    setBookmarkedPosts(result);
+    setLoadingBookmarks(false);
+  };
+
+  // 북마크 삭제
+  const removeBookmark = async (postId: number) => {
+    await supabase.from("post_bookmarks").delete().eq("user_id", user.id).eq("post_id", postId);
+    setBookmarkedPosts(prev => prev.filter(p => p.id !== postId));
   };
 
   const handleLogout = async () => {
@@ -65,30 +119,38 @@ export default function MyPage() {
     return date.toLocaleDateString("ko-KR");
   };
 
+  const openBookmarksModal = () => {
+    setShowBookmarks(true);
+    fetchBookmarkedPosts();
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
 
+  const menuItems = [
+    { href: "/mypage/edit", icon: "👤", label: "프로필 수정", color: "bg-emerald-100" },
+    { href: "/messages", icon: "✉️", label: "쪽지함", color: "bg-teal-100" },
+    { href: "/favorites", icon: "❤️", label: "단골 업체", color: "bg-red-100" },
+    { href: "/mypage/groupbuys", icon: "📦", label: "공동구매 참여내역", color: "bg-amber-100" },
+    { href: "/mypage/bookmarks", icon: "🔖", label: "저장한 글", color: "bg-blue-100" },
+    { href: "/notifications", icon: "🔔", label: "알림", color: "bg-purple-100" },
+    { href: "/mypage/settings", icon: "⚙️", label: "설정", color: "bg-gray-100" },
+  ];
+
   return (
-    <div className="min-h-screen bg-gray-100 pb-24 md:pb-10">
+    <div className="min-h-screen bg-gray-50 pb-24">
       {/* 헤더 */}
-      <header className="bg-gray-900 sticky top-0 z-50">
+      <header className="bg-white sticky top-0 z-50 border-b border-gray-100">
         <div className="max-w-[631px] mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="text-gray-400 hover:text-white">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </Link>
-            <h1 className="text-white font-bold text-lg">마이페이지</h1>
-          </div>
+          <h1 className="text-gray-900 font-bold text-lg">마이페이지</h1>
           <button
             onClick={handleLogout}
-            className="text-gray-400 hover:text-white text-sm"
+            className="text-gray-500 text-sm"
           >
             로그아웃
           </button>
@@ -97,13 +159,31 @@ export default function MyPage() {
 
       <main className="max-w-[631px] mx-auto px-4 py-4">
         {/* 프로필 카드 */}
-        <div className="bg-white rounded-xl p-6 shadow-md mb-4">
+        <div className="bg-white rounded-2xl p-6 mb-4">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-amber-500 rounded-full flex items-center justify-center">
-              <span className="text-gray-900 font-black text-2xl">
-                {user?.email?.[0]?.toUpperCase() || "U"}
-              </span>
-            </div>
+            {/* 프로필 사진 */}
+            <Link href="/mypage/edit" className="relative">
+              {profile?.avatar_url ? (
+                <img 
+                  src={profile.avatar_url} 
+                  alt="프로필" 
+                  className="w-16 h-16 rounded-full object-cover border-2 border-emerald-100"
+                />
+              ) : (
+                <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center">
+                  <span className="text-emerald-600 font-bold text-2xl">
+                    {profile?.nickname?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase()}
+                  </span>
+                </div>
+              )}
+              {/* 편집 아이콘 */}
+              <div className="absolute bottom-0 right-0 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center">
+                <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </div>
+            </Link>
+
             <div className="flex-1">
               <h2 className="text-xl font-bold text-gray-900">
                 {profile?.nickname || "사용자"}
@@ -129,14 +209,33 @@ export default function MyPage() {
           </div>
         </div>
 
-        {/* 🏪 자영업자 섹션 */}
+        {/* 관리자 메뉴 */}
+        {profile?.role === "admin" && (
+          <Link href="/admin" className="block bg-gradient-to-r from-gray-800 to-gray-900 rounded-2xl p-5 mb-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-emerald-500 rounded-xl flex items-center justify-center">
+                  <span className="text-2xl">🛠️</span>
+                </div>
+                <div>
+                  <p className="text-white font-bold text-lg">관리자</p>
+                  <p className="text-gray-400 text-sm">회원·게시물·신고·상점 관리</p>
+                </div>
+              </div>
+              <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          </Link>
+        )}
+
+        {/* 자영업자 섹션 */}
         {!myShop ? (
-          /* 상점 없음 → 입점 유도 배너 */
-          <Link href="/shop/register" className="block bg-gradient-to-r from-amber-500 to-orange-500 rounded-xl p-5 mb-4 shadow-md">
+          <Link href="/shop/register" className="block bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-2xl p-5 mb-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-white font-black text-lg">🏪 사장님이세요?</p>
-                <p className="text-white/80 text-sm mt-1">여주마켓에서 공동구매를 시작해보세요!</p>
+                <p className="text-white font-bold text-lg">🏪 사장님이세요?</p>
+                <p className="text-emerald-100 text-sm mt-1">여주마켓에서 공동구매를 시작해보세요!</p>
               </div>
               <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
                 <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -146,24 +245,22 @@ export default function MyPage() {
             </div>
           </Link>
         ) : myShop.approval_status === "pending" ? (
-          /* 승인 대기중 */
-          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-5 mb-4">
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 mb-4">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
+              <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
                 <span className="text-2xl">⏳</span>
               </div>
               <div>
-                <p className="font-bold text-yellow-800">상점 승인 대기중</p>
-                <p className="text-yellow-600 text-sm">관리자 승인 후 이용 가능합니다</p>
+                <p className="font-bold text-amber-800">상점 승인 대기중</p>
+                <p className="text-amber-600 text-sm">관리자 승인 후 이용 가능합니다</p>
               </div>
             </div>
           </div>
         ) : myShop.approval_status === "rejected" ? (
-          /* 승인 거절 */
-          <Link href="/shop/register" className="block bg-red-50 border border-red-200 rounded-xl p-5 mb-4">
+          <Link href="/shop/register" className="block bg-red-50 border border-red-200 rounded-2xl p-5 mb-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
                   <span className="text-2xl">❌</span>
                 </div>
                 <div>
@@ -177,8 +274,7 @@ export default function MyPage() {
             </div>
           </Link>
         ) : (
-          /* 승인됨 → 내 상점 관리 */
-          <Link href="/shop/dashboard" className="block bg-gradient-to-r from-emerald-500 to-teal-500 rounded-xl p-5 mb-4 shadow-md">
+          <Link href="/shop/dashboard" className="block bg-gradient-to-r from-emerald-500 to-teal-500 rounded-2xl p-5 mb-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-white/20 rounded-xl overflow-hidden flex items-center justify-center">
@@ -189,8 +285,8 @@ export default function MyPage() {
                   )}
                 </div>
                 <div>
-                  <p className="text-white font-black text-lg">{myShop.name}</p>
-                  <p className="text-white/80 text-sm">내 상점 관리하기</p>
+                  <p className="text-white font-bold text-lg">{myShop.name}</p>
+                  <p className="text-emerald-100 text-sm">내 상점 관리하기</p>
                 </div>
               </div>
               <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -201,151 +297,156 @@ export default function MyPage() {
         )}
 
         {/* 메뉴 */}
-        <div className="bg-white rounded-xl shadow-md mb-4 overflow-hidden">
-          <Link href="/mypage/edit" className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors border-b border-gray-100">
-            <div className="flex items-center gap-3">
-              <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
-              <span className="text-gray-900 font-medium">프로필 수정</span>
-            </div>
-            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </Link>
-
-          {/* 단골 업체 */}
-          <Link href="/favorites" className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors border-b border-gray-100">
-            <div className="flex items-center gap-3">
-              <svg className="w-5 h-5 text-red-500" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-              </svg>
-              <span className="text-gray-900 font-medium">단골 업체</span>
-            </div>
-            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </Link>
-
-          {/* 공동구매 참여내역 */}
-          <Link href="/mypage/groupbuys" className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors border-b border-gray-100">
-            <div className="flex items-center gap-3">
-              <svg className="w-5 h-5 text-amber-500" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49c.08-.14.12-.31.12-.48 0-.55-.45-1-1-1H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z"/>
-              </svg>
-              <span className="text-gray-900 font-medium">공동구매 참여내역</span>
-            </div>
-            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </Link>
-
-          <Link href="/mypage/bookmarks" className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors border-b border-gray-100">
-            <div className="flex items-center gap-3">
-              <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-              </svg>
-              <span className="text-gray-900 font-medium">저장한 글</span>
-            </div>
-            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </Link>
-
-          <Link href="/mypage/settings" className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
-            <div className="flex items-center gap-3">
-              <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              <span className="text-gray-900 font-medium">설정</span>
-            </div>
-            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </Link>
+        <div className="bg-white rounded-2xl overflow-hidden mb-4">
+          {menuItems.map((item, index) => {
+            const content = (
+              <div className={`flex items-center justify-between p-4 hover:bg-gray-50 transition-colors ${
+                index < menuItems.length - 1 ? 'border-b border-gray-100' : ''
+              }`}>
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 ${item.color} rounded-xl flex items-center justify-center`}>
+                    <span className="text-lg">{item.icon}</span>
+                  </div>
+                  <span className="text-gray-900 font-medium">{item.label}</span>
+                </div>
+                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+            );
+            
+            if (item.onClick) {
+              return <button key={index} onClick={item.onClick} className="w-full text-left">{content}</button>;
+            }
+            return <Link key={item.href} href={item.href!}>{content}</Link>;
+          })}
         </div>
 
         {/* 내 게시글 */}
-        <div className="bg-white rounded-xl shadow-md overflow-hidden">
-          <div className="p-4 border-b border-gray-100">
+        <div className="bg-white rounded-2xl overflow-hidden">
+          <div className="p-4 border-b border-gray-100 flex items-center justify-between">
             <h3 className="font-bold text-gray-900">내 게시글</h3>
+            <Link href="/mypage/posts" className="text-sm text-emerald-500 font-medium">전체보기</Link>
           </div>
           
           {myPosts.length === 0 ? (
             <div className="p-8 text-center">
+              <div className="text-4xl mb-2">📝</div>
               <p className="text-gray-500">작성한 게시글이 없습니다</p>
-              <Link href="/community" className="text-amber-600 font-bold text-sm mt-2 inline-block">
+              <Link href="/community" className="text-emerald-500 font-semibold text-sm mt-2 inline-block">
                 첫 글 작성하기
               </Link>
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
-              {myPosts.slice(0, 5).map((post) => (
+              {myPosts.map((post) => (
                 <Link
                   key={post.id}
-                  href={`/community/${post.id}`}
+                  href={`/community?post=${post.id}`}
                   className="block p-4 hover:bg-gray-50 transition-colors"
                 >
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded">
-                      {post.board_type || "자유"}
-                    </span>
-                    <span className="text-xs text-gray-500">{formatDate(post.created_at)}</span>
-                  </div>
                   <p className="text-gray-900 font-medium line-clamp-1">{post.content}</p>
                   <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
-                    <span>조회 {post.view_count || 0}</span>
-                    <span>좋아요 {post.like_count || 0}</span>
+                    <span>{formatDate(post.created_at)}</span>
+                    <span>❤️ {post.like_count || 0}</span>
+                    <span>💬 {post.comment_count || 0}</span>
                   </div>
                 </Link>
               ))}
-              {myPosts.length > 5 && (
-                <Link href="/mypage/posts" className="block p-4 text-center text-amber-600 font-bold hover:bg-gray-50">
-                  더보기
-                </Link>
-              )}
             </div>
           )}
         </div>
       </main>
 
-      {/* 하단 네비게이션 - 공동구매 추가 */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 z-50">
-        <div className="flex">
-          <Link href="/" className="flex-1 py-3 flex flex-col items-center gap-1">
-            <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-            </svg>
-            <span className="text-xs text-gray-500">홈</span>
-          </Link>
-          <Link href="/community" className="flex-1 py-3 flex flex-col items-center gap-1">
-            <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-            </svg>
-            <span className="text-xs text-gray-500">커뮤니티</span>
-          </Link>
-          <Link href="/groupbuy" className="flex-1 py-3 flex flex-col items-center gap-1">
-            <svg className="w-6 h-6 text-gray-500" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49c.08-.14.12-.31.12-.48 0-.55-.45-1-1-1H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z"/>
-            </svg>
-            <span className="text-xs text-gray-500">공동구매</span>
-          </Link>
-          <Link href="/videos" className="flex-1 py-3 flex flex-col items-center gap-1">
-            <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span className="text-xs text-gray-500">영상</span>
-          </Link>
-          <Link href="/mypage" className="flex-1 py-3 flex flex-col items-center gap-1">
-            <svg className="w-6 h-6 text-amber-500" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
-            </svg>
-            <span className="text-xs font-bold text-amber-500">MY</span>
-          </Link>
+      {/* 저장한 글 팝업 모달 */}
+      {showBookmarks && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-[100] flex items-end justify-center"
+          onClick={() => setShowBookmarks(false)}
+        >
+          <div 
+            className="bg-white rounded-t-3xl w-full max-w-[631px] max-h-[80vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 헤더 */}
+            <div className="sticky top-0 bg-white border-b border-gray-100 px-4 py-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900">🔖 저장한 글</h3>
+              <button 
+                onClick={() => setShowBookmarks(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100"
+              >
+                <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            {/* 목록 */}
+            <div className="overflow-y-auto max-h-[calc(80vh-60px)]">
+              {loadingBookmarks ? (
+                <div className="p-8 text-center">
+                  <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                </div>
+              ) : bookmarkedPosts.length === 0 ? (
+                <div className="p-8 text-center">
+                  <div className="text-4xl mb-2">🔖</div>
+                  <p className="text-gray-500">저장한 글이 없습니다</p>
+                  <p className="text-gray-400 text-sm mt-1">게시글의 메뉴에서 저장할 수 있어요</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {bookmarkedPosts.map((post) => (
+                    <div key={post.id} className="relative">
+                      {post.is_deleted ? (
+                        // 삭제된 글
+                        <div className="p-4 bg-gray-50">
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-400">🗑️</span>
+                            <p className="text-gray-400 text-sm">삭제된 게시글입니다</p>
+                          </div>
+                          <button
+                            onClick={() => removeBookmark(post.id)}
+                            className="mt-2 text-xs text-red-500"
+                          >
+                            목록에서 제거
+                          </button>
+                        </div>
+                      ) : (
+                        // 정상 글
+                        <Link
+                          href={`/community?post=${post.id}`}
+                          onClick={() => setShowBookmarks(false)}
+                          className="block p-4 hover:bg-gray-50 transition-colors"
+                        >
+                          <p className="text-gray-900 line-clamp-2">{post.content}</p>
+                          <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
+                            <span>{formatDate(post.bookmarked_at)}</span>
+                            <span>❤️ {post.like_count || 0}</span>
+                            <span>💬 {post.comment_count || 0}</span>
+                          </div>
+                        </Link>
+                      )}
+                      {/* 삭제 버튼 */}
+                      {!post.is_deleted && (
+                        <button
+                          onClick={() => removeBookmark(post.id)}
+                          className="absolute top-4 right-4 p-1 text-gray-400 hover:text-red-500"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-      </nav>
+      )}
+
+      <BottomNav />
     </div>
   );
 }

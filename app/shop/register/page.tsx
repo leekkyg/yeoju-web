@@ -4,19 +4,22 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
-const categories = [
-  { id: "chicken", name: "치킨/피자", icon: "🍗" },
-  { id: "food", name: "음식점", icon: "🍽️" },
-  { id: "cafe", name: "카페/베이커리", icon: "☕" },
-  { id: "beauty", name: "뷰티/미용", icon: "💇" },
-  { id: "life", name: "생활/편의", icon: "🏪" },
-  { id: "etc", name: "기타", icon: "📦" },
-];
-
 const banks = [
   "국민은행", "신한은행", "우리은행", "하나은행", "농협은행",
   "기업은행", "카카오뱅크", "토스뱅크", "새마을금고", "우체국",
 ];
+
+interface Category {
+  id: number;
+  name: string;
+  icon: string;
+}
+
+declare global {
+  interface Window {
+    daum: any;
+  }
+}
 
 export default function ShopRegisterPage() {
   const router = useRouter();
@@ -24,6 +27,7 @@ export default function ShopRegisterPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [step, setStep] = useState(1);
+  const [categories, setCategories] = useState<Category[]>([]);
 
   // 폼 데이터
   const [shopName, setShopName] = useState("");
@@ -32,8 +36,6 @@ export default function ShopRegisterPage() {
   const [address, setAddress] = useState("");
   const [addressDetail, setAddressDetail] = useState("");
   const [description, setDescription] = useState("");
-  const [businessHours, setBusinessHours] = useState("");
-  const [closedDays, setClosedDays] = useState("");
   
   // 계좌 정보
   const [bankName, setBankName] = useState("");
@@ -41,14 +43,50 @@ export default function ShopRegisterPage() {
   const [bankHolder, setBankHolder] = useState("");
 
   // 이미지
-  const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [logoPreview, setLogoPreview] = useState("");
   const [bizRegFile, setBizRegFile] = useState<File | null>(null);
   const [bizRegPreview, setBizRegPreview] = useState("");
 
   useEffect(() => {
     checkUser();
+    fetchCategories();
+    loadDaumPostcode();
   }, []);
+
+  // 다음 주소 API 스크립트 로드
+  const loadDaumPostcode = () => {
+    const script = document.createElement("script");
+    script.src = "//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";
+    script.async = true;
+    document.head.appendChild(script);
+  };
+
+  // 주소 검색 팝업 열기
+  const openAddressSearch = () => {
+    if (!window.daum) {
+      alert("주소 검색 기능을 불러오는 중입니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+
+    new window.daum.Postcode({
+      oncomplete: function(data: any) {
+        // 도로명 주소 또는 지번 주소
+        const fullAddress = data.roadAddress || data.jibunAddress;
+        setAddress(fullAddress);
+      }
+    }).open();
+  };
+
+  const fetchCategories = async () => {
+    const { data } = await supabase
+      .from("shop_categories")
+      .select("*")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true });
+
+    if (data) {
+      setCategories(data);
+    }
+  };
 
   const checkUser = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -116,10 +154,10 @@ export default function ShopRegisterPage() {
   };
 
   const validateStep1 = () => {
-    if (!shopName.trim()) { alert("상점명을 입력해주세요"); return false; }
+    if (!shopName.trim()) { alert("상호명을 입력해주세요"); return false; }
     if (!category) { alert("카테고리를 선택해주세요"); return false; }
     if (!phone.trim()) { alert("연락처를 입력해주세요"); return false; }
-    if (!address.trim()) { alert("주소를 입력해주세요"); return false; }
+    if (!address.trim()) { alert("주소를 검색해주세요"); return false; }
     return true;
   };
 
@@ -137,12 +175,8 @@ export default function ShopRegisterPage() {
     setSubmitting(true);
 
     try {
-      let logoUrl = "";
       let bizRegUrl = "";
 
-      if (logoFile) {
-        logoUrl = await uploadImage(logoFile, "logos");
-      }
       if (bizRegFile) {
         bizRegUrl = await uploadImage(bizRegFile, "business-registrations");
       }
@@ -154,9 +188,6 @@ export default function ShopRegisterPage() {
         phone,
         address: `${address} ${addressDetail}`.trim(),
         description,
-        business_hours: businessHours,
-        closed_days: closedDays,
-        logo_url: logoUrl,
         business_license_url: bizRegUrl,
         bank_name: bankName,
         bank_account: bankAccount,
@@ -222,45 +253,21 @@ export default function ShopRegisterPage() {
         {/* Step 1: 기본 정보 */}
         {step === 1 && (
           <div className="px-5 py-6 space-y-6">
-            {/* 로고 */}
-            <div className="flex justify-center">
-              <div 
-                onClick={() => document.getElementById("logo-input")?.click()}
-                className="w-28 h-28 rounded-2xl bg-white border-2 border-dashed border-[#19643D]/30 flex flex-col items-center justify-center cursor-pointer hover:border-[#19643D] transition-colors overflow-hidden"
-              >
-                {logoPreview ? (
-                  <img src={logoPreview} alt="로고" className="w-full h-full object-cover" />
-                ) : (
-                  <>
-                    <span className="text-3xl mb-1">🏪</span>
-                    <span className="text-xs text-[#19643D]/50">로고 추가</span>
-                  </>
-                )}
-              </div>
-              <input
-                id="logo-input"
-                type="file"
-                accept="image/*"
-                onChange={(e) => handleFileChange(e, setLogoFile, setLogoPreview)}
-                className="hidden"
-              />
-            </div>
-
             {/* 상점명 */}
             <div>
               <label className="block text-sm font-bold text-[#19643D] mb-2">
-                상점명 <span className="text-[#DA451F]">*</span>
+                상호명 <span className="text-[#DA451F]">*</span>
               </label>
               <input
                 type="text"
                 value={shopName}
                 onChange={(e) => setShopName(e.target.value)}
-                placeholder="예: 여주맛집 치킨"
+                placeholder="상호명.."
                 className="w-full px-4 py-3.5 bg-white border border-[#19643D]/20 rounded-xl text-[#19643D] placeholder-[#19643D]/40 focus:outline-none focus:ring-2 focus:ring-[#19643D]/30"
               />
             </div>
 
-            {/* 카테고리 */}
+            {/* 카테고리 - DB에서 불러옴 */}
             <div>
               <label className="block text-sm font-bold text-[#19643D] mb-2">
                 카테고리 <span className="text-[#DA451F]">*</span>
@@ -292,53 +299,47 @@ export default function ShopRegisterPage() {
                 type="tel"
                 value={phone}
                 onChange={handlePhoneChange}
-                placeholder="031-000-0000"
+                placeholder="010-0000-0000 (숫자만 입력)"
                 maxLength={13}
                 className="w-full px-4 py-3.5 bg-white border border-[#19643D]/20 rounded-xl text-[#19643D] placeholder-[#19643D]/40 focus:outline-none focus:ring-2 focus:ring-[#19643D]/30"
               />
+              {/* 개인정보 보호 안내 */}
+              <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <p className="text-xs text-amber-800 font-medium mb-1">⚠️ 개인정보 보호 안내</p>
+                <ul className="text-xs text-amber-700 space-y-0.5">
+                  <li>• 개인 휴대폰 번호 대신 <strong>가게 대표전화</strong> 또는 <strong>안심번호</strong> 사용을 권장합니다</li>
+                  <li>• 연락처 공개로 인한 개인정보 유출 및 스팸 등의 피해에 대해 여주마켓은 책임지지 않습니다</li>
+                </ul>
+              </div>
             </div>
 
-            {/* 주소 */}
+            {/* 주소 - 다음 주소 API */}
             <div>
               <label className="block text-sm font-bold text-[#19643D] mb-2">
                 주소 <span className="text-[#DA451F]">*</span>
               </label>
-              <input
-                type="text"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder="여주시 여흥로 123"
-                className="w-full px-4 py-3.5 bg-white border border-[#19643D]/20 rounded-xl text-[#19643D] placeholder-[#19643D]/40 focus:outline-none focus:ring-2 focus:ring-[#19643D]/30 mb-2"
-              />
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  value={address}
+                  readOnly
+                  placeholder="주소 검색을 클릭하세요"
+                  className="flex-1 px-4 py-3.5 bg-gray-50 border border-[#19643D]/20 rounded-xl text-[#19643D] placeholder-[#19643D]/40 focus:outline-none cursor-pointer"
+                  onClick={openAddressSearch}
+                />
+                <button
+                  type="button"
+                  onClick={openAddressSearch}
+                  className="px-4 py-3.5 bg-[#19643D] text-white font-medium rounded-xl hover:bg-[#145231] transition-colors whitespace-nowrap"
+                >
+                  주소 검색
+                </button>
+              </div>
               <input
                 type="text"
                 value={addressDetail}
                 onChange={(e) => setAddressDetail(e.target.value)}
-                placeholder="상세주소 (선택)"
-                className="w-full px-4 py-3.5 bg-white border border-[#19643D]/20 rounded-xl text-[#19643D] placeholder-[#19643D]/40 focus:outline-none focus:ring-2 focus:ring-[#19643D]/30"
-              />
-            </div>
-
-            {/* 영업시간 */}
-            <div>
-              <label className="block text-sm font-bold text-[#19643D] mb-2">영업시간</label>
-              <input
-                type="text"
-                value={businessHours}
-                onChange={(e) => setBusinessHours(e.target.value)}
-                placeholder="예: 11:00 ~ 22:00"
-                className="w-full px-4 py-3.5 bg-white border border-[#19643D]/20 rounded-xl text-[#19643D] placeholder-[#19643D]/40 focus:outline-none focus:ring-2 focus:ring-[#19643D]/30"
-              />
-            </div>
-
-            {/* 휴무일 */}
-            <div>
-              <label className="block text-sm font-bold text-[#19643D] mb-2">휴무일</label>
-              <input
-                type="text"
-                value={closedDays}
-                onChange={(e) => setClosedDays(e.target.value)}
-                placeholder="예: 매주 월요일"
+                placeholder="상세주소 입력 (선택)"
                 className="w-full px-4 py-3.5 bg-white border border-[#19643D]/20 rounded-xl text-[#19643D] placeholder-[#19643D]/40 focus:outline-none focus:ring-2 focus:ring-[#19643D]/30"
               />
             </div>

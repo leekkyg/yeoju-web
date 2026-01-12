@@ -1,29 +1,36 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import BottomNav from "@/components/BottomNav";
 
 export default function NotificationsPage() {
   const router = useRouter();
+  const [user, setUser] = useState<any>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<any>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) {
-        router.push('/login');
-        return;
-      }
-      setUser(user);
-      fetchNotifications(user.id);
-    });
+    checkUserAndFetch();
   }, []);
 
+  const checkUserAndFetch = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) {
+      router.push("/login");
+      return;
+    }
+    
+    setUser(user);
+    await fetchNotifications(user.id);
+    setLoading(false);
+  };
+
   const fetchNotifications = async (userId: string) => {
-    setLoading(true);
     const { data } = await supabase
       .from("notifications")
       .select("*")
@@ -32,14 +39,50 @@ export default function NotificationsPage() {
       .limit(50);
     
     setNotifications(data || []);
-    setLoading(false);
+    setUnreadCount((data || []).filter(n => !n.is_read).length);
+  };
+
+  const markAsRead = async (id: number) => {
+    await supabase.from("notifications").update({ is_read: true }).eq("id", id);
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+    setUnreadCount(prev => Math.max(0, prev - 1));
+  };
+
+  const markAllAsRead = async () => {
+    if (!user) return;
+    await supabase.from("notifications").update({ is_read: true }).eq("user_id", user.id).eq("is_read", false);
+    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+    setUnreadCount(0);
+  };
+
+  const deleteNotification = async (id: number, isRead: boolean) => {
+    await supabase.from("notifications").delete().eq("id", id);
+    setNotifications(prev => prev.filter(n => n.id !== id));
+    if (!isRead) setUnreadCount(prev => Math.max(0, prev - 1));
+  };
+
+  const deleteAllNotifications = async () => {
+    if (!user || !confirm("모든 알림을 삭제하시겠습니까?")) return;
+    await supabase.from("notifications").delete().eq("user_id", user.id);
+    setNotifications([]);
+    setUnreadCount(0);
+  };
+
+  const handleClick = async (notification: any) => {
+    if (!notification.is_read) {
+      await markAsRead(notification.id);
+    }
     
-    // 모든 알림 읽음 처리
-    await supabase
-      .from("notifications")
-      .update({ is_read: true })
-      .eq("user_id", userId)
-      .eq("is_read", false);
+    // 타입별 이동
+    if (notification.type === "message") {
+      router.push("/messages");
+    } else if (notification.type === "notice" && notification.notice_id) {
+      router.push(`/notices/${notification.notice_id}`);
+    } else if (notification.post_id) {
+      router.push(`/community?post=${notification.post_id}`);
+    } else if (notification.type === "follow") {
+      router.push("/community");
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -49,189 +92,152 @@ export default function NotificationsPage() {
     const minutes = Math.floor(diff / 60000);
     const hours = Math.floor(diff / 3600000);
     const days = Math.floor(diff / 86400000);
-
+    
+    if (minutes < 1) return "방금 전";
     if (minutes < 60) return `${minutes}분 전`;
     if (hours < 24) return `${hours}시간 전`;
     if (days < 7) return `${days}일 전`;
     return date.toLocaleDateString("ko-KR");
   };
 
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case 'follow':
-        return (
-          <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
-            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-            </svg>
-          </div>
-        );
-      case 'comment':
-      case 'reply':
-        return (
-          <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
-            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-            </svg>
-          </div>
-        );
-      case 'like':
-        return (
-          <div className="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center">
-            <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
-            </svg>
-          </div>
-        );
-      case 'new_post':
-        return (
-          <div className="w-10 h-10 bg-amber-500 rounded-full flex items-center justify-center">
-            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-            </svg>
-          </div>
-        );
-      default:
-        return (
-          <div className="w-10 h-10 bg-gray-500 rounded-full flex items-center justify-center">
-            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-            </svg>
-          </div>
-        );
+  const getIcon = (type: string, message: string) => {
+    // 메시지에 특정 키워드가 있으면 아이콘 변경
+    if (type === "notice") {
+      if (message.includes("공지")) {
+        return { emoji: "📢", bg: "bg-amber-100", color: "text-amber-600" };
+      }
+      return { emoji: "🔔", bg: "bg-orange-100", color: "text-orange-600" };
     }
-  };
-
-  const handleNotificationClick = (notification: any) => {
-    if (notification.post_id) {
-      router.push(`/community/${notification.post_id}`);
-    }
-  };
-
-  const clearAllNotifications = async () => {
-    if (!user) return;
     
-    if (confirm('모든 알림을 삭제하시겠습니까?')) {
-      await supabase
-        .from("notifications")
-        .delete()
-        .eq("user_id", user.id);
-      
-      setNotifications([]);
+    switch (type) {
+      case "message": return { emoji: "✉️", bg: "bg-teal-100", color: "text-teal-600" };
+      case "comment": return { emoji: "💬", bg: "bg-blue-100", color: "text-blue-600" };
+      case "like": return { emoji: "❤️", bg: "bg-red-100", color: "text-red-600" };
+      case "follow": return { emoji: "👤", bg: "bg-purple-100", color: "text-purple-600" };
+      case "new_post": return { emoji: "📝", bg: "bg-emerald-100", color: "text-emerald-600" };
+      case "groupbuy": return { emoji: "🛒", bg: "bg-teal-100", color: "text-teal-600" };
+      default: return { emoji: "🔔", bg: "bg-gray-100", color: "text-gray-600" };
     }
   };
+
+  // 메시지에서 앞의 이모지 제거
+  const cleanMessage = (message: string) => {
+    return message.replace(/^(📢|🔔|💬|❤️|👤|📝|🛒)\s*/, '');
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-100 pb-24 md:pb-10">
+    <div className="min-h-screen bg-gray-50 pb-24">
       {/* 헤더 */}
-      <header className="bg-gray-900 sticky top-0 z-50">
+      <header className="bg-white sticky top-0 z-50 border-b border-gray-100">
         <div className="max-w-[631px] mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link href="/community" className="text-gray-400 hover:text-white">
+            <button onClick={() => router.back()} className="text-gray-600">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-            </Link>
-            <h1 className="text-white font-bold text-lg">알림</h1>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <Link href="/settings/notifications" className="text-gray-400 hover:text-white">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </Link>
-            {notifications.length > 0 && (
-              <button 
-                onClick={clearAllNotifications}
-                className="text-gray-400 hover:text-white text-sm"
-              >
-                전체삭제
-              </button>
+            </button>
+            <h1 className="text-gray-900 font-bold text-lg">알림</h1>
+            {unreadCount > 0 && (
+              <span className="px-2 py-0.5 bg-red-500 text-white text-xs font-bold rounded-full">
+                {unreadCount}
+              </span>
             )}
           </div>
+          
+          {notifications.length > 0 && (
+            <div className="flex items-center gap-3">
+              {unreadCount > 0 && (
+                <button
+                  onClick={markAllAsRead}
+                  className="text-sm text-emerald-600 font-medium"
+                >
+                  모두 읽음
+                </button>
+              )}
+              <button
+                onClick={deleteAllNotifications}
+                className="text-sm text-gray-400"
+              >
+                전체 삭제
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
-      <main className="max-w-[631px] mx-auto">
-        {loading ? (
-          <div className="flex justify-center py-20">
-            <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
-          </div>
-        ) : notifications.length === 0 ? (
-          <div className="text-center py-20">
-            <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-            </svg>
+      <main className="max-w-[631px] mx-auto px-4 py-4">
+        {notifications.length === 0 ? (
+          <div className="py-16 text-center">
+            <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-4xl">🔔</span>
+            </div>
             <p className="text-gray-500 font-medium">알림이 없습니다</p>
+            <p className="text-gray-400 text-sm mt-1">새로운 소식이 오면 알려드릴게요</p>
           </div>
         ) : (
-          <div className="divide-y divide-gray-200">
-            {notifications.map((notification) => (
-              <div
-                key={notification.id}
-                className={`flex items-start gap-3 p-4 bg-white hover:bg-gray-50 cursor-pointer transition-colors ${
-                  !notification.is_read ? 'bg-amber-50' : ''
-                }`}
-                onClick={() => handleNotificationClick(notification)}
-              >
-                {getNotificationIcon(notification.type)}
-                
-                <div className="flex-1 min-w-0">
-                  <p className="text-gray-900 text-sm">
-                    {notification.message}
-                  </p>
-                  <p className="text-gray-500 text-xs mt-1">
-                    {formatDate(notification.created_at)}
-                  </p>
+          <div className="space-y-3">
+            {notifications.map((notification) => {
+              const icon = getIcon(notification.type, notification.message || '');
+              const isUnread = !notification.is_read;
+              
+              return (
+                <div
+                  key={notification.id}
+                  onClick={() => handleClick(notification)}
+                  className={`relative bg-white rounded-2xl p-4 shadow-sm cursor-pointer transition-all hover:shadow-md ${
+                    isUnread ? 'ring-2 ring-emerald-200' : ''
+                  }`}
+                >
+                  {/* 읽지 않음 표시 */}
+                  {isUnread && (
+                    <div className="absolute top-4 right-4 w-2.5 h-2.5 bg-emerald-500 rounded-full"></div>
+                  )}
+                  
+                  <div className="flex gap-3">
+                    {/* 아이콘 */}
+                    <div className={`w-12 h-12 ${icon.bg} rounded-xl flex items-center justify-center flex-shrink-0`}>
+                      <span className="text-xl">{icon.emoji}</span>
+                    </div>
+                    
+                    {/* 내용 */}
+                    <div className="flex-1 min-w-0 pr-6">
+                      <p className={`text-gray-900 ${isUnread ? 'font-semibold' : ''}`}>
+                        {cleanMessage(notification.message || '')}
+                      </p>
+                      <p className="text-gray-400 text-sm mt-1">
+                        {formatDate(notification.created_at)}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* 삭제 버튼 */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteNotification(notification.id, notification.is_read);
+                    }}
+                    className="absolute top-4 right-10 p-1 text-gray-300 hover:text-red-500 transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
-                
-                {!notification.is_read && (
-                  <div className="w-2 h-2 bg-amber-500 rounded-full flex-shrink-0 mt-2"></div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </main>
 
-      {/* 하단 네비게이션 */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 z-50">
-        <div className="flex">
-          <Link href="/" className="flex-1 py-3 flex flex-col items-center gap-1">
-            <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-            </svg>
-            <span className="text-xs text-gray-500">홈</span>
-          </Link>
-          <Link href="/community" className="flex-1 py-3 flex flex-col items-center gap-1">
-            <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-            </svg>
-            <span className="text-xs text-gray-500">커뮤니티</span>
-          </Link>
-          <Link href="/market" className="flex-1 py-3 flex flex-col items-center gap-1">
-            <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-            </svg>
-            <span className="text-xs text-gray-500">마켓</span>
-          </Link>
-          <Link href="/videos" className="flex-1 py-3 flex flex-col items-center gap-1">
-            <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span className="text-xs text-gray-500">영상</span>
-          </Link>
-          <Link href="/mypage" className="flex-1 py-3 flex flex-col items-center gap-1">
-            <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-            </svg>
-            <span className="text-xs text-gray-500">MY</span>
-          </Link>
-        </div>
-      </nav>
+      <BottomNav />
     </div>
   );
 }

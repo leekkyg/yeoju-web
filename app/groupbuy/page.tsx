@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
@@ -39,10 +39,70 @@ export default function GroupBuyListPage() {
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState("전체");
   const [sortBy, setSortBy] = useState<"latest" | "ending" | "discount">("latest");
+  
+  // 카테고리 스크롤 관련
+  const categoryRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(true);
+  const [isDragging, setIsDragging] = useState(false);
+  const [startX, setStartX] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
 
   useEffect(() => {
     fetchGroupBuys();
   }, []);
+
+  // 스크롤 상태 체크
+  const checkScrollButtons = () => {
+    if (categoryRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = categoryRef.current;
+      setCanScrollLeft(scrollLeft > 0);
+      setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 10);
+    }
+  };
+
+  useEffect(() => {
+    checkScrollButtons();
+    window.addEventListener('resize', checkScrollButtons);
+    return () => window.removeEventListener('resize', checkScrollButtons);
+  }, []);
+
+  // 화살표 클릭으로 스크롤
+  const scrollCategory = (direction: 'left' | 'right') => {
+    if (categoryRef.current) {
+      const scrollAmount = 150;
+      categoryRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+      setTimeout(checkScrollButtons, 300);
+    }
+  };
+
+  // 마우스 드래그 스크롤
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!categoryRef.current) return;
+    setIsDragging(true);
+    setStartX(e.pageX - categoryRef.current.offsetLeft);
+    setScrollLeft(categoryRef.current.scrollLeft);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging || !categoryRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - categoryRef.current.offsetLeft;
+    const walk = (x - startX) * 1.5;
+    categoryRef.current.scrollLeft = scrollLeft - walk;
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+    checkScrollButtons();
+  };
+
+  const handleMouseLeave = () => {
+    setIsDragging(false);
+  };
 
   const fetchGroupBuys = async () => {
     const { data, error } = await supabase
@@ -71,9 +131,9 @@ export default function GroupBuyListPage() {
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
 
-    if (days > 0) return `${days}일 ${hours}시간 남음`;
-    if (hours > 0) return `${hours}시간 ${minutes}분 남음`;
-    return `${minutes}분 남음`;
+    if (days > 0) return `${days}일`;
+    if (hours > 0) return `${hours}시간`;
+    return `${minutes}분`;
   };
 
   const getDiscountPercent = (original: number, sale: number) => {
@@ -100,6 +160,23 @@ export default function GroupBuyListPage() {
 
   return (
     <div className="min-h-screen bg-[#FDFBF7]">
+      {/* 스크롤바 숨기기 스타일 */}
+      <style jsx global>{`
+        .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+        }
+        .drag-scroll {
+          cursor: grab;
+        }
+        .drag-scroll:active {
+          cursor: grabbing;
+        }
+      `}</style>
+
       {/* 헤더 */}
       <header className="fixed top-0 left-0 right-0 z-50 bg-[#19643D]">
         <div className="max-w-[640px] mx-auto px-5 h-14 flex items-center justify-between">
@@ -121,31 +198,66 @@ export default function GroupBuyListPage() {
         </div>
       </header>
 
-      {/* 카테고리 */}
+      {/* 카테고리 - 화살표 + 드래그 스크롤 */}
       <div className="fixed top-14 left-0 right-0 z-40 bg-[#19643D]/95 backdrop-blur-sm border-t border-[#F2D38D]/10">
-        <div className="max-w-[640px] mx-auto px-4 py-3 overflow-x-auto scrollbar-hide">
-          <div className="flex gap-2">
-            {categories.map(cat => (
-              <button
-                key={cat.id}
-                onClick={() => setSelectedCategory(cat.name)}
-                className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
-                  selectedCategory === cat.name
-                    ? "bg-[#F2D38D] text-[#19643D] shadow-lg"
-                    : "bg-white/10 text-white/80 hover:bg-white/20"
-                }`}
-              >
-                {cat.icon} {cat.name}
-              </button>
-            ))}
+        <div className="max-w-[640px] mx-auto relative">
+          {/* 왼쪽 화살표 */}
+          {canScrollLeft && (
+            <button
+              onClick={() => scrollCategory('left')}
+              className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 bg-[#19643D] flex items-center justify-center text-white shadow-lg"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          )}
+
+          {/* 카테고리 목록 */}
+          <div 
+            ref={categoryRef}
+            className="px-4 py-3 overflow-x-auto scrollbar-hide drag-scroll"
+            onScroll={checkScrollButtons}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseLeave}
+          >
+            <div className="flex gap-2 px-4">
+              {categories.map(cat => (
+                <button
+                  key={cat.id}
+                  onClick={() => !isDragging && setSelectedCategory(cat.name)}
+                  className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all select-none ${
+                    selectedCategory === cat.name
+                      ? "bg-[#F2D38D] text-[#19643D] shadow-lg"
+                      : "bg-white/10 text-white/80 hover:bg-white/20"
+                  }`}
+                >
+                  {cat.icon} {cat.name}
+                </button>
+              ))}
+            </div>
           </div>
+
+          {/* 오른쪽 화살표 */}
+          {canScrollRight && (
+            <button
+              onClick={() => scrollCategory('right')}
+              className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 bg-[#19643D] flex items-center justify-center text-white shadow-lg"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
 
-      <main className="pt-[120px] pb-8 max-w-[640px] mx-auto px-4">
+      <main className="pt-[120px] pb-8 max-w-[640px] mx-auto px-3">
         {/* 정렬 + 개수 */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex gap-2">
+        <div className="flex items-center justify-between mb-4 px-1">
+          <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
             {[
               { key: "latest", label: "최신순" },
               { key: "ending", label: "마감임박" },
@@ -154,7 +266,7 @@ export default function GroupBuyListPage() {
               <button
                 key={s.key}
                 onClick={() => setSortBy(s.key as typeof sortBy)}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
                   sortBy === s.key
                     ? "bg-[#19643D] text-white"
                     : "bg-white text-[#19643D]/60 border border-[#19643D]/20"
@@ -164,7 +276,7 @@ export default function GroupBuyListPage() {
               </button>
             ))}
           </div>
-          <span className="text-sm text-[#19643D]/50">
+          <span className="text-xs text-[#19643D]/50 whitespace-nowrap ml-2">
             {filteredGroupBuys.length}개
           </span>
         </div>
@@ -187,8 +299,8 @@ export default function GroupBuyListPage() {
           </div>
         )}
 
-        {/* 상품 목록 */}
-        <div className="space-y-4">
+        {/* 상품 목록 - 3열 그리드 */}
+        <div className="grid grid-cols-3 gap-2">
           {filteredGroupBuys.map(gb => {
             const discountPercent = getDiscountPercent(gb.original_price, gb.sale_price);
             const progress = getProgress(gb.current_quantity, gb.min_quantity);
@@ -199,10 +311,10 @@ export default function GroupBuyListPage() {
               <Link
                 key={gb.id}
                 href={`/groupbuy/${gb.id}`}
-                className="block bg-white rounded-2xl overflow-hidden border border-[#19643D]/10 shadow-sm hover:shadow-lg hover:border-[#19643D]/20 transition-all group"
+                className="block bg-white rounded-xl overflow-hidden border border-[#19643D]/10 shadow-sm hover:shadow-md transition-all group"
               >
                 {/* 이미지 */}
-                <div className="aspect-[2.2/1] bg-gradient-to-br from-[#F2D38D]/50 to-[#F2D38D]/30 relative overflow-hidden">
+                <div className="aspect-square bg-gradient-to-br from-[#F2D38D]/50 to-[#F2D38D]/30 relative overflow-hidden">
                   {gb.image_url ? (
                     <img 
                       src={gb.image_url} 
@@ -211,67 +323,55 @@ export default function GroupBuyListPage() {
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
-                      <span className="text-6xl opacity-40">🛒</span>
+                      <span className="text-3xl opacity-40">🛒</span>
                     </div>
                   )}
                   
                   {/* 할인율 뱃지 */}
-                  <div className="absolute top-3 left-3 bg-[#DA451F] text-white px-2.5 py-1 rounded-full text-xs font-bold shadow-lg">
-                    {discountPercent}% 할인
+                  <div className="absolute top-1.5 left-1.5 bg-[#DA451F] text-white px-1.5 py-0.5 rounded text-[10px] font-bold">
+                    {discountPercent}%
                   </div>
 
                   {/* 마감 시간 */}
-                  <div className={`absolute bottom-3 right-3 px-3 py-1.5 rounded-full text-xs font-bold shadow-lg ${
+                  <div className={`absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${
                     isUrgent 
-                      ? "bg-[#DA451F] text-white animate-pulse" 
-                      : "bg-black/60 backdrop-blur-sm text-white"
+                      ? "bg-[#DA451F] text-white" 
+                      : "bg-black/50 text-white"
                   }`}>
-                    ⏰ {timeLeft}
+                    {timeLeft}
                   </div>
 
                   {/* 공구 확정 뱃지 */}
                   {progress >= 100 && (
-                    <div className="absolute top-3 right-3 bg-[#19643D] text-white px-2.5 py-1 rounded-full text-xs font-bold shadow-lg">
-                      ✅ 확정
+                    <div className="absolute top-1.5 right-1.5 bg-[#19643D] text-white px-1.5 py-0.5 rounded text-[10px] font-bold">
+                      확정
                     </div>
                   )}
                 </div>
 
                 {/* 정보 */}
-                <div className="p-4">
-                  {/* 상점 정보 */}
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-6 h-6 rounded-full bg-[#19643D] flex items-center justify-center text-[#F2D38D] text-xs font-bold overflow-hidden flex-shrink-0">
-                      {gb.shop?.logo_url ? (
-                        <img src={gb.shop.logo_url} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        gb.shop?.name?.charAt(0)
-                      )}
-                    </div>
-                    <span className="text-sm text-[#19643D]/50 truncate">{gb.shop?.name}</span>
-                    <span className="text-xs text-[#19643D]/30">•</span>
-                    <span className="text-xs text-[#19643D]/40">{gb.shop?.category}</span>
-                  </div>
+                <div className="p-2">
+                  {/* 상점명 */}
+                  <p className="text-[10px] text-[#19643D]/50 truncate mb-0.5">
+                    {gb.shop?.name}
+                  </p>
 
                   {/* 상품명 */}
-                  <h3 className="font-bold text-[#19643D] mb-3 line-clamp-2 group-hover:text-[#145231] transition-colors leading-snug">
+                  <h3 className="text-xs font-medium text-[#19643D] line-clamp-2 leading-tight mb-1.5 min-h-[32px]">
                     {gb.title}
                   </h3>
 
                   {/* 가격 */}
-                  <div className="flex items-baseline gap-2 mb-4">
-                    <span className="text-2xl font-black text-[#19643D]">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-sm font-bold text-[#19643D]">
                       {gb.sale_price.toLocaleString()}
                     </span>
-                    <span className="text-lg font-bold text-[#19643D]">원</span>
-                    <span className="text-sm text-[#19643D]/30 line-through ml-1">
-                      {gb.original_price.toLocaleString()}원
-                    </span>
+                    <span className="text-[10px] text-[#19643D]">원</span>
                   </div>
 
                   {/* 참여 현황 바 */}
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 h-2.5 bg-[#19643D]/10 rounded-full overflow-hidden">
+                  <div className="mt-1.5">
+                    <div className="h-1.5 bg-[#19643D]/10 rounded-full overflow-hidden">
                       <div 
                         className={`h-full rounded-full transition-all ${
                           progress >= 100 
@@ -281,12 +381,9 @@ export default function GroupBuyListPage() {
                         style={{ width: `${progress}%` }}
                       />
                     </div>
-                    <span className="text-sm font-medium text-[#19643D]/70 whitespace-nowrap">
-                      <span className={progress >= 100 ? "text-[#19643D]" : "text-[#DA451F]"}>
-                        {gb.current_quantity}
-                      </span>
-                      <span className="text-[#19643D]/40">/{gb.min_quantity}명</span>
-                    </span>
+                    <p className="text-[10px] text-[#19643D]/50 mt-0.5 text-right">
+                      {gb.current_quantity}/{gb.min_quantity}명
+                    </p>
                   </div>
                 </div>
               </Link>
@@ -296,15 +393,15 @@ export default function GroupBuyListPage() {
 
         {/* 사장님 유도 배너 */}
         {!loading && (
-          <div className="mt-8 bg-gradient-to-r from-[#19643D] to-[#1e7a4a] rounded-2xl p-5 text-white">
+          <div className="mt-6 bg-gradient-to-r from-[#19643D] to-[#1e7a4a] rounded-xl p-4 text-white">
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-bold text-lg mb-1">사장님이세요? 🏪</p>
-                <p className="text-white/70 text-sm">여주마켓에서 공동구매를 시작해보세요</p>
+                <p className="font-bold text-sm mb-0.5">사장님이세요? 🏪</p>
+                <p className="text-white/70 text-xs">공동구매를 시작해보세요</p>
               </div>
               <Link
                 href="/shop/register"
-                className="bg-[#F2D38D] text-[#19643D] px-4 py-2 rounded-xl font-bold text-sm hover:bg-[#e8c97d] transition-colors whitespace-nowrap"
+                className="bg-[#F2D38D] text-[#19643D] px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-[#e8c97d] transition-colors whitespace-nowrap"
               >
                 입점 신청
               </Link>
