@@ -51,7 +51,27 @@ export default function GroupBuyDetailPage() {
   const [quantity, setQuantity] = useState(1);
   const [phone, setPhone] = useState("");
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
   const value = e.target.value.replace(/[^0-9]/g, '');
+  if (value.length <= 11) {
+    const formatted = value.replace(/(\d{3})(\d{4})(\d{4})/, '$1-$2-$3');
+    setPhone(formatted);
+  }
+};
+
+// ✅ 여기에 추가
+const handleSubmitClick = () => {
+  if (!name.trim()) {
+    alert("이름을 입력해주세요");
+    return;
+  }
+  if (!phone.trim()) {
+    alert("연락처를 입력해주세요");
+    return;
+  }
+  setShowConfirm(true);
+};
+    const value = e.target.value.replace(/[^0-9]/g, '');
   if (value.length <= 11) {
     const formatted = value.replace(/(\d{3})(\d{4})(\d{4})/, '$1-$2-$3');
     setPhone(formatted);
