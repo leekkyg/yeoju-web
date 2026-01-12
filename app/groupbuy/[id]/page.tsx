@@ -50,6 +50,13 @@ export default function GroupBuyDetailPage() {
   const [showComplete, setShowComplete] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [phone, setPhone] = useState("");
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const value = e.target.value.replace(/[^0-9]/g, '');
+  if (value.length <= 11) {
+    const formatted = value.replace(/(\d{3})(\d{4})(\d{4})/, '$1-$2-$3');
+    setPhone(formatted);
+  }
+};
   const [name, setName] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
