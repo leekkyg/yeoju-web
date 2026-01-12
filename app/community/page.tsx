@@ -565,7 +565,7 @@ export default function CommunityPage() {
 
   // ✅ 게시글 + 광고 렌더링
   const renderPostsWithAds = () => {
-    const elements: JSX.Element[] = [];
+    const elements: React.ReactNode[] = [];
     posts.forEach((post, index) => {
       elements.push(renderPost(post));
       if (index === 2 && listAds.length > 0) {
