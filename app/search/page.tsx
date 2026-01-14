@@ -4,11 +4,13 @@ import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { useTheme } from "@/contexts/ThemeContext";
 import { Search, ArrowLeft, FileText, Video, MessageCircle, ChevronRight } from "lucide-react";
 
 function SearchContent() {
   const searchParams = useSearchParams();
   const query = searchParams.get("q") || "";
+  const { theme, isDark, mounted } = useTheme();
 
   const [searchQuery, setSearchQuery] = useState(query);
   const [posts, setPosts] = useState<any[]>([]);
@@ -70,12 +72,27 @@ function SearchContent() {
 
   const totalCount = posts.length + videos.length;
 
+  if (!mounted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: theme.bgMain }}>
+        <div className="w-10 h-10 border-2 rounded-full animate-spin" style={{ borderColor: theme.border, borderTopColor: theme.accent }}></div>
+      </div>
+    );
+  }
+
+  const tabs = [
+    { key: "all", label: "전체", count: totalCount },
+    { key: "posts", label: "게시글", count: posts.length },
+    { key: "videos", label: "영상", count: videos.length },
+  ];
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-100 sticky top-0 z-50">
-        <div className="max-w-[631px] mx-auto px-4 h-14 flex items-center gap-3">
-          <Link href="/" className="p-2 -ml-2 hover:bg-gray-100 rounded-full">
-            <ArrowLeft className="w-5 h-5 text-gray-700" />
+    <div className="min-h-screen transition-colors duration-300" style={{ backgroundColor: theme.bgMain }}>
+      {/* 헤더 */}
+      <header className="sticky top-0 z-50" style={{ backgroundColor: theme.bgCard, borderBottom: `1px solid ${theme.borderLight}` }}>
+        <div className="max-w-[640px] mx-auto px-4 py-3 flex items-center gap-3">
+          <Link href="/" className="p-1 -ml-1 rounded-lg" style={{ color: theme.textPrimary }}>
+            <ArrowLeft className="w-6 h-6" strokeWidth={1.5} />
           </Link>
 
           <form onSubmit={handleSearch} className="flex-1">
@@ -85,111 +102,107 @@ function SearchContent() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="검색어를 입력하세요"
-                className="w-full h-10 pl-4 pr-10 bg-gray-100 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all"
+                className="w-full h-10 pl-4 pr-10 rounded-full text-sm outline-none transition-all"
+                style={{ backgroundColor: theme.bgInput, border: `1px solid ${theme.border}`, color: theme.textPrimary }}
                 autoFocus
               />
               <button
                 type="submit"
-                className="absolute right-1 top-1 w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center hover:bg-emerald-600 transition-colors"
+                className="absolute right-1 top-1 w-8 h-8 rounded-full flex items-center justify-center transition-colors"
+                style={{ backgroundColor: theme.accent }}
               >
-                <Search className="w-4 h-4 text-white" />
+                <Search className="w-4 h-4" style={{ color: isDark ? '#121212' : '#FFFFFF' }} strokeWidth={1.5} />
               </button>
             </div>
           </form>
         </div>
       </header>
 
-      <main className="max-w-[631px] mx-auto bg-white min-h-screen">
-        <div className="flex border-b border-gray-100">
-          <button
-            onClick={() => setActiveTab("all")}
-            className={`flex-1 py-3 text-sm font-semibold transition-colors ${
-              activeTab === "all"
-                ? "text-emerald-600 border-b-2 border-emerald-500"
-                : "text-gray-500"
-            }`}
-          >
-            전체 ({totalCount})
-          </button>
-          <button
-            onClick={() => setActiveTab("posts")}
-            className={`flex-1 py-3 text-sm font-semibold transition-colors ${
-              activeTab === "posts"
-                ? "text-emerald-600 border-b-2 border-emerald-500"
-                : "text-gray-500"
-            }`}
-          >
-            게시글 ({posts.length})
-          </button>
-          <button
-            onClick={() => setActiveTab("videos")}
-            className={`flex-1 py-3 text-sm font-semibold transition-colors ${
-              activeTab === "videos"
-                ? "text-emerald-600 border-b-2 border-emerald-500"
-                : "text-gray-500"
-            }`}
-          >
-            영상 ({videos.length})
-          </button>
+      <main className="max-w-[640px] mx-auto" style={{ backgroundColor: theme.bgCard }}>
+        {/* 탭 */}
+        <div className="flex" style={{ borderBottom: `1px solid ${theme.border}` }}>
+          {tabs.map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className="flex-1 py-3 text-sm font-semibold transition-colors relative"
+              style={{ color: activeTab === tab.key ? theme.accent : theme.textMuted }}
+            >
+              {tab.label} ({tab.count})
+              {activeTab === tab.key && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5" style={{ backgroundColor: theme.accent }} />
+              )}
+            </button>
+          ))}
         </div>
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
+            <div className="w-8 h-8 border-2 rounded-full animate-spin" style={{ borderColor: theme.border, borderTopColor: theme.accent }}></div>
           </div>
         ) : !query ? (
           <div className="text-center py-20">
-            <Search className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500">검색어를 입력해주세요</p>
+            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: theme.bgInput }}>
+              <Search className="w-7 h-7" style={{ color: theme.textMuted }} strokeWidth={1.5} />
+            </div>
+            <p style={{ color: theme.textMuted }}>검색어를 입력해주세요</p>
           </div>
         ) : totalCount === 0 ? (
           <div className="text-center py-20">
-            <Search className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500">"{query}" 검색 결과가 없습니다</p>
-            <p className="text-gray-400 text-sm mt-2">다른 검색어로 시도해보세요</p>
+            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: theme.bgInput }}>
+              <Search className="w-7 h-7" style={{ color: theme.textMuted }} strokeWidth={1.5} />
+            </div>
+            <p style={{ color: theme.textMuted }}>"{query}" 검색 결과가 없습니다</p>
+            <p className="text-sm mt-2" style={{ color: theme.textMuted }}>다른 검색어로 시도해보세요</p>
           </div>
         ) : (
           <div>
+            {/* 게시글 결과 */}
             {(activeTab === "all" || activeTab === "posts") && posts.length > 0 && (
-              <div className="border-b border-gray-100">
+              <div style={{ borderBottom: `1px solid ${theme.border}` }}>
                 {activeTab === "all" && (
-                  <div className="flex items-center justify-between px-4 py-3 bg-gray-50">
+                  <div className="flex items-center justify-between px-4 py-3" style={{ backgroundColor: theme.bgInput }}>
                     <div className="flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-emerald-600" />
-                      <span className="font-semibold text-gray-800">게시글</span>
-                      <span className="text-sm text-gray-500">({posts.length})</span>
+                      <FileText className="w-4 h-4" style={{ color: theme.accent }} strokeWidth={1.5} />
+                      <span className="font-semibold" style={{ color: theme.textPrimary }}>게시글</span>
+                      <span className="text-sm" style={{ color: theme.textMuted }}>({posts.length})</span>
                     </div>
                     {posts.length > 3 && (
                       <button
                         onClick={() => setActiveTab("posts")}
-                        className="text-sm text-emerald-600 font-medium flex items-center gap-1"
+                        className="text-sm font-medium flex items-center gap-1"
+                        style={{ color: theme.accent }}
                       >
-                        더보기 <ChevronRight className="w-4 h-4" />
+                        더보기 <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
                       </button>
                     )}
                   </div>
                 )}
                 <div>
-                  {(activeTab === "all" ? posts.slice(0, 3) : posts).map((post) => (
+                  {(activeTab === "all" ? posts.slice(0, 3) : posts).map((post, index) => (
                     <Link
                       key={post.id}
                       href={`/community/${post.id}`}
-                      className="block px-4 py-4 border-b border-gray-50 hover:bg-gray-50 transition-colors"
+                      className="block px-4 py-4 transition-colors"
+                      style={{ borderBottom: index !== (activeTab === "all" ? Math.min(posts.length, 3) : posts.length) - 1 ? `1px solid ${theme.border}` : 'none' }}
                     >
                       <div className="flex items-start gap-3">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
+                            <span 
+                              className="text-xs font-medium px-2 py-0.5 rounded"
+                              style={{ backgroundColor: `${theme.accent}20`, color: theme.accent }}
+                            >
                               {post.category || "자유"}
                             </span>
                           </div>
-                          <h3 className="font-semibold text-gray-900 mb-1 line-clamp-1">{post.title}</h3>
-                          <p className="text-sm text-gray-500 line-clamp-2">{post.content}</p>
-                          <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
+                          <h3 className="font-semibold mb-1 line-clamp-1" style={{ color: theme.textPrimary }}>{post.title}</h3>
+                          <p className="text-sm line-clamp-2" style={{ color: theme.textMuted }}>{post.content}</p>
+                          <div className="flex items-center gap-3 mt-2 text-xs" style={{ color: theme.textMuted }}>
                             <span>{post.author_name || "익명"}</span>
                             <span>{formatDate(post.created_at)}</span>
                             <span className="flex items-center gap-1">
-                              <MessageCircle className="w-3 h-3" />
+                              <MessageCircle className="w-3 h-3" strokeWidth={1.5} />
                               {post.comment_count || 0}
                             </span>
                           </div>
@@ -198,7 +211,7 @@ function SearchContent() {
                           <img
                             src={post.image_url}
                             alt=""
-                            className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
+                            className="w-16 h-16 rounded-xl object-cover flex-shrink-0"
                           />
                         )}
                       </div>
@@ -208,21 +221,23 @@ function SearchContent() {
               </div>
             )}
 
+            {/* 영상 결과 */}
             {(activeTab === "all" || activeTab === "videos") && videos.length > 0 && (
               <div>
                 {activeTab === "all" && (
-                  <div className="flex items-center justify-between px-4 py-3 bg-gray-50">
+                  <div className="flex items-center justify-between px-4 py-3" style={{ backgroundColor: theme.bgInput }}>
                     <div className="flex items-center gap-2">
-                      <Video className="w-4 h-4 text-red-500" />
-                      <span className="font-semibold text-gray-800">영상</span>
-                      <span className="text-sm text-gray-500">({videos.length})</span>
+                      <Video className="w-4 h-4" style={{ color: theme.red }} strokeWidth={1.5} />
+                      <span className="font-semibold" style={{ color: theme.textPrimary }}>영상</span>
+                      <span className="text-sm" style={{ color: theme.textMuted }}>({videos.length})</span>
                     </div>
-                    {videos.length > 3 && (
+                    {videos.length > 4 && (
                       <button
                         onClick={() => setActiveTab("videos")}
-                        className="text-sm text-emerald-600 font-medium flex items-center gap-1"
+                        className="text-sm font-medium flex items-center gap-1"
+                        style={{ color: theme.accent }}
                       >
-                        더보기 <ChevronRight className="w-4 h-4" />
+                        더보기 <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
                       </button>
                     )}
                   </div>
@@ -230,7 +245,7 @@ function SearchContent() {
                 <div className="grid grid-cols-2 gap-3 p-4">
                   {(activeTab === "all" ? videos.slice(0, 4) : videos).map((video) => (
                     <Link key={video.id} href={`/videos/${video.id}`} className="group">
-                      <div className="relative aspect-video rounded-xl overflow-hidden bg-gray-100">
+                      <div className="relative aspect-video rounded-xl overflow-hidden" style={{ backgroundColor: theme.bgInput }}>
                         {video.thumbnail_url ? (
                           <img
                             src={video.thumbnail_url}
@@ -238,8 +253,8 @@ function SearchContent() {
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                           />
                         ) : (
-                          <div className="w-full h-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
-                            <Video className="w-8 h-8 text-gray-400" />
+                          <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: theme.bgInput }}>
+                            <Video className="w-8 h-8" style={{ color: theme.textMuted }} strokeWidth={1.5} />
                           </div>
                         )}
                         <div className="absolute inset-0 bg-black/20 group-hover:bg-black/30 transition-colors" />
@@ -247,10 +262,10 @@ function SearchContent() {
                           {video.duration || "0:00"}
                         </div>
                       </div>
-                      <h3 className="mt-2 text-sm font-semibold text-gray-900 line-clamp-2 group-hover:text-emerald-600">
+                      <h3 className="mt-2 text-sm font-semibold line-clamp-2" style={{ color: theme.textPrimary }}>
                         {video.title}
                       </h3>
-                      <p className="text-xs text-gray-400 mt-1">{formatDate(video.created_at)}</p>
+                      <p className="text-xs mt-1" style={{ color: theme.textMuted }}>{formatDate(video.created_at)}</p>
                     </Link>
                   ))}
                 </div>
@@ -264,8 +279,14 @@ function SearchContent() {
 }
 
 export default function SearchPage() {
+  const { theme } = useTheme();
+  
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div></div>}>
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: theme.bgMain }}>
+        <div className="w-10 h-10 border-2 rounded-full animate-spin" style={{ borderColor: theme.border, borderTopColor: theme.accent }}></div>
+      </div>
+    }>
       <SearchContent />
     </Suspense>
   );

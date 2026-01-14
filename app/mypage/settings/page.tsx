@@ -4,10 +4,31 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { useTheme } from "@/contexts/ThemeContext";
 import BottomNav from "@/components/BottomNav";
+import {
+  ArrowLeft,
+  Bell,
+  MessageCircle,
+  Heart,
+  UserPlus,
+  Megaphone,
+  Eye,
+  User,
+  LogOut,
+  Trash2,
+  FileText,
+  Shield,
+  Info,
+  Mail,
+  ChevronRight,
+  AlertTriangle,
+} from "lucide-react";
 
 export default function SettingsPage() {
   const router = useRouter();
+  const { theme, isDark, mounted } = useTheme();
+  
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -22,7 +43,7 @@ export default function SettingsPage() {
   // 개인정보 설정
   const [profilePublic, setProfilePublic] = useState(true);
   
-  // 모달
+  // 탈퇴
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -49,7 +70,6 @@ export default function SettingsPage() {
     
     if (profileData) {
       setProfile(profileData);
-      // 설정 불러오기
       setPushEnabled(profileData.push_enabled ?? true);
       setCommentNotify(profileData.notify_comment ?? true);
       setLikeNotify(profileData.notify_like ?? true);
@@ -109,222 +129,190 @@ export default function SettingsPage() {
       return;
     }
     
-    if (!confirm("정말로 탈퇴하시겠습니까? 모든 데이터가 삭제되며 복구할 수 없습니다.")) {
+    if (!confirm("정말 탈퇴하시겠습니까? 이 작업은 되돌릴 수 없습니다.")) {
       return;
     }
     
     setDeleting(true);
     
     try {
-      // 프로필 삭제 (CASCADE로 관련 데이터 삭제)
       await supabase.from("profiles").delete().eq("id", user.id);
-      
-      // 로그아웃
       await supabase.auth.signOut();
-      
       alert("회원 탈퇴가 완료되었습니다");
       router.push("/");
     } catch (error) {
-      alert("탈퇴 처리 중 오류가 발생했습니다");
+      alert("탈퇴 중 오류가 발생했습니다");
       setDeleting(false);
     }
   };
 
-  if (loading) {
+  const Toggle = ({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) => (
+    <button
+      onClick={() => onChange(!checked)}
+      className="w-12 h-7 rounded-full transition-colors"
+      style={{ backgroundColor: checked ? theme.accent : theme.bgInput }}
+    >
+      <div
+        className="w-5 h-5 rounded-full shadow transition-transform mx-1"
+        style={{ 
+          backgroundColor: '#FFFFFF',
+          transform: checked ? 'translateX(20px)' : 'translateX(0)',
+        }}
+      />
+    </button>
+  );
+
+  if (!mounted || loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: theme.bgMain }}>
+        <div className="w-10 h-10 border-2 rounded-full animate-spin" style={{ borderColor: theme.border, borderTopColor: theme.accent }}></div>
       </div>
     );
   }
 
-  const Toggle = ({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) => (
-    <button
-      onClick={() => onChange(!checked)}
-      className={`w-12 h-7 rounded-full transition-colors ${checked ? 'bg-emerald-500' : 'bg-gray-300'}`}
-    >
-      <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform mx-1 ${checked ? 'translate-x-5' : ''}`} />
-    </button>
-  );
+  const notificationSettings = [
+    { label: "푸시 알림", desc: "모든 알림 받기", checked: pushEnabled, onChange: handlePushToggle, icon: Bell },
+    { label: "댓글 알림", desc: "내 글에 댓글이 달리면 알림", checked: commentNotify, onChange: handleCommentToggle, icon: MessageCircle },
+    { label: "좋아요 알림", desc: "내 글에 좋아요가 달리면 알림", checked: likeNotify, onChange: handleLikeToggle, icon: Heart },
+    { label: "팔로우 알림", desc: "누군가 나를 팔로우하면 알림", checked: followNotify, onChange: handleFollowToggle, icon: UserPlus },
+    { label: "공지사항 알림", desc: "새로운 공지사항이 등록되면 알림", checked: noticeNotify, onChange: handleNoticeToggle, icon: Megaphone },
+  ];
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
+    <div className="min-h-screen pb-24 transition-colors duration-300" style={{ backgroundColor: theme.bgMain }}>
       {/* 헤더 */}
-      <header className="bg-white sticky top-0 z-50 border-b border-gray-100">
-        <div className="max-w-[631px] mx-auto px-4 h-14 flex items-center gap-3">
-          <button onClick={() => router.back()} className="text-gray-600">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
+      <header className="sticky top-0 z-50" style={{ backgroundColor: theme.bgMain, borderBottom: `1px solid ${theme.borderLight}` }}>
+        <div className="max-w-[640px] mx-auto px-4 py-3 flex items-center gap-3">
+          <button onClick={() => router.back()} className="p-1 -ml-1 rounded-lg" style={{ color: theme.textPrimary }}>
+            <ArrowLeft className="w-6 h-6" strokeWidth={1.5} />
           </button>
-          <h1 className="text-gray-900 font-bold text-lg">설정</h1>
+          <h1 className="text-lg font-bold" style={{ color: theme.textPrimary }}>설정</h1>
         </div>
       </header>
 
-      <main className="max-w-[631px] mx-auto px-4 py-4">
+      <main className="max-w-[640px] mx-auto px-4 py-4">
         {/* 알림 설정 */}
-        <div className="bg-white rounded-2xl p-4 mb-4">
-          <h3 className="text-sm font-bold text-gray-500 mb-4">🔔 알림 설정</h3>
+        <section className="rounded-2xl p-4 mb-4" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}>
+          <h3 className="text-sm font-bold mb-4 flex items-center gap-2" style={{ color: theme.textMuted }}>
+            <Bell className="w-4 h-4" strokeWidth={1.5} />
+            알림 설정
+          </h3>
           
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium text-gray-900">푸시 알림</p>
-                <p className="text-sm text-gray-500">앱 알림 받기</p>
+            {notificationSettings.map((setting, index) => (
+              <div key={index} className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: theme.bgInput }}>
+                    <setting.icon className="w-4 h-4" style={{ color: theme.accent }} strokeWidth={1.5} />
+                  </div>
+                  <div>
+                    <p className="font-medium text-sm" style={{ color: theme.textPrimary }}>{setting.label}</p>
+                    <p className="text-xs" style={{ color: theme.textMuted }}>{setting.desc}</p>
+                  </div>
+                </div>
+                <Toggle checked={setting.checked} onChange={setting.onChange} />
               </div>
-              <Toggle checked={pushEnabled} onChange={handlePushToggle} />
-            </div>
-            
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium text-gray-900">댓글 알림</p>
-                <p className="text-sm text-gray-500">내 글에 댓글이 달리면 알림</p>
-              </div>
-              <Toggle checked={commentNotify} onChange={handleCommentToggle} />
-            </div>
-            
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium text-gray-900">좋아요 알림</p>
-                <p className="text-sm text-gray-500">내 글에 좋아요가 달리면 알림</p>
-              </div>
-              <Toggle checked={likeNotify} onChange={handleLikeToggle} />
-            </div>
-            
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium text-gray-900">팔로우 알림</p>
-                <p className="text-sm text-gray-500">새 팔로워가 생기면 알림</p>
-              </div>
-              <Toggle checked={followNotify} onChange={handleFollowToggle} />
-            </div>
-            
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium text-gray-900">공지사항 알림</p>
-                <p className="text-sm text-gray-500">새 공지사항이 올라오면 알림</p>
-              </div>
-              <Toggle checked={noticeNotify} onChange={handleNoticeToggle} />
-            </div>
+            ))}
           </div>
-        </div>
+        </section>
 
         {/* 개인정보 설정 */}
-        <div className="bg-white rounded-2xl p-4 mb-4">
-          <h3 className="text-sm font-bold text-gray-500 mb-4">🔒 개인정보</h3>
+        <section className="rounded-2xl p-4 mb-4" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}>
+          <h3 className="text-sm font-bold mb-4 flex items-center gap-2" style={{ color: theme.textMuted }}>
+            <Eye className="w-4 h-4" strokeWidth={1.5} />
+            개인정보 설정
+          </h3>
           
           <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium text-gray-900">프로필 공개</p>
-              <p className="text-sm text-gray-500">다른 사람이 내 프로필을 볼 수 있음</p>
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: theme.bgInput }}>
+                <User className="w-4 h-4" style={{ color: theme.accent }} strokeWidth={1.5} />
+              </div>
+              <div>
+                <p className="font-medium text-sm" style={{ color: theme.textPrimary }}>프로필 공개</p>
+                <p className="text-xs" style={{ color: theme.textMuted }}>다른 사용자가 내 프로필을 볼 수 있음</p>
+              </div>
             </div>
             <Toggle checked={profilePublic} onChange={handleProfilePublicToggle} />
           </div>
-        </div>
+        </section>
 
         {/* 계정 관리 */}
-        <div className="bg-white rounded-2xl overflow-hidden mb-4">
-          <h3 className="text-sm font-bold text-gray-500 px-4 pt-4 pb-2">👤 계정 관리</h3>
+        <section className="rounded-2xl overflow-hidden mb-4" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}>
+          <h3 className="text-sm font-bold px-4 pt-4 pb-2 flex items-center gap-2" style={{ color: theme.textMuted }}>
+            <User className="w-4 h-4" strokeWidth={1.5} />
+            계정 관리
+          </h3>
           
-          <Link 
-            href="/mypage/edit"
-            className="flex items-center justify-between p-4 hover:bg-gray-50 border-b border-gray-100"
-          >
-            <span className="text-gray-900">프로필 수정</span>
-            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
+          <Link href="/mypage/edit" className="flex items-center justify-between p-4 transition-colors" style={{ borderBottom: `1px solid ${theme.border}` }}>
+            <span style={{ color: theme.textPrimary }}>프로필 수정</span>
+            <ChevronRight className="w-5 h-5" style={{ color: theme.textMuted }} strokeWidth={1.5} />
           </Link>
           
-          <button 
-            onClick={handleLogout}
-            className="w-full flex items-center justify-between p-4 hover:bg-gray-50 border-b border-gray-100 text-left"
-          >
-            <span className="text-gray-900">로그아웃</span>
-            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
+          <button onClick={handleLogout} className="w-full flex items-center justify-between p-4 text-left transition-colors" style={{ borderBottom: `1px solid ${theme.border}` }}>
+            <span style={{ color: theme.textPrimary }}>로그아웃</span>
+            <LogOut className="w-5 h-5" style={{ color: theme.textMuted }} strokeWidth={1.5} />
           </button>
           
-          <button 
-            onClick={() => setShowDeleteModal(true)}
-            className="w-full flex items-center justify-between p-4 hover:bg-red-50 text-left"
-          >
-            <span className="text-red-500">회원 탈퇴</span>
-            <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
+          <button onClick={() => setShowDeleteModal(true)} className="w-full flex items-center justify-between p-4 text-left transition-colors">
+            <span style={{ color: theme.red }}>회원 탈퇴</span>
+            <Trash2 className="w-5 h-5" style={{ color: theme.red }} strokeWidth={1.5} />
           </button>
-        </div>
+        </section>
 
         {/* 앱 정보 */}
-        <div className="bg-white rounded-2xl overflow-hidden mb-4">
-          <h3 className="text-sm font-bold text-gray-500 px-4 pt-4 pb-2">ℹ️ 앱 정보</h3>
+        <section className="rounded-2xl overflow-hidden mb-4" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}>
+          <h3 className="text-sm font-bold px-4 pt-4 pb-2 flex items-center gap-2" style={{ color: theme.textMuted }}>
+            <Info className="w-4 h-4" strokeWidth={1.5} />
+            앱 정보
+          </h3>
           
-          <Link 
-            href="/terms"
-            className="flex items-center justify-between p-4 hover:bg-gray-50 border-b border-gray-100"
-          >
-            <span className="text-gray-900">이용약관</span>
-            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
+          <Link href="/terms" className="flex items-center justify-between p-4 transition-colors" style={{ borderBottom: `1px solid ${theme.border}` }}>
+            <span style={{ color: theme.textPrimary }}>이용약관</span>
+            <ChevronRight className="w-5 h-5" style={{ color: theme.textMuted }} strokeWidth={1.5} />
           </Link>
           
-          <Link 
-            href="/privacy"
-            className="flex items-center justify-between p-4 hover:bg-gray-50 border-b border-gray-100"
-          >
-            <span className="text-gray-900">개인정보처리방침</span>
-            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
+          <Link href="/privacy" className="flex items-center justify-between p-4 transition-colors" style={{ borderBottom: `1px solid ${theme.border}` }}>
+            <span style={{ color: theme.textPrimary }}>개인정보처리방침</span>
+            <ChevronRight className="w-5 h-5" style={{ color: theme.textMuted }} strokeWidth={1.5} />
           </Link>
           
           <div className="flex items-center justify-between p-4">
-            <span className="text-gray-900">앱 버전</span>
-            <span className="text-gray-500">1.0.0</span>
+            <span style={{ color: theme.textPrimary }}>앱 버전</span>
+            <span style={{ color: theme.textMuted }}>1.0.0</span>
           </div>
-        </div>
+        </section>
 
         {/* 고객센터 */}
-        <div className="bg-white rounded-2xl overflow-hidden">
-          <h3 className="text-sm font-bold text-gray-500 px-4 pt-4 pb-2">📞 고객센터</h3>
+        <section className="rounded-2xl overflow-hidden" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}>
+          <h3 className="text-sm font-bold px-4 pt-4 pb-2 flex items-center gap-2" style={{ color: theme.textMuted }}>
+            <Mail className="w-4 h-4" strokeWidth={1.5} />
+            고객센터
+          </h3>
           
-          <a 
-            href="mailto:support@yeojumarket.com"
-            className="flex items-center justify-between p-4 hover:bg-gray-50 border-b border-gray-100"
-          >
-            <span className="text-gray-900">문의하기</span>
-            <span className="text-gray-500 text-sm">support@yeojumarket.com</span>
+          <a href="mailto:support@yeojumarket.com" className="flex items-center justify-between p-4 transition-colors" style={{ borderBottom: `1px solid ${theme.border}` }}>
+            <span style={{ color: theme.textPrimary }}>문의하기</span>
+            <span className="text-sm" style={{ color: theme.textMuted }}>support@yeojumarket.com</span>
           </a>
           
-          <Link 
-            href="/notices"
-            className="flex items-center justify-between p-4 hover:bg-gray-50"
-          >
-            <span className="text-gray-900">공지사항</span>
-            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
+          <Link href="/notices" className="flex items-center justify-between p-4 transition-colors">
+            <span style={{ color: theme.textPrimary }}>공지사항</span>
+            <ChevronRight className="w-5 h-5" style={{ color: theme.textMuted }} strokeWidth={1.5} />
           </Link>
-        </div>
+        </section>
       </main>
 
       {/* 회원 탈퇴 모달 */}
       {showDeleteModal && (
-        <div 
-          className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4"
-          onClick={() => setShowDeleteModal(false)}
-        >
-          <div 
-            className="bg-white rounded-2xl p-6 w-full max-w-sm"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-xl font-bold text-gray-900 mb-2">회원 탈퇴</h3>
-            <p className="text-gray-600 text-sm mb-4">
-              탈퇴 시 모든 데이터가 삭제되며 복구할 수 없습니다.
-              계속하시려면 아래에 <strong>'회원탈퇴'</strong>를 입력해주세요.
+        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => setShowDeleteModal(false)}>
+          <div className="rounded-2xl p-6 w-full max-w-sm" style={{ backgroundColor: theme.bgCard }} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-4">
+              <AlertTriangle className="w-6 h-6" style={{ color: theme.red }} strokeWidth={1.5} />
+              <h3 className="text-xl font-bold" style={{ color: theme.textPrimary }}>회원 탈퇴</h3>
+            </div>
+            <p className="text-sm mb-4" style={{ color: theme.textSecondary }}>
+              회원 탈퇴 시 모든 데이터가 삭제되며 복구할 수 없습니다.
+              탈퇴를 원하시면 <strong style={{ color: theme.red }}>'회원탈퇴'</strong>를 입력해주세요.
             </p>
             
             <input
@@ -332,20 +320,23 @@ export default function SettingsPage() {
               value={deleteConfirm}
               onChange={(e) => setDeleteConfirm(e.target.value)}
               placeholder="회원탈퇴"
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl mb-4 focus:outline-none focus:ring-2 focus:ring-red-500"
+              className="w-full px-4 py-3 rounded-xl mb-4 outline-none"
+              style={{ backgroundColor: theme.bgInput, border: `1px solid ${theme.border}`, color: theme.textPrimary }}
             />
             
             <div className="flex gap-3">
               <button
                 onClick={() => { setShowDeleteModal(false); setDeleteConfirm(""); }}
-                className="flex-1 py-3 bg-gray-200 text-gray-700 font-bold rounded-xl"
+                className="flex-1 py-3 rounded-xl font-semibold"
+                style={{ backgroundColor: theme.bgInput, color: theme.textPrimary, border: `1px solid ${theme.border}` }}
               >
                 취소
               </button>
               <button
                 onClick={handleDeleteAccount}
                 disabled={deleting || deleteConfirm !== "회원탈퇴"}
-                className="flex-1 py-3 bg-red-500 text-white font-bold rounded-xl disabled:opacity-50"
+                className="flex-1 py-3 rounded-xl font-semibold disabled:opacity-50"
+                style={{ backgroundColor: theme.red, color: '#FFFFFF' }}
               >
                 {deleting ? "처리중..." : "탈퇴하기"}
               </button>

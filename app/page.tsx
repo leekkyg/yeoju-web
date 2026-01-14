@@ -3,28 +3,67 @@
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { useTheme } from "@/contexts/ThemeContext";
+import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
+import { 
+  ShoppingCart, 
+  MessageCircle, 
+  Megaphone, 
+  Video, 
+  Heart, 
+  Package, 
+  Newspaper,
+  Gift,
+  MapPin,
+  Store,
+  ChevronRight,
+  ChevronLeft,
+  ImageIcon,
+  FileText,
+  Play,
+} from "lucide-react";
 
 export default function HomePage() {
+  const { theme, isDark, mounted } = useTheme();
+  
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [groupBuys, setGroupBuys] = useState<any[]>([]);
   const [posts, setPosts] = useState<any[]>([]);
   const [notices, setNotices] = useState<any[]>([]);
+  const [news, setNews] = useState<any[]>([]);
+  const [videos, setVideos] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
   
-  // 배너 관련
   const [mainBanners, setMainBanners] = useState<any[]>([]);
   const [subBanners, setSubBanners] = useState<any[]>([]);
   const [currentBanner, setCurrentBanner] = useState(0);
   const bannerRef = useRef<HTMLDivElement>(null);
+  const bannerTouchStartX = useRef(0);
+
+  // 탭 관련
+  const tabs = [
+    { id: 'groupbuy', label: '공동구매', icon: ShoppingCart, href: '/groupbuy' },
+    { id: 'community', label: '커뮤니티', icon: MessageCircle, href: '/community' },
+    { id: 'news', label: '뉴스', icon: Newspaper, href: '/news' },
+    { id: 'videos', label: '영상', icon: Video, href: '/videos' },
+    { id: 'shops', label: '상점', icon: Store, href: '/shops' },
+    { id: 'events', label: '이벤트', icon: Gift, href: '/events' },
+  ];
+  const [tabScrollIndex, setTabScrollIndex] = useState(0);
+  const tabTouchStartX = useRef(0);
+  const visibleTabCount = 4;
+
+  // 공동구매 썸네일 인덱스 (3초마다 변경)
+  const [gbThumbnailIndex, setGbThumbnailIndex] = useState(0);
 
   useEffect(() => {
     fetchData();
   }, []);
 
-  // 메인 배너 자동 슬라이드
+  // 배너 자동 슬라이드
   useEffect(() => {
     if (mainBanners.length <= 1) return;
     const interval = setInterval(() => {
@@ -33,6 +72,14 @@ export default function HomePage() {
     return () => clearInterval(interval);
   }, [mainBanners.length]);
 
+  // 공동구매 썸네일 3초마다 변경
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setGbThumbnailIndex((prev) => prev + 1);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
   const fetchData = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     setUser(user);
@@ -40,7 +87,7 @@ export default function HomePage() {
     if (user) {
       const { data: profileData } = await supabase
         .from("profiles")
-        .select("nickname, profile_image")
+        .select("nickname, avatar_url")
         .eq("id", user.id)
         .single();
       setProfile(profileData);
@@ -53,7 +100,7 @@ export default function HomePage() {
       setUnreadCount(count || 0);
     }
 
-    // 메인 배너 조회 (ads 테이블 - home_banner 위치)
+    // 메인 배너
     const { data: mainBannerData } = await supabase
       .from("ads")
       .select("*")
@@ -61,7 +108,6 @@ export default function HomePage() {
       .eq("is_active", true)
       .order("created_at", { ascending: false });
     
-    // 날짜 필터링 (기간 내인 것만)
     const now = new Date();
     const filteredMainBanners = (mainBannerData || []).filter(b => {
       if (b.start_date && new Date(b.start_date) > now) return false;
@@ -70,14 +116,13 @@ export default function HomePage() {
     });
     setMainBanners(filteredMainBanners);
 
-    // 서브 배너 조회
+    // 서브 배너
     const { data: subBannerData } = await supabase
       .from("sub_banners")
       .select("*")
       .eq("is_active", true)
       .order("sort_order", { ascending: true });
     
-    // 날짜 필터링
     const filteredSubBanners = (subBannerData || []).filter(b => {
       if (b.start_date && new Date(b.start_date) > now) return false;
       if (b.end_date && new Date(b.end_date) < now) return false;
@@ -85,27 +130,93 @@ export default function HomePage() {
     });
     setSubBanners(filteredSubBanners);
 
+    // 공동구매 (최대 6개)
     const { data: gbData } = await supabase
       .from("group_buys")
-      .select("*, shops(name, logo_url)")
+      .select("*")
       .eq("status", "active")
       .order("created_at", { ascending: false })
-      .limit(4);
-    setGroupBuys(gbData || []);
+      .limit(6);
+    
+    if (gbData && gbData.length > 0) {
+      const shopIds = gbData.map(gb => gb.shop_id).filter(Boolean);
+      if (shopIds.length > 0) {
+        const { data: shopsData } = await supabase
+          .from("shops")
+          .select("id, name, logo_url")
+          .in("id", shopIds);
+        
+        const shopsMap = (shopsData || []).reduce((acc: any, shop: any) => {
+          acc[shop.id] = shop;
+          return acc;
+        }, {});
+        
+        setGroupBuys(gbData.map(gb => ({ ...gb, shops: shopsMap[gb.shop_id] || null })));
+      } else {
+        setGroupBuys(gbData);
+      }
+    } else {
+      setGroupBuys([]);
+    }
 
-    const { data: postData } = await supabase
+    // 최신 게시물
+    const { data: postData, error: postError } = await supabase
       .from("posts")
       .select("*")
-      .order("like_count", { ascending: false })
-      .limit(5);
-    setPosts(postData || []);
+      .order("created_at", { ascending: false })
+      .limit(3);
+    
+    if (postError) {
+      const { data: communityPostData } = await supabase
+        .from("community_posts")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(3);
+      setPosts(communityPostData || []);
+    } else if (postData && postData.length > 0) {
+      const userIds = postData.map(p => p.user_id).filter(Boolean);
+      if (userIds.length > 0) {
+        const { data: profilesData } = await supabase
+          .from("profiles")
+          .select("id, nickname, avatar_url")
+          .in("id", userIds);
+        
+        const profilesMap = (profilesData || []).reduce((acc: any, profile: any) => {
+          acc[profile.id] = profile;
+          return acc;
+        }, {});
+        
+        setPosts(postData.map(post => ({ ...post, profiles: profilesMap[post.user_id] || null })));
+      } else {
+        setPosts(postData);
+      }
+    } else {
+      setPosts([]);
+    }
 
+    // 공지사항
     const { data: noticeData } = await supabase
       .from("notices")
       .select("*")
       .order("created_at", { ascending: false })
       .limit(3);
     setNotices(noticeData || []);
+
+    // 최신 뉴스
+    const { data: newsData } = await supabase
+      .from("news")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(3);
+    setNews(newsData || []);
+
+    // 영상
+    const { data: videoData } = await supabase
+      .from("videos")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(4);
+    setVideos(videoData || []);
 
     setLoading(false);
   };
@@ -114,261 +225,526 @@ export default function HomePage() {
     return price?.toLocaleString() + "원";
   };
 
-  const quickMenus = [
-    { href: "/groupbuy", icon: "🛒", label: "공동구매" },
-    { href: "/community", icon: "💬", label: "커뮤니티" },
-    { href: "/notices", icon: "📢", label: "공지사항" },
-    { href: "/videos", icon: "🎬", label: "영상" },
-    { href: "/favorites", icon: "❤️", label: "단골업체" },
-    { href: "/mypage/groupbuys", icon: "📦", label: "참여내역" },
-  ];
+  const formatTime = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+    
+    if (minutes < 1) return "방금 전";
+    if (minutes < 60) return `${minutes}분 전`;
+    if (hours < 24) return `${hours}시간 전`;
+    return `${days}일 전`;
+  };
 
-  // 기본 메인 배너 (DB에 없을 때)
-  const defaultMainBanners = [
-    {
-      id: 1,
-      image_url: null,
-      title: "우리 동네 공동구매",
-      subtitle: "함께하면 더 저렴하게!",
-      link_url: "/groupbuy",
+  // 배너 스와이프
+  const handleBannerTouchStart = (e: React.TouchEvent) => {
+    bannerTouchStartX.current = e.touches[0].clientX;
+  };
+
+  const handleBannerTouchEnd = (e: React.TouchEvent) => {
+    const touchEndX = e.changedTouches[0].clientX;
+    const diff = bannerTouchStartX.current - touchEndX;
+    
+    if (Math.abs(diff) > 50) {
+      if (diff > 0) {
+        setCurrentBanner((prev) => (prev + 1) % displayBanners.length);
+      } else {
+        setCurrentBanner((prev) => (prev - 1 + displayBanners.length) % displayBanners.length);
+      }
     }
-  ];
+  };
+
+  // 탭 스와이프
+  const handleTabTouchStart = (e: React.TouchEvent) => {
+    tabTouchStartX.current = e.touches[0].clientX;
+  };
+
+  const handleTabTouchEnd = (e: React.TouchEvent) => {
+    const touchEndX = e.changedTouches[0].clientX;
+    const diff = tabTouchStartX.current - touchEndX;
+    
+    if (Math.abs(diff) > 50) {
+      if (diff > 0) {
+        nextTabs();
+      } else {
+        prevTabs();
+      }
+    }
+  };
+
+  // 무한 스와이프
+  const nextTabs = () => {
+    setTabScrollIndex(prev => (prev + 1) % tabs.length);
+  };
+
+  const prevTabs = () => {
+    setTabScrollIndex(prev => (prev - 1 + tabs.length) % tabs.length);
+  };
+
+  // 무한 스와이프용 탭 배열 (현재 위치부터 4개)
+  const getVisibleTabs = () => {
+    const result = [];
+    for (let i = 0; i < visibleTabCount; i++) {
+      result.push(tabs[(tabScrollIndex + i) % tabs.length]);
+    }
+    return result;
+  };
+
+  // 공동구매 썸네일 가져오기
+  const getGbThumbnail = (gb: any) => {
+    const images = gb.thumbnails || gb.images || (gb.thumbnail_url ? [gb.thumbnail_url] : []) || (gb.image_url ? [gb.image_url] : []);
+    if (images.length === 0) return gb.thumbnail_url || gb.image_url || null;
+    return images[gbThumbnailIndex % images.length];
+  };
+
+  // 게시물 타입 아이콘 결정
+  const getPostIcon = (post: any) => {
+    if (post.video_url || post.has_video) {
+      return <Video className="w-5 h-5" style={{ color: theme.accent }} strokeWidth={1.5} />;
+    }
+    if (post.image_url || post.thumbnail_url || post.images?.length > 0 || post.has_image) {
+      return <ImageIcon className="w-5 h-5" style={{ color: theme.accent }} strokeWidth={1.5} />;
+    }
+    return <FileText className="w-5 h-5" style={{ color: theme.textMuted }} strokeWidth={1.5} />;
+  };
+
+  const defaultMainBanners = [{
+    id: 1, image_url: null,
+    title: "우리 동네 공동구매",
+    subtitle: "함께하면 더 저렴하게!",
+    link_url: "/groupbuy",
+  }];
 
   const displayBanners = mainBanners.length > 0 ? mainBanners : defaultMainBanners;
 
-  if (loading) {
+  if (!mounted || loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-emerald-950 via-emerald-900 to-teal-900 flex items-center justify-center">
-        <div className="relative">
-          <div className="w-16 h-16 border-4 border-emerald-400/30 border-t-emerald-400 rounded-full animate-spin"></div>
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-[#121212]">
+        <div className="w-10 h-10 border-2 border-[#333] border-t-[#D4A574] rounded-full animate-spin"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      {/* 헤더 */}
-      <header className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 sticky top-0 z-50">
-        <div className="max-w-[631px] mx-auto px-4 h-14 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="w-9 h-9 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center border border-white/30 shadow-lg">
-              <span className="text-white font-black text-base drop-shadow">여</span>
-            </div>
-            <span className="text-white font-bold text-lg tracking-tight drop-shadow">여주마켓</span>
-          </Link>
-          
-          <div className="flex items-center gap-2">
-            <Link href="/notifications" className="relative p-2 bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-              </svg>
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center shadow-lg animate-pulse">
-                  {unreadCount > 9 ? "9+" : unreadCount}
-                </span>
-              )}
-            </Link>
-            {user ? (
-              <Link href="/mypage" className="w-9 h-9 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center border border-white/30 overflow-hidden">
-                {profile?.profile_image ? (
-                  <img src={profile.profile_image} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-white font-bold text-sm">
-                    {profile?.nickname?.[0] || user.email?.[0]?.toUpperCase()}
-                  </span>
-                )}
-              </Link>
-            ) : (
-              <Link href="/login" className="px-4 py-2 bg-white text-emerald-600 text-sm font-bold rounded-xl shadow-lg">
-                로그인
-              </Link>
-            )}
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen pb-20 transition-colors duration-300" style={{ backgroundColor: theme.bgMain }}>
+      <style jsx global>{`
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .tab-item:hover .tab-icon-box {
+          background-color: rgba(212, 165, 116, 0.15) !important;
+          border-color: #D4A574 !important;
+        }
+        .tab-item:hover .tab-icon {
+          color: #D4A574 !important;
+          transform: scale(1.1);
+        }
+        .tab-item:hover .tab-label {
+          color: #D4A574 !important;
+        }
+      `}</style>
+
+      <Header user={user} profile={profile} unreadCount={unreadCount} />
 
       <main className="max-w-[631px] mx-auto">
-        {/* ==================== 메인 배너 슬라이더 ==================== */}
-        <div className="px-4 pt-4">
+        {/* 메인 배너 */}
+        <section className="px-4 pt-4">
           <div 
-            ref={bannerRef}
-            className="relative rounded-2xl overflow-hidden shadow-lg"
-            style={{ aspectRatio: '3/1' }}
+            ref={bannerRef} 
+            className="relative rounded-2xl overflow-hidden" 
+            style={{ aspectRatio: '2.5/1' }}
+            onTouchStart={handleBannerTouchStart}
+            onTouchEnd={handleBannerTouchEnd}
           >
             {displayBanners.map((banner, index) => (
               <Link
                 key={banner.id}
                 href={banner.link_url || "#"}
                 className={`absolute inset-0 transition-all duration-500 ease-in-out ${
-                  index === currentBanner ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-full'
+                  index === currentBanner ? 'opacity-100 translate-x-0' : index < currentBanner ? 'opacity-0 -translate-x-full' : 'opacity-0 translate-x-full'
                 }`}
               >
                 {banner.image_url ? (
-                  <img 
-                    src={banner.image_url} 
-                    alt={banner.title || ""} 
-                    className="w-full h-full object-cover"
-                  />
+                  <img src={banner.image_url} alt={banner.title || ""} className="w-full h-full object-cover" />
                 ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-emerald-500 via-emerald-400 to-teal-400 flex items-center relative overflow-hidden">
-                    {/* 배경 장식 */}
-                    <div className="absolute inset-0">
-                      <div className="absolute -right-10 -top-10 w-40 h-40 bg-white/10 rounded-full blur-2xl"></div>
-                      <div className="absolute -left-5 -bottom-5 w-32 h-32 bg-white/5 rounded-full blur-xl"></div>
+                  <div 
+                    className="w-full h-full flex items-center relative overflow-hidden"
+                    style={{ background: isDark ? `linear-gradient(135deg, ${theme.bgElevated}, ${theme.bgCard})` : `linear-gradient(135deg, #FFFFFF, ${theme.bgMain})` }}
+                  >
+                    <div className="absolute -right-20 -top-20 w-60 h-60 rounded-full blur-3xl" style={{ backgroundColor: `${theme.accent}15` }}></div>
+                    <div className="relative z-10 p-6 flex-1">
+                      <p className="text-xs font-semibold mb-1" style={{ color: theme.accent }}>여주 지역 공동구매</p>
+                      <h2 className="text-xl font-bold" style={{ color: theme.textPrimary }}>{banner.title}</h2>
+                      <p className="text-sm mt-1" style={{ color: theme.textMuted }}>{banner.subtitle}</p>
                     </div>
-                    <div className="relative z-10 p-6">
-                      <p className="text-white/80 text-sm font-medium">여주 지역 공동구매 플랫폼</p>
-                      <h2 className="text-white text-xl font-bold mt-1">{banner.title}</h2>
-                      <div className="mt-3 inline-flex items-center gap-1 px-4 py-2 bg-white text-emerald-600 font-bold text-sm rounded-full shadow-lg">
-                        자세히 보기
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      </div>
+                    <div className="w-20 h-20 rounded-2xl flex items-center justify-center mr-6" style={{ backgroundColor: theme.bgElevated, border: `1px solid ${theme.border}` }}>
+                      <span className="text-4xl">🛒</span>
                     </div>
                   </div>
                 )}
               </Link>
             ))}
             
-            {/* 배너 인디케이터 */}
             {displayBanners.length > 1 && (
               <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-20">
                 {displayBanners.map((_, index) => (
                   <button
                     key={index}
                     onClick={() => setCurrentBanner(index)}
-                    className={`transition-all duration-300 rounded-full ${
-                      index === currentBanner 
-                        ? 'w-6 h-2 bg-white' 
-                        : 'w-2 h-2 bg-white/50 hover:bg-white/70'
-                    }`}
+                    className="transition-all duration-300 rounded-full"
+                    style={{
+                      width: index === currentBanner ? '20px' : '6px',
+                      height: '6px',
+                      backgroundColor: index === currentBanner ? theme.accent : (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)')
+                    }}
                   />
                 ))}
               </div>
             )}
-            
-            {/* 배너 카운터 */}
-            {displayBanners.length > 1 && (
-              <div className="absolute bottom-3 right-3 px-2.5 py-1 bg-black/40 backdrop-blur-sm rounded-full text-white text-xs font-medium z-20">
-                {currentBanner + 1} / {displayBanners.length}
-              </div>
-            )}
           </div>
-        </div>
+        </section>
 
-        {/* 퀵메뉴 - 그린 그라디언트 배경 */}
-        <div className="px-4 mt-4">
-          <div className="bg-gradient-to-br from-emerald-500 via-emerald-400 to-teal-400 rounded-2xl shadow-lg shadow-emerald-500/20 p-4 relative overflow-hidden">
-            {/* 배경 장식 */}
-            <div className="absolute inset-0">
-              <div className="absolute -right-10 -top-10 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
-              <div className="absolute -left-5 -bottom-5 w-24 h-24 bg-white/5 rounded-full blur-xl"></div>
-            </div>
-            
-            <div className="relative z-10 grid grid-cols-6 gap-1">
-              {quickMenus.map((menu) => (
-                <Link 
-                  key={menu.href} 
-                  href={menu.href}
-                  className="flex flex-col items-center gap-1.5 p-2 rounded-xl hover:bg-white/20 transition-colors group"
-                >
-                  <div className="w-11 h-11 bg-white rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-emerald-600/30 border border-white/50">
-                    <span className="text-lg">{menu.icon}</span>
-                  </div>
-                  <span className="text-xs text-white font-semibold drop-shadow">{menu.label}</span>
-                </Link>
-              ))}
+        {/* 탭 네비게이션 - 무한 스와이프 */}
+        <section className="mt-4 mx-4">
+          <div 
+            className="rounded-2xl p-3 relative transition-colors duration-300" 
+            style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}
+          >
+            {/* 화살표 - 항상 표시 */}
+            <button
+              onClick={prevTabs}
+              className="absolute left-1 top-1/2 -translate-y-1/2 p-1.5 rounded-full z-10 flex items-center justify-center shadow-lg"
+              style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
+            >
+              <ChevronLeft className="w-4 h-4" style={{ color: theme.textPrimary }} />
+            </button>
+            <button
+              onClick={nextTabs}
+              className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 rounded-full z-10 flex items-center justify-center shadow-lg"
+              style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
+            >
+              <ChevronRight className="w-4 h-4" style={{ color: theme.textPrimary }} />
+            </button>
+
+            {/* 탭 컨테이너 */}
+            <div
+              className="overflow-hidden mx-6"
+              onTouchStart={handleTabTouchStart}
+              onTouchEnd={handleTabTouchEnd}
+            >
+              <div className="flex transition-all duration-300 ease-out">
+                {getVisibleTabs().map((tab) => {
+                  const Icon = tab.icon;
+                  return (
+                    <Link
+                      key={tab.id}
+                      href={tab.href}
+                      className="tab-item flex items-center gap-2 px-2 py-2.5 rounded-xl transition-all cursor-pointer"
+                      style={{ minWidth: `${100 / visibleTabCount}%` }}
+                    >
+                      <div 
+                        className="tab-icon-box w-11 h-11 rounded-xl flex items-center justify-center transition-all flex-shrink-0"
+                        style={{ 
+                          backgroundColor: theme.bgInput,
+                          border: `1px solid ${theme.border}`
+                        }}
+                      >
+                        <Icon 
+                          className="tab-icon w-5 h-5 transition-all duration-200" 
+                          style={{ color: theme.textMuted }} 
+                          strokeWidth={1.5} 
+                        />
+                      </div>
+                      <span 
+                        className="tab-label text-[12px] font-medium transition-all duration-200 whitespace-nowrap"
+                        style={{ color: theme.textMuted }}
+                      >
+                        {tab.label}
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
             </div>
           </div>
-        </div>
+        </section>
 
         {/* 공지사항 */}
         {notices.length > 0 && (
-          <div className="px-4 mt-4">
-            <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl p-4 flex items-center gap-3 border border-amber-100">
-              <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-orange-400 rounded-xl flex items-center justify-center shadow-lg shadow-amber-200/50">
-                <span className="text-white text-sm">📢</span>
+          <section className="px-4 mt-4">
+            <div className="rounded-2xl p-4 flex items-center gap-3 transition-colors duration-300" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: theme.bgInput }}>
+                <Megaphone className="w-[18px] h-[18px]" style={{ color: theme.accent }} strokeWidth={1.5} />
               </div>
               <Link href={`/notices/${notices[0].id}`} className="flex-1 min-w-0">
-                <p className="text-xs text-amber-600 font-bold mb-0.5">공지사항</p>
-                <p className="text-sm text-gray-800 font-medium truncate">{notices[0].title}</p>
+                <p className="text-[11px] font-bold mb-0.5" style={{ color: theme.accent }}>공지사항</p>
+                <p className="text-sm font-medium truncate" style={{ color: theme.textSecondary }}>{notices[0].title}</p>
               </Link>
-              <Link href="/notices" className="text-xs text-amber-600 font-bold flex-shrink-0 px-3 py-1.5 bg-white rounded-full shadow-sm">
+              <Link href="/notices" className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors" style={{ backgroundColor: theme.bgInput, color: theme.textMuted, border: `1px solid ${theme.border}` }}>
                 더보기
               </Link>
             </div>
-          </div>
+          </section>
         )}
 
         {/* 진행중인 공동구매 */}
         <section className="px-4 mt-6">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-lg font-bold text-gray-900">🔥 진행중인 공동구매</h3>
-              <p className="text-xs text-gray-500 mt-0.5">함께 모이면 더 저렴해요</p>
+              <h3 className="text-base font-bold" style={{ color: theme.textPrimary }}>🛒 진행중인 공동구매</h3>
+              <p className="text-xs mt-0.5" style={{ color: theme.textMuted }}>함께 모이면 더 저렴해요</p>
             </div>
-            <Link href="/groupbuy" className="flex items-center gap-1 text-sm text-emerald-600 font-bold px-3 py-1.5 bg-emerald-50 rounded-full">
-              전체보기
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
+            <Link href="/groupbuy" className="flex items-center gap-0.5 text-sm font-semibold" style={{ color: theme.accent }}>
+              전체보기 <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
             </Link>
           </div>
           
           {groupBuys.length === 0 ? (
-            <div className="bg-white rounded-2xl p-8 text-center shadow-sm">
-              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                <span className="text-3xl">🛒</span>
+            <div className="rounded-2xl p-8 text-center transition-colors duration-300" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}>
+              <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3" style={{ backgroundColor: theme.bgInput }}>
+                <ShoppingCart className="w-6 h-6" style={{ color: theme.textMuted }} strokeWidth={1.5} />
               </div>
-              <p className="text-gray-500 font-medium">진행중인 공동구매가 없습니다</p>
-              <p className="text-gray-400 text-sm mt-1">곧 새로운 공동구매가 열려요!</p>
+              <p className="font-medium text-sm" style={{ color: theme.textMuted }}>진행중인 공동구매가 없습니다</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              {groupBuys.slice(0, 6).map((gb) => {
+                const progress = Math.min(((gb.current_participants || 0) / (gb.target_participants || 1)) * 100, 100);
+                const thumbnail = getGbThumbnail(gb);
+                
+                return (
+                  <Link key={gb.id} href={`/groupbuy/${gb.id}`} className="rounded-xl overflow-hidden transition-colors duration-300" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}>
+                    <div className="aspect-square relative overflow-hidden" style={{ backgroundColor: theme.bgInput }}>
+                      {thumbnail ? (
+                        <img src={thumbnail} alt={gb.title || ""} className="w-full h-full object-cover transition-opacity duration-500" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <ShoppingCart className="w-8 h-8" style={{ color: theme.textMuted }} strokeWidth={1} />
+                        </div>
+                      )}
+                      <div className="absolute bottom-0 left-0 right-0 h-4 bg-black/60 flex items-center px-1.5 gap-1">
+                        <div className="flex-1 h-1 bg-white/20 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${progress}%`, backgroundColor: theme.accent }}></div>
+                        </div>
+                        <span className="text-[9px] font-bold" style={{ color: theme.accent }}>{Math.round(progress)}%</span>
+                      </div>
+                    </div>
+                    <div className="p-2">
+                      <p className="text-[10px] font-bold truncate" style={{ color: theme.accent }}>{gb.shops?.name || gb.shop_name || '상점'}</p>
+                      <p className="text-[11px] font-medium mt-0.5 line-clamp-2 leading-tight" style={{ color: theme.textPrimary }}>{gb.title}</p>
+                      <p className="text-[11px] font-bold mt-1" style={{ color: theme.textPrimary }}>{formatPrice(gb.price)}</p>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* 서브 배너 1 */}
+        {subBanners.length > 0 && (
+          <section className="px-4 mt-6">
+            <Link href={subBanners[0]?.link_url || "#"} className="block rounded-2xl overflow-hidden transition-colors duration-300" style={{ aspectRatio: '5/1', border: `1px solid ${theme.borderLight}` }}>
+              {subBanners[0]?.image_url ? (
+                <img src={subBanners[0].image_url} alt={subBanners[0].title || ""} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center gap-3 px-4" style={{ background: `linear-gradient(135deg, ${theme.bgInput}, ${theme.bgCard})` }}>
+                  {subBanners[0]?.icon && <span className="text-2xl">{subBanners[0].icon}</span>}
+                  <div>
+                    <p className="font-semibold" style={{ color: theme.textPrimary }}>{subBanners[0]?.title}</p>
+                    {subBanners[0]?.subtitle && <p className="text-sm" style={{ color: theme.textMuted }}>{subBanners[0].subtitle}</p>}
+                  </div>
+                </div>
+              )}
+            </Link>
+          </section>
+        )}
+
+        {/* 최신 게시물 - 아이콘으로 표시 */}
+        <section className="px-4 mt-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-base font-bold" style={{ color: theme.textPrimary }}>📝 최신 게시물</h3>
+              <p className="text-xs mt-0.5" style={{ color: theme.textMuted }}>이웃들의 이야기</p>
+            </div>
+            <Link href="/community" className="flex items-center gap-0.5 text-sm font-semibold" style={{ color: theme.accent }}>
+              전체보기 <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
+            </Link>
+          </div>
+          
+          {posts.length === 0 ? (
+            <div className="rounded-2xl p-8 text-center transition-colors duration-300" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}>
+              <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3" style={{ backgroundColor: theme.bgInput }}>
+                <MessageCircle className="w-6 h-6" style={{ color: theme.textMuted }} strokeWidth={1.5} />
+              </div>
+              <p className="text-sm" style={{ color: theme.textMuted }}>게시글이 없습니다</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {posts.map((post) => (
+                <Link 
+                  key={post.id} 
+                  href={`/community/${post.id}`} 
+                  className="rounded-xl p-3 flex items-center gap-3 transition-colors duration-300" 
+                  style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}
+                >
+                  {/* 내용 */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: theme.bgInput, color: theme.accent }}>
+                        {post.category || "자유"}
+                      </span>
+                      <span className="text-[10px]" style={{ color: theme.textMuted }}>{formatTime(post.created_at)}</span>
+                    </div>
+                    <p className="text-[13px] font-medium line-clamp-1" style={{ color: theme.textPrimary }}>{post.title || post.content}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[11px]" style={{ color: theme.textMuted }}>{post.profiles?.nickname || post.author_name || "익명"}</span>
+                      <span className="text-[10px] flex items-center gap-0.5" style={{ color: theme.red }}>
+                        <Heart className="w-3 h-3" style={{ fill: theme.red }} /> {post.like_count || 0}
+                      </span>
+                      <span className="text-[10px] flex items-center gap-0.5" style={{ color: theme.textMuted }}>
+                        <MessageCircle className="w-3 h-3" strokeWidth={1.5} /> {post.comment_count || 0}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {/* 오른쪽 아이콘 */}
+                  <div className="w-12 h-12 rounded-lg flex-shrink-0 flex items-center justify-center" style={{ backgroundColor: theme.bgInput }}>
+                    {getPostIcon(post)}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* 최신 소식 - 아이콘으로 표시 */}
+        <section className="px-4 mt-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-base font-bold" style={{ color: theme.textPrimary }}>📰 최신 소식</h3>
+              <p className="text-xs mt-0.5" style={{ color: theme.textMuted }}>여주 지역 뉴스</p>
+            </div>
+            <Link href="/news" className="flex items-center gap-0.5 text-sm font-semibold" style={{ color: theme.accent }}>
+              전체보기 <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
+            </Link>
+          </div>
+          
+          {news.length === 0 ? (
+            <div className="rounded-2xl p-8 text-center transition-colors duration-300" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}>
+              <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3" style={{ backgroundColor: theme.bgInput }}>
+                <Newspaper className="w-6 h-6" style={{ color: theme.textMuted }} strokeWidth={1.5} />
+              </div>
+              <p className="font-medium text-sm" style={{ color: theme.textMuted }}>뉴스가 없습니다</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {news.map((item) => (
+                <Link
+                  key={item.id}
+                  href={`/news/${item.id}`}
+                  className="rounded-xl p-3 flex items-center gap-3 transition-colors duration-300"
+                  style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}
+                >
+                  {/* 내용 */}
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-[14px] font-bold line-clamp-2 mb-1.5" style={{ color: '#D4A574' }}>
+                      {item.title}
+                    </h4>
+                    <div className="flex items-center gap-2 text-[11px]" style={{ color: theme.textMuted }}>
+                      <span>{item.source || '여주굿뉴스'}</span>
+                      <span>·</span>
+                      <span>{formatTime(item.created_at)}</span>
+                    </div>
+                  </div>
+                  
+                  {/* 오른쪽 뉴스 아이콘 */}
+                  <div className="w-12 h-12 rounded-lg flex-shrink-0 flex items-center justify-center" style={{ backgroundColor: theme.bgInput }}>
+                    <Newspaper className="w-5 h-5" style={{ color: theme.accent }} strokeWidth={1.5} />
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* 서브 배너 2 */}
+        {subBanners.length > 1 && (
+          <section className="px-4 mt-6">
+            <Link href={subBanners[1]?.link_url || "#"} className="block rounded-2xl overflow-hidden transition-colors duration-300" style={{ aspectRatio: '5/1', border: `1px solid ${theme.borderLight}` }}>
+              {subBanners[1]?.image_url ? (
+                <img src={subBanners[1].image_url} alt={subBanners[1].title || ""} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center gap-3 px-4" style={{ background: `linear-gradient(135deg, ${theme.bgInput}, ${theme.bgCard})` }}>
+                  {subBanners[1]?.icon && <span className="text-2xl">{subBanners[1].icon}</span>}
+                  <div>
+                    <p className="font-semibold" style={{ color: theme.textPrimary }}>{subBanners[1]?.title}</p>
+                    {subBanners[1]?.subtitle && <p className="text-sm" style={{ color: theme.textMuted }}>{subBanners[1].subtitle}</p>}
+                  </div>
+                </div>
+              )}
+            </Link>
+          </section>
+        )}
+
+        {/* 영상 - 2열 2행 */}
+        <section className="px-4 mt-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-base font-bold" style={{ color: theme.textPrimary }}>🎬 영상</h3>
+              <p className="text-xs mt-0.5" style={{ color: theme.textMuted }}>여주마켓 영상 콘텐츠</p>
+            </div>
+            <Link href="/videos" className="flex items-center gap-0.5 text-sm font-semibold" style={{ color: theme.accent }}>
+              전체보기 <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
+            </Link>
+          </div>
+          
+          {videos.length === 0 ? (
+            <div className="rounded-2xl p-8 text-center transition-colors duration-300" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}>
+              <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3" style={{ backgroundColor: theme.bgInput }}>
+                <Video className="w-6 h-6" style={{ color: theme.textMuted }} strokeWidth={1.5} />
+              </div>
+              <p className="font-medium text-sm" style={{ color: theme.textMuted }}>영상이 없습니다</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3">
-              {groupBuys.map((gb) => (
-                <Link 
-                  key={gb.id} 
-                  href={`/groupbuy/${gb.id}`}
-                  className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all group"
+              {videos.slice(0, 4).map((video) => (
+                <Link
+                  key={video.id}
+                  href={`/videos/${video.id}`}
+                  className="rounded-2xl overflow-hidden transition-colors duration-300"
+                  style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}
                 >
-                  <div className="aspect-square bg-gradient-to-br from-gray-50 to-gray-100 relative overflow-hidden">
-                    {gb.thumbnail_url ? (
-                      <img src={gb.thumbnail_url} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                  <div className="aspect-video relative bg-black">
+                    {video.thumbnail_url ? (
+                      <img src={video.thumbnail_url} alt={video.title} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
-                        <span className="text-5xl opacity-50">🛒</span>
+                        <Video className="w-10 h-10" style={{ color: '#666' }} strokeWidth={1} />
                       </div>
                     )}
-                    {gb.discount_rate > 0 && (
-                      <div className="absolute top-2 left-2 px-2.5 py-1 bg-gradient-to-r from-red-500 to-rose-500 text-white text-xs font-bold rounded-lg shadow-lg">
-                        {gb.discount_rate}% OFF
-                      </div>
-                    )}
-                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-3">
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-1.5 bg-white/30 rounded-full overflow-hidden">
-                          <div 
-                            className="h-full bg-emerald-400 rounded-full"
-                            style={{ width: `${Math.min(((gb.current_participants || 0) / gb.target_participants) * 100, 100)}%` }}
-                          ></div>
-                        </div>
-                        <span className="text-white text-xs font-bold">{Math.round(((gb.current_participants || 0) / gb.target_participants) * 100)}%</span>
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                      <div 
+                        className="w-10 h-10 rounded-full flex items-center justify-center"
+                        style={{ backgroundColor: theme.accent }}
+                      >
+                        <Play className="w-5 h-5 ml-0.5" style={{ color: isDark ? '#121212' : '#FFFFFF' }} fill={isDark ? '#121212' : '#FFFFFF'} strokeWidth={0} />
                       </div>
                     </div>
+                    {video.duration && (
+                      <div className="absolute bottom-1 right-1 bg-black/80 text-white text-[10px] px-1.5 py-0.5 rounded">
+                        {video.duration}
+                      </div>
+                    )}
                   </div>
-                  <div className="p-3">
-                    <p className="text-xs text-emerald-600 font-bold">{gb.shops?.name}</p>
-                    <p className="text-sm font-bold text-gray-900 mt-1 line-clamp-2 leading-tight">{gb.title}</p>
-                    <div className="mt-2 flex items-baseline gap-1.5">
-                      {gb.original_price > gb.price && (
-                        <span className="text-xs text-gray-400 line-through">{formatPrice(gb.original_price)}</span>
-                      )}
-                      <span className="text-base font-black text-emerald-600">{formatPrice(gb.price)}</span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1.5">
-                      <span className="text-emerald-600 font-bold">{gb.current_participants || 0}명</span> 참여중
+                  <div className="p-2">
+                    <h4 className="text-[12px] font-medium line-clamp-2" style={{ color: theme.textPrimary }}>
+                      {video.title}
+                    </h4>
+                    <p className="text-[11px] mt-1" style={{ color: theme.textMuted }}>
+                      조회수 {video.view_count || 0}회
                     </p>
                   </div>
                 </Link>
@@ -377,179 +753,24 @@ export default function HomePage() {
           )}
         </section>
 
-        {/* ==================== 서브 배너 1 ==================== */}
-        {subBanners.length > 0 && (
-          <div className="px-4 mt-6">
-            <Link 
-              href={subBanners[0]?.link_url || "#"}
-              className="block rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow"
-              style={{ aspectRatio: '5/1' }}
-            >
-              {subBanners[0]?.image_url ? (
-                <img 
-                  src={subBanners[0].image_url} 
-                  alt={subBanners[0].title || "광고"} 
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className={`w-full h-full bg-gradient-to-r ${subBanners[0]?.bg_color || 'from-blue-500 to-indigo-500'} flex items-center justify-center gap-3 px-4`}>
-                  {subBanners[0]?.icon && <span className="text-2xl">{subBanners[0].icon}</span>}
-                  <div className="text-white">
-                    <p className="font-bold">{subBanners[0]?.title}</p>
-                    {subBanners[0]?.subtitle && <p className="text-sm opacity-80">{subBanners[0].subtitle}</p>}
-                  </div>
-                </div>
-              )}
-            </Link>
-          </div>
-        )}
-
-        {/* 인기 게시글 */}
-        <section className="px-4 mt-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-lg font-bold text-gray-900">💬 인기 게시글</h3>
-              <p className="text-xs text-gray-500 mt-0.5">이웃들의 이야기</p>
-            </div>
-            <Link href="/community" className="flex items-center gap-1 text-sm text-emerald-600 font-bold px-3 py-1.5 bg-emerald-50 rounded-full">
-              전체보기
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </Link>
-          </div>
-          
-          <div className="bg-white rounded-2xl overflow-hidden shadow-sm">
-            {posts.length === 0 ? (
-              <div className="p-8 text-center">
-                <p className="text-gray-400">게시글이 없습니다</p>
-              </div>
-            ) : (
+        {/* 입점 배너 */}
+        <section className="px-4 mt-6 mb-6">
+          <Link href="/shop/register" className="block rounded-2xl p-5 relative overflow-hidden group" style={{ background: `linear-gradient(135deg, ${theme.bgElevated}, ${theme.bgCard})`, border: `1px solid ${theme.border}` }}>
+            <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full blur-3xl" style={{ backgroundColor: `${theme.accent}15` }}></div>
+            <div className="relative z-10 flex items-center justify-between">
               <div>
-                {posts.map((post, index) => (
-                  <Link 
-                    key={post.id} 
-                    href={`/community?post=${post.id}`}
-                    className="flex items-center gap-3 p-4 hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-b-0"
-                  >
-                    <div className={`w-8 h-8 flex items-center justify-center rounded-xl text-sm font-black ${
-                      index === 0 ? 'bg-gradient-to-br from-amber-400 to-orange-400 text-white shadow-lg shadow-amber-200/50' :
-                      index === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-400 text-white shadow-lg shadow-gray-200/50' :
-                      index === 2 ? 'bg-gradient-to-br from-amber-600 to-amber-700 text-white shadow-lg shadow-amber-200/50' :
-                      'bg-gray-100 text-gray-500'
-                    }`}>
-                      {index + 1}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-900 font-medium truncate">{post.content}</p>
-                      <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
-                        <span className="flex items-center gap-1">
-                          <span className="text-red-400">❤️</span> {post.like_count || 0}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <span className="text-blue-400">💬</span> {post.comment_count || 0}
-                        </span>
-                      </div>
-                    </div>
-                    <svg className="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </Link>
-                ))}
+                <p className="text-sm" style={{ color: theme.textMuted }}>여주 지역 사장님이신가요?</p>
+                <p className="text-lg font-bold mt-1" style={{ color: theme.textPrimary }}>공동구매로 매출 UP! 🚀</p>
+                <p className="text-sm font-semibold mt-2 flex items-center gap-0.5" style={{ color: theme.accent }}>
+                  입점 신청하기 <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
+                </p>
               </div>
-            )}
-          </div>
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform" style={{ background: `linear-gradient(135deg, ${theme.accent}, ${theme.accentDark})` }}>
+                <Store className="w-6 h-6" style={{ color: isDark ? '#121212' : '#FFFFFF' }} strokeWidth={1.5} />
+              </div>
+            </div>
+          </Link>
         </section>
-
-        {/* ==================== 서브 배너 2 ==================== */}
-        {subBanners.length > 1 && (
-          <div className="px-4 mt-6">
-            <Link 
-              href={subBanners[1]?.link_url || "#"}
-              className="block rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow"
-              style={{ aspectRatio: '5/1' }}
-            >
-              {subBanners[1]?.image_url ? (
-                <img 
-                  src={subBanners[1].image_url} 
-                  alt={subBanners[1].title || "광고"} 
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className={`w-full h-full bg-gradient-to-r ${subBanners[1]?.bg_color || 'from-purple-500 to-pink-500'} flex items-center justify-center gap-3 px-4`}>
-                  {subBanners[1]?.icon && <span className="text-2xl">{subBanners[1].icon}</span>}
-                  <div className="text-white">
-                    <p className="font-bold">{subBanners[1]?.title}</p>
-                    {subBanners[1]?.subtitle && <p className="text-sm opacity-80">{subBanners[1].subtitle}</p>}
-                  </div>
-                </div>
-              )}
-            </Link>
-          </div>
-        )}
-
-        {/* ==================== 서브 배너 3 (하단) ==================== */}
-        {subBanners.length > 2 ? (
-          <section className="px-4 mt-6 mb-6">
-            <Link 
-              href={subBanners[2]?.link_url || "#"}
-              className="block rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow"
-            >
-              {subBanners[2]?.image_url ? (
-                <img 
-                  src={subBanners[2].image_url} 
-                  alt={subBanners[2].title || "광고"} 
-                  className="w-full h-full object-cover"
-                  style={{ aspectRatio: '5/1' }}
-                />
-              ) : (
-                <div className={`bg-gradient-to-br ${subBanners[2]?.bg_color || 'from-gray-900 via-gray-800 to-gray-900'} p-5 relative overflow-hidden`}>
-                  <div className="absolute inset-0">
-                    <div className="absolute right-0 top-0 w-40 h-40 bg-emerald-500/20 rounded-full blur-3xl"></div>
-                    <div className="absolute left-0 bottom-0 w-32 h-32 bg-teal-500/10 rounded-full blur-2xl"></div>
-                  </div>
-                  <div className="relative z-10 flex items-center justify-between">
-                    <div>
-                      {subBanners[2]?.subtitle && <p className="text-gray-400 text-sm font-medium">{subBanners[2].subtitle}</p>}
-                      <p className="text-white text-lg font-bold mt-1">{subBanners[2]?.title}</p>
-                    </div>
-                    {subBanners[2]?.icon && (
-                      <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/30">
-                        <span className="text-2xl">{subBanners[2].icon}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </Link>
-          </section>
-        ) : (
-          /* 기본 입점 배너 (서브배너3 없을 때) */
-          <section className="px-4 mt-6 mb-6">
-            <Link 
-              href="/shop/register"
-              className="block bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 rounded-2xl p-5 relative overflow-hidden group"
-            >
-              <div className="absolute inset-0">
-                <div className="absolute right-0 top-0 w-40 h-40 bg-emerald-500/20 rounded-full blur-3xl"></div>
-                <div className="absolute left-0 bottom-0 w-32 h-32 bg-teal-500/10 rounded-full blur-2xl"></div>
-              </div>
-              
-              <div className="relative z-10 flex items-center justify-between">
-                <div>
-                  <p className="text-gray-400 text-sm font-medium">여주 지역 사장님이신가요?</p>
-                  <p className="text-white text-lg font-bold mt-1">공동구매로 매출 UP! 🚀</p>
-                  <p className="text-emerald-400 text-sm font-medium mt-2 group-hover:translate-x-1 transition-transform">
-                    입점 신청하기 →
-                  </p>
-                </div>
-                <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/30 group-hover:scale-110 transition-transform">
-                  <span className="text-2xl">🏪</span>
-                </div>
-              </div>
-            </Link>
-          </section>
-        )}
       </main>
 
       <BottomNav />

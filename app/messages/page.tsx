@@ -3,10 +3,23 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { useTheme } from "@/contexts/ThemeContext";
 import BottomNav from "@/components/BottomNav";
+import {
+  ArrowLeft,
+  Mail,
+  Megaphone,
+  Shield,
+  MessageSquare,
+  X,
+  Trash2,
+  CheckCheck,
+} from "lucide-react";
 
 export default function MessagesPage() {
   const router = useRouter();
+  const { theme, isDark, mounted } = useTheme();
+  
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
@@ -28,7 +41,6 @@ export default function MessagesPage() {
     
     setUser(user);
     
-    // 프로필 조회 (역할 확인용)
     const { data: profileData } = await supabase
       .from("profiles")
       .select("*")
@@ -41,20 +53,20 @@ export default function MessagesPage() {
   };
 
   const fetchMessages = async (userId: string, role: string) => {
-    // 1. 개인 쪽지 조회
+    // 개인 쪽지
     const { data: personalMessages } = await supabase
       .from("messages")
       .select("*")
       .eq("receiver_id", userId)
       .order("created_at", { ascending: false });
     
-    // 2. 전체/그룹 쪽지 조회
+    // 전체/역할별 공지
     const { data: broadcasts } = await supabase
       .from("broadcast_messages")
       .select("*")
       .order("created_at", { ascending: false });
     
-    // 3. 읽은 브로드캐스트 목록 조회
+    // 읽은 공지 목록
     const { data: readBroadcasts } = await supabase
       .from("broadcast_reads")
       .select("broadcast_id")
@@ -62,7 +74,7 @@ export default function MessagesPage() {
     
     const readBroadcastIds = new Set((readBroadcasts || []).map(r => r.broadcast_id));
     
-    // 4. 내게 해당하는 브로드캐스트만 필터링
+    // 내게 해당하는 공지만 필터링
     const myBroadcasts = (broadcasts || []).filter(b => {
       if (b.target_type === "all") return true;
       if (b.target_type === "role" && b.target_value === role) return true;
@@ -74,7 +86,7 @@ export default function MessagesPage() {
       is_admin_message: true
     }));
     
-    // 5. 합치고 정렬
+    // 병합 및 정렬
     const allMessages = [
       ...(personalMessages || []).map(m => ({ ...m, is_broadcast: false })),
       ...myBroadcasts
@@ -89,13 +101,11 @@ export default function MessagesPage() {
     
     if (!message.is_read) {
       if (message.is_broadcast) {
-        // 브로드캐스트 읽음 처리
         await supabase.from("broadcast_reads").insert({
           broadcast_id: message.id,
           user_id: user.id
         });
       } else {
-        // 개인 쪽지 읽음 처리
         await supabase.from("messages").update({ is_read: true }).eq("id", message.id);
       }
       setMessages(prev => prev.map(m => 
@@ -111,8 +121,7 @@ export default function MessagesPage() {
     if (!confirm("이 쪽지를 삭제하시겠습니까?")) return;
     
     if (message.is_broadcast) {
-      // 브로드캐스트는 읽음 처리만 (삭제 불가)
-      alert("전체 쪽지는 삭제할 수 없습니다");
+      alert("전체 공지는 삭제할 수 없습니다");
       return;
     }
     
@@ -125,10 +134,8 @@ export default function MessagesPage() {
   const markAllAsRead = async () => {
     if (!user) return;
     
-    // 개인 쪽지 읽음 처리
     await supabase.from("messages").update({ is_read: true }).eq("receiver_id", user.id).eq("is_read", false);
     
-    // 브로드캐스트 읽음 처리
     const unreadBroadcasts = messages.filter(m => m.is_broadcast && !m.is_read);
     if (unreadBroadcasts.length > 0) {
       const inserts = unreadBroadcasts.map(b => ({
@@ -168,73 +175,78 @@ export default function MessagesPage() {
     });
   };
 
-  if (loading) {
+  const getIcon = (message: any) => {
+    if (message.is_broadcast) return Megaphone;
+    if (message.is_admin_message) return Shield;
+    return MessageSquare;
+  };
+
+  if (!mounted || loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: theme.bgMain }}>
+        <div className="w-10 h-10 border-2 rounded-full animate-spin" style={{ borderColor: theme.border, borderTopColor: theme.accent }}></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
+    <div className="min-h-screen pb-24 transition-colors duration-300" style={{ backgroundColor: theme.bgMain }}>
       {/* 헤더 */}
-      <header className="bg-white sticky top-0 z-50 border-b border-gray-100">
-        <div className="max-w-[631px] mx-auto px-4 h-14 flex items-center justify-between">
+      <header className="sticky top-0 z-50" style={{ backgroundColor: theme.bgMain, borderBottom: `1px solid ${theme.borderLight}` }}>
+        <div className="max-w-[640px] mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button onClick={() => router.back()} className="text-gray-600">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
+            <button onClick={() => router.back()} className="p-1 -ml-1 rounded-lg" style={{ color: theme.textPrimary }}>
+              <ArrowLeft className="w-6 h-6" strokeWidth={1.5} />
             </button>
-            <h1 className="text-gray-900 font-bold text-lg">쪽지함</h1>
+            <h1 className="text-lg font-bold" style={{ color: theme.textPrimary }}>쪽지함</h1>
             {unreadCount > 0 && (
-              <span className="px-2 py-0.5 bg-emerald-500 text-white text-xs font-bold rounded-full">
+              <span className="px-2 py-0.5 text-xs font-bold rounded-full" style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#FFF' }}>
                 {unreadCount}
               </span>
             )}
           </div>
           
           {messages.length > 0 && unreadCount > 0 && (
-            <button
-              onClick={markAllAsRead}
-              className="text-sm text-emerald-600 font-medium"
-            >
+            <button onClick={markAllAsRead} className="flex items-center gap-1 text-sm font-medium" style={{ color: theme.accent }}>
+              <CheckCheck className="w-4 h-4" strokeWidth={1.5} />
               모두 읽음
             </button>
           )}
         </div>
       </header>
 
-      <main className="max-w-[631px] mx-auto px-4 py-4">
+      <main className="max-w-[640px] mx-auto px-4 py-4">
         {messages.length === 0 ? (
-          <div className="py-16 text-center">
-            <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <span className="text-4xl">✉️</span>
+          <div className="rounded-2xl py-16 text-center" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}>
+            <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: theme.bgInput }}>
+              <Mail className="w-8 h-8" style={{ color: theme.textMuted }} strokeWidth={1.5} />
             </div>
-            <p className="text-gray-500 font-medium">받은 쪽지가 없습니다</p>
-            <p className="text-gray-400 text-sm mt-1">새로운 쪽지가 오면 알려드릴게요</p>
+            <p className="font-medium" style={{ color: theme.textPrimary }}>받은 쪽지가 없습니다</p>
+            <p className="text-sm mt-1" style={{ color: theme.textMuted }}>관리자에게서 쪽지가 오면 여기에 표시됩니다</p>
           </div>
         ) : (
           <div className="space-y-3">
-            {messages.map((message, index) => {
+            {messages.map((message) => {
               const isUnread = !message.is_read;
               const uniqueKey = message.is_broadcast ? `b-${message.id}` : `m-${message.id}`;
+              const IconComponent = getIcon(message);
               
               return (
                 <div
                   key={uniqueKey}
                   onClick={() => openMessage(message)}
-                  className={`relative rounded-2xl p-4 cursor-pointer transition-all ${
-                    isUnread 
-                      ? 'bg-emerald-50 border-2 border-emerald-400 shadow-md' 
-                      : 'bg-white border border-gray-100 opacity-60'
-                  }`}
+                  className="relative rounded-2xl p-4 cursor-pointer transition-all"
+                  style={{ 
+                    backgroundColor: theme.bgCard, 
+                    border: `1px solid ${isUnread ? theme.accent : theme.borderLight}`,
+                    opacity: isUnread ? 1 : 0.7,
+                    boxShadow: isUnread ? `0 0 0 1px ${theme.accent}30` : 'none',
+                  }}
                 >
                   {/* 읽지 않음 표시 */}
                   {isUnread && (
                     <div className="absolute top-3 right-3">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-500 text-white">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#FFF' }}>
                         NEW
                       </span>
                     </div>
@@ -243,7 +255,7 @@ export default function MessagesPage() {
                   {/* 읽음 표시 */}
                   {!isUnread && (
                     <div className="absolute top-3 right-3">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-500">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium" style={{ backgroundColor: theme.bgInput, color: theme.textMuted }}>
                         읽음
                       </span>
                     </div>
@@ -251,30 +263,27 @@ export default function MessagesPage() {
                   
                   <div className="flex gap-3">
                     {/* 아이콘 */}
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                      isUnread
-                        ? (message.is_broadcast ? 'bg-emerald-200' : message.is_admin_message ? 'bg-amber-200' : 'bg-blue-200')
-                        : 'bg-gray-100'
-                    }`}>
-                      <span className={`text-xl ${!isUnread ? 'opacity-50' : ''}`}>
-                        {message.is_broadcast ? '📢' : message.is_admin_message ? '👑' : '✉️'}
-                      </span>
+                    <div
+                      className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: isUnread ? `${theme.accent}20` : theme.bgInput }}
+                    >
+                      <IconComponent className="w-5 h-5" style={{ color: isUnread ? theme.accent : theme.textMuted }} strokeWidth={1.5} />
                     </div>
                     
                     {/* 내용 */}
                     <div className="flex-1 min-w-0 pr-12">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         {message.is_broadcast ? (
-                          <span className={`text-xs px-1.5 py-0.5 rounded font-bold ${isUnread ? 'bg-emerald-200 text-emerald-700' : 'bg-gray-200 text-gray-500'}`}>전체공지</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded font-bold" style={{ backgroundColor: `${theme.accent}20`, color: theme.accent }}>전체공지</span>
                         ) : message.is_admin_message && (
-                          <span className={`text-xs px-1.5 py-0.5 rounded font-bold ${isUnread ? 'bg-amber-200 text-amber-700' : 'bg-gray-200 text-gray-500'}`}>관리자</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded font-bold" style={{ backgroundColor: `${theme.accent}20`, color: theme.accent }}>관리자</span>
                         )}
-                        <p className={`truncate ${isUnread ? 'text-gray-900 font-bold' : 'text-gray-500'}`}>
+                        <p className={`truncate ${isUnread ? 'font-bold' : ''}`} style={{ color: isUnread ? theme.textPrimary : theme.textMuted }}>
                           {message.title}
                         </p>
                       </div>
-                      <p className={`text-sm line-clamp-1 ${isUnread ? 'text-gray-600' : 'text-gray-400'}`}>{message.content}</p>
-                      <p className={`text-xs mt-1 ${isUnread ? 'text-emerald-600 font-medium' : 'text-gray-400'}`}>
+                      <p className="text-sm line-clamp-1" style={{ color: isUnread ? theme.textSecondary : theme.textMuted }}>{message.content}</p>
+                      <p className="text-xs mt-1 font-medium" style={{ color: isUnread ? theme.accent : theme.textMuted }}>
                         {formatDate(message.created_at)}
                       </p>
                     </div>
@@ -288,51 +297,42 @@ export default function MessagesPage() {
 
       {/* 쪽지 상세 모달 */}
       {selectedMessage && (
-        <div 
-          className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4"
-          onClick={() => setSelectedMessage(null)}
-        >
-          <div 
-            className="bg-white rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => setSelectedMessage(null)}>
+          <div className="rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden" style={{ backgroundColor: theme.bgCard }} onClick={(e) => e.stopPropagation()}>
             {/* 헤더 */}
-            <div className="sticky top-0 bg-white border-b border-gray-100 px-4 py-4">
+            <div className="sticky top-0 px-4 py-4" style={{ backgroundColor: theme.bgCard, borderBottom: `1px solid ${theme.border}` }}>
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap flex-1 mr-4">
                   {selectedMessage.is_broadcast ? (
-                    <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold">전체공지</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{ backgroundColor: `${theme.accent}20`, color: theme.accent }}>전체공지</span>
                   ) : selectedMessage.is_admin_message && (
-                    <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold">관리자</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{ backgroundColor: `${theme.accent}20`, color: theme.accent }}>관리자</span>
                   )}
-                  <h3 className="text-lg font-bold text-gray-900">{selectedMessage.title}</h3>
+                  <h3 className="text-lg font-bold truncate" style={{ color: theme.textPrimary }}>{selectedMessage.title}</h3>
                 </div>
-                <button 
-                  onClick={() => setSelectedMessage(null)}
-                  className="p-1 text-gray-400 hover:text-gray-600"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+                <button onClick={() => setSelectedMessage(null)} className="p-1 rounded-lg" style={{ color: theme.textMuted }}>
+                  <X className="w-6 h-6" strokeWidth={1.5} />
                 </button>
               </div>
-              <p className="text-gray-400 text-sm mt-1">{formatFullDate(selectedMessage.created_at)}</p>
+              <p className="text-sm mt-1" style={{ color: theme.textMuted }}>{formatFullDate(selectedMessage.created_at)}</p>
             </div>
             
             {/* 내용 */}
             <div className="p-4 overflow-y-auto max-h-[50vh]">
-              <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">
+              <p className="whitespace-pre-wrap leading-relaxed" style={{ color: theme.textSecondary }}>
                 {selectedMessage.content}
               </p>
             </div>
             
-            {/* 하단 버튼 */}
+            {/* 삭제 버튼 */}
             {!selectedMessage.is_broadcast && (
-              <div className="border-t border-gray-100 p-4">
+              <div className="p-4" style={{ borderTop: `1px solid ${theme.border}` }}>
                 <button
                   onClick={() => deleteMessage(selectedMessage)}
-                  className="w-full py-3 bg-red-50 text-red-500 rounded-xl font-bold"
+                  className="w-full py-3 rounded-xl font-semibold flex items-center justify-center gap-2"
+                  style={{ backgroundColor: theme.redBg, color: theme.red }}
                 >
+                  <Trash2 className="w-5 h-5" strokeWidth={1.5} />
                   삭제
                 </button>
               </div>

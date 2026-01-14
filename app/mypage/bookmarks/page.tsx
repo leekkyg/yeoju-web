@@ -4,10 +4,23 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { useTheme } from "@/contexts/ThemeContext";
 import BottomNav from "@/components/BottomNav";
+import {
+  ArrowLeft,
+  Bookmark,
+  Heart,
+  MessageCircle,
+  Trash2,
+  FileText,
+  Play,
+  Film,
+} from "lucide-react";
 
 export default function BookmarksPage() {
   const router = useRouter();
+  const { theme, isDark, mounted } = useTheme();
+  
   const [user, setUser] = useState<any>(null);
   const [bookmarkedPosts, setBookmarkedPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,51 +43,30 @@ export default function BookmarksPage() {
   };
 
   const fetchBookmarkedPosts = async (userId: string) => {
-    // 1. 북마크 목록만 먼저 조회
     const { data: bookmarks, error: bookmarkError } = await supabase
       .from("post_bookmarks")
       .select("post_id, created_at")
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
     
-    if (bookmarkError) {
-      console.error("북마크 조회 에러:", bookmarkError);
+    if (bookmarkError || !bookmarks || bookmarks.length === 0) {
       setBookmarkedPosts([]);
       return;
     }
     
-    if (!bookmarks || bookmarks.length === 0) {
-      setBookmarkedPosts([]);
-      return;
-    }
-    
-    // 2. post_id 목록으로 게시글 조회
     const postIds = bookmarks.map(b => b.post_id);
-    const { data: posts, error: postsError } = await supabase
+    const { data: posts } = await supabase
       .from("posts")
       .select("id, content, created_at, user_id, is_anonymous, like_count, comment_count, images")
       .in("id", postIds);
     
-    if (postsError) {
-      console.error("게시글 조회 에러:", postsError);
-    }
-    
-    // 3. 북마크 순서대로 정렬 + 삭제된 글 표시
     const postsMap = new Map((posts || []).map(p => [p.id, p]));
     const result = bookmarks.map(b => {
       const post = postsMap.get(b.post_id);
       if (post) {
-        return { 
-          ...post, 
-          bookmarked_at: b.created_at, 
-          is_deleted: false 
-        };
+        return { ...post, bookmarked_at: b.created_at, is_deleted: false };
       } else {
-        return { 
-          id: b.post_id, 
-          bookmarked_at: b.created_at, 
-          is_deleted: true 
-        };
+        return { id: b.post_id, bookmarked_at: b.created_at, is_deleted: true };
       }
     });
     
@@ -102,85 +94,85 @@ export default function BookmarksPage() {
     return date.toLocaleDateString("ko-KR");
   };
 
-  if (loading) {
+  const getYoutubeId = (text: string) => {
+    const match = text?.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    return match ? match[1] : null;
+  };
+
+  if (!mounted || loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: theme.bgMain }}>
+        <div className="w-10 h-10 border-2 rounded-full animate-spin" style={{ borderColor: theme.border, borderTopColor: theme.accent }}></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
+    <div className="min-h-screen pb-24 transition-colors duration-300" style={{ backgroundColor: theme.bgMain }}>
       {/* 헤더 */}
-      <header className="bg-white sticky top-0 z-50 border-b border-gray-100">
-        <div className="max-w-[631px] mx-auto px-4 h-14 flex items-center gap-3">
-          <button onClick={() => router.back()} className="text-gray-600">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
+      <header className="sticky top-0 z-50" style={{ backgroundColor: theme.bgMain, borderBottom: `1px solid ${theme.borderLight}` }}>
+        <div className="max-w-[640px] mx-auto px-4 py-3 flex items-center gap-3">
+          <button onClick={() => router.back()} className="p-1 -ml-1 rounded-lg" style={{ color: theme.textPrimary }}>
+            <ArrowLeft className="w-6 h-6" strokeWidth={1.5} />
           </button>
-          <h1 className="text-gray-900 font-bold text-lg">저장한 글</h1>
-          <span className="text-gray-500 text-sm">({bookmarkedPosts.length})</span>
+          <h1 className="text-lg font-bold" style={{ color: theme.textPrimary }}>저장한 글</h1>
+          <span className="text-sm" style={{ color: theme.textMuted }}>({bookmarkedPosts.length})</span>
         </div>
       </header>
 
-      <main className="max-w-[631px] mx-auto">
+      <main className="max-w-[640px] mx-auto px-4 py-4">
         {bookmarkedPosts.length === 0 ? (
-          <div className="p-8 text-center">
-            <div className="text-6xl mb-4">🔖</div>
-            <p className="text-gray-500 text-lg font-medium">저장한 글이 없습니다</p>
-            <p className="text-gray-400 text-sm mt-2">게시글의 메뉴(⋮)에서 저장할 수 있어요</p>
+          <div className="rounded-2xl p-8 text-center" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}>
+            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: theme.bgInput }}>
+              <Bookmark className="w-7 h-7" style={{ color: theme.textMuted }} strokeWidth={1.5} />
+            </div>
+            <p className="text-lg font-medium mb-1" style={{ color: theme.textPrimary }}>저장한 글이 없습니다</p>
+            <p className="text-sm mb-4" style={{ color: theme.textMuted }}>게시글의 메뉴(⋮)에서 저장할 수 있어요</p>
             <Link 
               href="/community" 
-              className="inline-block mt-4 px-6 py-3 bg-emerald-500 text-white font-semibold rounded-xl"
+              className="inline-block px-6 py-3 rounded-xl font-semibold"
+              style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#FFFFFF' }}
             >
               커뮤니티 가기
             </Link>
           </div>
         ) : (
-          <div className="divide-y divide-gray-100">
+          <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}>
             {bookmarkedPosts.map((post, index) => (
-              <div key={post.id} className="bg-white">
+              <div key={post.id} style={{ borderBottom: index !== bookmarkedPosts.length - 1 ? `1px solid ${theme.border}` : 'none' }}>
                 {post.is_deleted ? (
-                  // 삭제된 글
-                  <div className="p-4 flex items-center justify-between">
+                  <div className="p-4 flex items-center justify-between" style={{ backgroundColor: theme.bgInput }}>
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center flex-shrink-0">
-                        <span className="text-white font-bold text-sm">{index + 1}</span>
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: theme.bgMain }}>
+                        <span className="text-sm font-bold" style={{ color: theme.textMuted }}>{index + 1}</span>
                       </div>
-                      <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
-                        <span className="text-gray-400">🗑️</span>
+                      <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: theme.bgMain }}>
+                        <Trash2 className="w-5 h-5" style={{ color: theme.textMuted }} strokeWidth={1.5} />
                       </div>
                       <div>
-                        <p className="text-gray-400 font-medium">삭제된 게시글입니다</p>
-                        <p className="text-gray-300 text-xs mt-1">저장일: {formatDate(post.bookmarked_at)}</p>
+                        <p className="font-medium" style={{ color: theme.textMuted }}>삭제된 게시글입니다</p>
+                        <p className="text-xs mt-0.5" style={{ color: theme.textMuted }}>저장일: {formatDate(post.bookmarked_at)}</p>
                       </div>
                     </div>
                     <button
                       onClick={() => removeBookmark(post.id)}
-                      className="px-3 py-1.5 text-sm text-red-500 bg-red-50 rounded-lg"
+                      className="px-3 py-1.5 text-sm rounded-lg font-medium"
+                      style={{ backgroundColor: theme.redBg, color: theme.red }}
                     >
                       제거
                     </button>
                   </div>
                 ) : (
-                  // 정상 글
                   <div className="relative">
-                    <Link
-                      href={`/community?post=${post.id}`}
-                      className="block p-4 hover:bg-gray-50 transition-colors"
-                    >
+                    <Link href={`/community?post=${post.id}`} className="block p-4 transition-colors">
                       <div className="flex gap-3">
-                        {/* 썸네일 */}
                         {/* 순번 */}
-                        <div className="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center flex-shrink-0">
-                          <span className="text-white font-bold text-sm">{index + 1}</span>
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: theme.accent }}>
+                          <span className="text-sm font-bold" style={{ color: isDark ? '#121212' : '#FFFFFF' }}>{index + 1}</span>
                         </div>
                         
                         {/* 썸네일 */}
                         {(() => {
-                          // 이미지 확인
                           let images: string[] = [];
                           try {
                             if (post.images) {
@@ -188,43 +180,36 @@ export default function BookmarksPage() {
                             }
                           } catch (e) {}
                           
-                          // 유튜브 ID 추출
-                          const getYoutubeId = (text: string) => {
-                            const match = text?.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-                            return match ? match[1] : null;
-                          };
                           const youtubeId = getYoutubeId(post.content || '');
-                          
-                          // 동영상 링크 확인 (다음TV, 네이버TV 등)
                           const hasVideo = post.content?.match(/v\.daum\.net|tv\.naver\.com|vimeo\.com/);
                           
                           if (images.length > 0) {
                             return (
-                              <div className="w-12 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
+                              <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0" style={{ backgroundColor: theme.bgInput }}>
                                 <img src={images[0]} alt="" className="w-full h-full object-cover" />
                               </div>
                             );
                           } else if (youtubeId) {
                             return (
-                              <div className="w-12 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 relative">
+                              <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 relative" style={{ backgroundColor: theme.bgInput }}>
                                 <img src={`https://img.youtube.com/vi/${youtubeId}/mqdefault.jpg`} alt="" className="w-full h-full object-cover" />
                                 <div className="absolute inset-0 flex items-center justify-center bg-black/30">
                                   <div className="w-5 h-5 bg-red-600 rounded-full flex items-center justify-center">
-                                    <svg className="w-2.5 h-2.5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                    <Play className="w-2.5 h-2.5 text-white ml-0.5" fill="white" />
                                   </div>
                                 </div>
                               </div>
                             );
                           } else if (hasVideo) {
                             return (
-                              <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                                <span className="text-xl">🎬</span>
+                              <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${theme.accent}15` }}>
+                                <Film className="w-5 h-5" style={{ color: theme.accent }} strokeWidth={1.5} />
                               </div>
                             );
                           } else {
                             return (
-                              <div className="w-12 h-12 bg-emerald-50 rounded-lg flex items-center justify-center flex-shrink-0">
-                                <span className="text-xl">📝</span>
+                              <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: theme.bgInput }}>
+                                <FileText className="w-5 h-5" style={{ color: theme.accent }} strokeWidth={1.5} />
                               </div>
                             );
                           }
@@ -232,11 +217,17 @@ export default function BookmarksPage() {
                         
                         {/* 내용 */}
                         <div className="flex-1 min-w-0 pr-8">
-                          <p className="text-gray-900 line-clamp-2">{post.content}</p>
-                          <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
+                          <p className="line-clamp-2 text-sm" style={{ color: theme.textPrimary }}>{post.content}</p>
+                          <div className="flex items-center gap-3 mt-2 text-xs" style={{ color: theme.textMuted }}>
                             <span>{formatDate(post.bookmarked_at)} 저장</span>
-                            <span>❤️ {post.like_count || 0}</span>
-                            <span>💬 {post.comment_count || 0}</span>
+                            <span className="flex items-center gap-0.5">
+                              <Heart className="w-3 h-3" style={{ color: theme.red }} strokeWidth={1.5} />
+                              {post.like_count || 0}
+                            </span>
+                            <span className="flex items-center gap-0.5">
+                              <MessageCircle className="w-3 h-3" strokeWidth={1.5} />
+                              {post.comment_count || 0}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -245,11 +236,10 @@ export default function BookmarksPage() {
                     {/* 삭제 버튼 */}
                     <button
                       onClick={() => removeBookmark(post.id)}
-                      className="absolute top-4 right-4 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                      className="absolute top-4 right-4 p-2 rounded-full transition-colors"
+                      style={{ color: theme.accent }}
                     >
-                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                      </svg>
+                      <Bookmark className="w-5 h-5" fill={theme.accent} strokeWidth={1.5} />
                     </button>
                   </div>
                 )}

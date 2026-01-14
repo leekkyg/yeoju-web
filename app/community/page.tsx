@@ -1,50 +1,30 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, Suspense, useCallback } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { useTheme } from "@/contexts/ThemeContext";
+import Header from "@/components/Header";
+import BottomNav from "@/components/BottomNav";
+import { 
+  X, ChevronLeft, ChevronRight, Play, Camera, MoreVertical, Bell,
+  Image as ImageIcon, Send, Smile, ThumbsUp, MessageCircle, Share2, 
+  Bookmark, Edit, Trash2, Flag
+} from "lucide-react";
 
 const R2_WORKER_URL = "https://yeoju-r2-worker.kkyg9300.workers.dev";
 const CHUNK_SIZE = 50 * 1024 * 1024;
 const MAX_FILE_SIZE = 3 * 1024 * 1024 * 1024;
 const PARALLEL_UPLOADS = 5;
-
 const linkPreviewCache = new Map<string, any>();
 
-// ✅ 광고 컴포넌트
-const AdBanner = ({ ad, type }: { ad: any, type: 'list' | 'detail' }) => {
-  if (!ad) return null;
-  
-  const handleClick = () => {
-    if (ad.link_url) window.open(ad.link_url, '_blank');
-  };
-
-  return (
-    <div 
-      className={`cursor-pointer overflow-hidden ${type === 'list' ? 'bg-white rounded-xl shadow-md' : 'rounded-xl'}`}
-      onClick={handleClick}
-    >
-      {ad.image_url ? (
-        <div className="relative">
-          <img src={ad.image_url} alt={ad.title || "광고"} className="w-full object-cover" style={{ maxHeight: type === 'list' ? '120px' : '150px' }} />
-          <span className="absolute top-2 left-2 bg-black/50 text-white text-xs px-2 py-0.5 rounded">광고</span>
-        </div>
-      ) : (
-        <div className="bg-gradient-to-r from-amber-100 to-orange-100 p-4 flex items-center gap-3">
-          <span className="text-2xl">📢</span>
-          <div>
-            <p className="font-bold text-gray-900 text-sm">{ad.title}</p>
-          </div>
-          <span className="ml-auto bg-black/10 text-gray-600 text-xs px-2 py-0.5 rounded">광고</span>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default function CommunityPage() {
+function CommunityPageContent() {
+  const { theme, isDark, mounted } = useTheme();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
+  
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
@@ -90,7 +70,6 @@ export default function CommunityPage() {
   const commentInputRef = useRef<HTMLInputElement>(null);
   const detailContentRef = useRef<HTMLDivElement>(null);
   
-  // ✅ 광고 state
   const [listAds, setListAds] = useState<any[]>([]);
   const [detailAd, setDetailAd] = useState<any>(null);
   
@@ -120,40 +99,36 @@ export default function CommunityPage() {
 
   const emojis = ['😀', '😂', '🥹', '😍', '🥰', '😎', '🤔', '😢', '😡', '👍', '👎', '❤️', '🔥', '👏', '🎉', '💯', '🙏', '😱', '🤣', '😊'];
 
-  const isMutedPost = () => {
-    if (!userProfile?.mute_post_until) return false;
-    return new Date(userProfile.mute_post_until) > new Date();
-  };
-
-  const isMutedComment = () => {
-    if (!userProfile?.mute_comment_until) return false;
-    return new Date(userProfile.mute_comment_until) > new Date();
-  };
-
+  const isMutedPost = () => !userProfile?.mute_post_until ? false : new Date(userProfile.mute_post_until) > new Date();
+  const isMutedComment = () => !userProfile?.mute_comment_until ? false : new Date(userProfile.mute_comment_until) > new Date();
   const getMuteMessage = (type: "post" | "comment") => {
     const until = type === "post" ? userProfile?.mute_post_until : userProfile?.mute_comment_until;
     if (!until) return "";
     const endDate = new Date(until);
     const formatted = endDate.toLocaleDateString("ko-KR", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" });
-    const reason = userProfile?.mute_reason || "커뮤니티 규정 위반";
-    return `${type === "post" ? "글쓰기" : "댓글"} 제한 중입니다.\n\n사유: ${reason}\n해제일: ${formatted}`;
+    return `${type === "post" ? "글쓰기" : "댓글"} 제한 중입니다.\n\n사유: ${userProfile?.mute_reason || "커뮤니티 규정 위반"}\n해제일: ${formatted}`;
   };
 
-  // ✅ 광고 로드 함수
   const fetchAds = async () => {
     const { data: listData } = await supabase.from("ads").select("*").eq("position", "post_list").eq("is_active", true);
     setListAds(listData || []);
-    
     const { data: detailData } = await supabase.from("ads").select("*").eq("position", "post_detail").eq("is_active", true);
-    if (detailData && detailData.length > 0) {
-      setDetailAd(detailData[Math.floor(Math.random() * detailData.length)]);
-    }
+    if (detailData?.length) setDetailAd(detailData[Math.floor(Math.random() * detailData.length)]);
   };
 
-  const getRandomListAd = () => {
-    if (listAds.length === 0) return null;
-    return listAds[Math.floor(Math.random() * listAds.length)];
-  };
+  const getRandomListAd = () => listAds.length === 0 ? null : listAds[Math.floor(Math.random() * listAds.length)];
+
+  // URL 파라미터로 게시물 자동 열기
+  useEffect(() => {
+    if (!loading && !initialLoadDone && posts.length > 0) {
+      const postId = searchParams.get('post');
+      if (postId) {
+        const post = posts.find(p => p.id === parseInt(postId));
+        if (post) openDetailModal(post);
+      }
+      setInitialLoadDone(true);
+    }
+  }, [loading, posts, searchParams, initialLoadDone]);
 
   useEffect(() => {
     fetchPosts();
@@ -184,9 +159,7 @@ export default function CommunityPage() {
     const urls = extractLinks(content);
     if (urls.length > 0 && !writingLinkPreview) {
       fetchLinkPreview(urls[0]).then(preview => { if (preview) setWritingLinkPreview(preview); });
-    } else if (urls.length === 0) {
-      setWritingLinkPreview(null);
-    }
+    } else if (urls.length === 0) setWritingLinkPreview(null);
   }, [content]);
 
   useEffect(() => {
@@ -194,11 +167,9 @@ export default function CommunityPage() {
       const urls = extractLinks(post.content || '');
       if (urls.length > 0 && !postLinkPreviews.has(post.id)) {
         const youtubeId = getYoutubeId(urls[0]);
-        if (!youtubeId) {
-          fetchLinkPreview(urls[0]).then(preview => {
-            if (preview) setPostLinkPreviews(prev => new Map(prev).set(post.id, preview));
-          });
-        }
+        if (!youtubeId) fetchLinkPreview(urls[0]).then(preview => {
+          if (preview) setPostLinkPreviews(prev => new Map(prev).set(post.id, preview));
+        });
       }
     });
   }, [posts]);
@@ -206,12 +177,116 @@ export default function CommunityPage() {
   useEffect(() => {
     if (detailModal) {
       document.body.style.overflow = 'hidden';
+      // 브라우저 히스토리에 상태 추가 (뒤로가기 처리용)
+      window.history.pushState({ modal: true }, '', `/community/${detailModal.id}`);
       setTimeout(() => setDetailModalVisible(true), 10);
-    } else {
-      document.body.style.overflow = '';
-    }
+    } else document.body.style.overflow = '';
     return () => { document.body.style.overflow = ''; };
   }, [detailModal]);
+
+  // 뒤로가기 버튼 처리
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      if (detailModal) {
+        e.preventDefault();
+        closeDetailModal();
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [detailModal]);
+// ============================================================
+// 🔥 실시간 댓글 구독
+// ============================================================
+useEffect(() => {
+  if (!detailModal) return;
+
+  const postId = detailModal.id;
+
+  const channel = supabase
+    .channel(`comments:post:${postId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'comments',
+        filter: `post_id=eq.${postId}`
+      },
+      async (payload) => {
+        // 내가 작성한 댓글이면 무시 (이미 추가됨)
+        if (user && payload.new.user_id === user.id) return;
+        
+        const newComment = payload.new as any;
+        
+        // 중복 방지
+        setComments(prev => {
+          if (prev.some(c => c.id === newComment.id)) return prev;
+          return [...prev, { ...newComment, liked: false }];
+        });
+        
+        // 댓글 카운트 업데이트
+        setDetailModal((prev: any) => {
+          if (!prev) return prev;
+          return { ...prev, comment_count: (prev.comment_count || 0) + 1 };
+        });
+        
+        setPosts(prevPosts => 
+          prevPosts.map(p => 
+            p.id === postId 
+              ? { ...p, comment_count: (p.comment_count || 0) + 1 }
+              : p
+          )
+        );
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'comments',
+        filter: `post_id=eq.${postId}`
+      },
+      (payload) => {
+        const deletedId = (payload.old as any).id;
+        setComments(prev => prev.filter(c => c.id !== deletedId));
+        
+        setDetailModal((prev: any) => {
+          if (!prev) return prev;
+          return { ...prev, comment_count: Math.max(0, (prev.comment_count || 0) - 1) };
+        });
+        
+        setPosts(prevPosts => 
+          prevPosts.map(p => 
+            p.id === postId 
+              ? { ...p, comment_count: Math.max(0, (p.comment_count || 0) - 1) }
+              : p
+          )
+        );
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'comments',
+        filter: `post_id=eq.${postId}`
+      },
+      (payload) => {
+        const updatedComment = payload.new as any;
+        setComments(prev => 
+          prev.map(c => c.id === updatedComment.id ? { ...c, ...updatedComment } : c)
+        );
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [detailModal?.id, user]);
 
   const fetchLinkPreview = async (url: string): Promise<any> => {
     if (linkPreviewCache.has(url)) return linkPreviewCache.get(url);
@@ -221,7 +296,7 @@ export default function CommunityPage() {
       const response = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}`);
       const data = await response.json();
       if (data.status === 'success' && data.data) {
-        const preview = { title: data.data.title || getDomain(url), description: data.data.description || '', image: data.data.image?.url || data.data.logo?.url || null, url: url, domain: getDomain(url) };
+        const preview = { title: data.data.title || getDomain(url), description: data.data.description || '', image: data.data.image?.url || data.data.logo?.url || null, url, domain: getDomain(url) };
         linkPreviewCache.set(url, preview);
         setLoadingLinkPreview(false);
         return preview;
@@ -243,46 +318,31 @@ export default function CommunityPage() {
     setLoading(false);
   };
 
-  const togglePost = (postId: number) => {
-    setExpandedPosts(prev => { const n = new Set(prev); if (n.has(postId)) n.delete(postId); else n.add(postId); return n; });
-  };
+  const togglePost = (postId: number) => setExpandedPosts(prev => { const n = new Set(prev); if (n.has(postId)) n.delete(postId); else n.add(postId); return n; });
 
   const openDetailModal = async (post: any, scrollToComments: boolean = false, photoMode: boolean = false) => {
-    setDetailModal(post);
-    setPhotoModeOpen(photoMode);
-    setLoadingComments(true);
-    setReplyingTo(null);
-    setNewComment("");
-    setCommentImages([]);
-    setCommentImagePreviews([]);
-    
+    setDetailModal(post); setPhotoModeOpen(photoMode); setLoadingComments(true); setReplyingTo(null); setNewComment(""); setCommentImages([]); setCommentImagePreviews([]);
     const { data } = await supabase.from("comments").select("*").eq("post_id", post.id).order("created_at", { ascending: true });
     if (data && user) {
       const { data: likedComments } = await supabase.from("comment_likes").select("comment_id").eq("user_id", user.id);
       const likedIds = new Set(likedComments?.map(l => l.comment_id) || []);
       setComments(data.map(c => ({ ...c, liked: likedIds.has(c.id) })));
-    } else {
-      setComments(data || []);
-    }
+    } else setComments(data || []);
     setLoadingComments(false);
-    
     if (scrollToComments) setTimeout(() => commentInputRef.current?.focus(), 400);
   };
 
-  const closeDetailModal = () => {
-    setDetailModalVisible(false);
-    setTimeout(() => { setDetailModal(null); setComments([]); }, 300);
+  const closeDetailModal = () => { 
+    setDetailModalVisible(false); 
+    setTimeout(() => { setDetailModal(null); setComments([]); }, 300); 
   };
-
-  const scrollToTop = () => { window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     for (const file of files) {
       if (file.size > MAX_FILE_SIZE) { alert(`${file.name}: 3GB 이하만`); continue; }
       if (mediaFiles.length + 1 > 10) { alert("최대 10개"); break; }
-      const isVideo = file.type.startsWith('video/');
-      const isImage = file.type.startsWith('image/');
+      const isVideo = file.type.startsWith('video/'), isImage = file.type.startsWith('image/');
       if (!isVideo && !isImage) continue;
       setMediaFiles(prev => [...prev, file]);
       const reader = new FileReader();
@@ -297,7 +357,7 @@ export default function CommunityPage() {
   const compressImage = async (file: File): Promise<File> => {
     if (!file.type.startsWith('image/') || file.size < 1024 * 1024) return file;
     return new Promise((resolve) => {
-      const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d'); const img = new Image();
+      const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d'), img = new window.Image();
       img.onload = () => { let { width, height } = img; const maxSize = 2048; if (width > maxSize || height > maxSize) { if (width > height) { height = (height / width) * maxSize; width = maxSize; } else { width = (width / height) * maxSize; height = maxSize; } } canvas.width = width; canvas.height = height; ctx?.drawImage(img, 0, 0, width, height); canvas.toBlob((blob) => { if (blob) resolve(new File([blob], file.name, { type: 'image/jpeg' })); else resolve(file); }, 'image/jpeg', 0.85); };
       img.src = URL.createObjectURL(file);
     });
@@ -308,8 +368,7 @@ export default function CommunityPage() {
     const ext = file.name.split('.').pop();
     const fileName = `posts/${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
     const response = await fetch(`${R2_WORKER_URL}/${fileName}`, { method: 'PUT', body: processedFile, headers: { 'Content-Type': processedFile.type } });
-    const data = await response.json();
-    return data.url;
+    return (await response.json()).url;
   };
 
   const uploadLargeFile = async (file: File, fileIndex: number, totalFilesCount: number): Promise<string> => {
@@ -319,15 +378,14 @@ export default function CommunityPage() {
     const parts: { partNumber: number; etag: string }[] = [];
     let completedParts = 0;
     const uploadChunk = async (partIndex: number) => {
-      const start = partIndex * CHUNK_SIZE; const end = Math.min(start + CHUNK_SIZE, file.size); const chunk = file.slice(start, end);
+      const start = partIndex * CHUNK_SIZE, end = Math.min(start + CHUNK_SIZE, file.size), chunk = file.slice(start, end);
       const partRes = await fetch(`${R2_WORKER_URL}/multipart/upload/${key}`, { method: 'PUT', headers: { 'X-Upload-Id': uploadId, 'X-Part-Number': String(partIndex + 1) }, body: chunk });
-      const partData = await partRes.json(); completedParts++; const fileProgress = (completedParts / totalParts) * 100; const overallProgress = ((fileIndex + fileProgress / 100) / totalFilesCount) * 100; setUploadProgress(Math.round(overallProgress)); return { partNumber: partIndex + 1, etag: partData.etag };
+      const partData = await partRes.json(); completedParts++; const fileProgress = (completedParts / totalParts) * 100; setUploadProgress(Math.round(((fileIndex + fileProgress / 100) / totalFilesCount) * 100)); return { partNumber: partIndex + 1, etag: partData.etag };
     };
     for (let i = 0; i < totalParts; i += PARALLEL_UPLOADS) { const batch = []; for (let j = i; j < Math.min(i + PARALLEL_UPLOADS, totalParts); j++) batch.push(uploadChunk(j)); const results = await Promise.all(batch); parts.push(...results); }
     parts.sort((a, b) => a.partNumber - b.partNumber);
     const completeRes = await fetch(`${R2_WORKER_URL}/multipart/complete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fileKey: key, uploadId, parts }) });
-    const completeData = await completeRes.json();
-    return completeData.url;
+    return (await completeRes.json()).url;
   };
 
   const uploadFile = async (file: File, fileIndex: number, totalFilesCount: number): Promise<string> => {
@@ -338,7 +396,7 @@ export default function CommunityPage() {
     return url;
   };
 
-  const getClientIP = async (): Promise<string> => { try { const res = await fetch('https://api.ipify.org?format=json'); return (await res.json()).ip; } catch { return ''; } };
+  const getClientIP = async (): Promise<string> => { try { return (await (await fetch('https://api.ipify.org?format=json')).json()).ip; } catch { return ''; } };
 
   const notifyFollowers = async (postId: number) => {
     if (!user) return;
@@ -360,7 +418,7 @@ export default function CommunityPage() {
     setConfirmPostModal(false); setPosting(true); setUploadProgress(0); setTotalFiles(mediaFiles.length); setCurrentFileIndex(0);
     try {
       const uploadedUrls: string[] = [];
-      for (let i = 0; i < mediaFiles.length; i++) { const url = await uploadFile(mediaFiles[i], i, mediaFiles.length); uploadedUrls.push(url); }
+      for (let i = 0; i < mediaFiles.length; i++) uploadedUrls.push(await uploadFile(mediaFiles[i], i, mediaFiles.length));
       const ipAddress = await getClientIP();
       const nickname = userProfile?.nickname || user.email?.split('@')[0] || '사용자';
       const { data: newPost, error } = await supabase.from("posts").insert({ title: content.slice(0, 50), content, images: uploadedUrls, is_anonymous: isAnonymous, author_nickname: nickname, ip_address: ipAddress, user_id: user.id }).select().single();
@@ -379,8 +437,7 @@ export default function CommunityPage() {
 
   const handleBookmark = async (postId: number) => {
     if (!user) { alert("로그인이 필요합니다"); return; }
-    const isBookmarked = bookmarkedPosts.has(postId);
-    if (isBookmarked) {
+    if (bookmarkedPosts.has(postId)) {
       await supabase.from("post_bookmarks").delete().eq("user_id", user.id).eq("post_id", postId);
       setBookmarkedPosts(prev => { const next = new Set(prev); next.delete(postId); return next; });
     } else {
@@ -408,9 +465,9 @@ export default function CommunityPage() {
     }
   };
 
-  const handleCommentImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => { const files = Array.from(e.target.files || []); if (files.length === 0) return; const file = files[0]; if (!file.type.startsWith('image/')) return; setCommentImages([file]); const reader = new FileReader(); reader.onload = (e) => setCommentImagePreviews([e.target?.result as string]); reader.readAsDataURL(file); };
+  const handleCommentImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => { const files = Array.from(e.target.files || []); if (!files.length) return; const file = files[0]; if (!file.type.startsWith('image/')) return; setCommentImages([file]); const reader = new FileReader(); reader.onload = (e) => setCommentImagePreviews([e.target?.result as string]); reader.readAsDataURL(file); };
   const addEmoji = (emoji: string) => { setNewComment(prev => prev + emoji); setShowEmojiPicker(false); };
-  
+
   const handleCommentLike = async (comment: any) => {
     if (!user) return alert("로그인 필요");
     const { data: existing } = await supabase.from("comment_likes").select("id").eq("user_id", user.id).eq("comment_id", comment.id).single();
@@ -430,12 +487,22 @@ export default function CommunityPage() {
     if (userProfile?.is_banned) return alert("이용이 정지된 계정입니다");
     if (isMutedComment()) return alert(getMuteMessage("comment"));
     if (!detailModal || (!newComment.trim() && commentImages.length === 0)) return;
-    
     try {
-      let imageUrl = null; if (commentImages.length > 0) { imageUrl = await uploadSmallFile(commentImages[0]); }
+      let imageUrl = null; if (commentImages.length > 0) imageUrl = await uploadSmallFile(commentImages[0]);
       const ipAddress = await getClientIP();
       const nickname = userProfile?.nickname || user.email?.split('@')[0] || '사용자';
-      const { data, error } = await supabase.from("comments").insert({ post_id: detailModal.id, user_id: user.id, content: newComment, author_nickname: nickname, parent_id: replyingTo?.id || null, image_url: imageUrl, is_anonymous: isAnonymousComment, ip_address: ipAddress }).select().single();
+      const mentionNickname = replyingTo?.mentionNickname || null;
+      const { data, error } = await supabase.from("comments").insert({ 
+        post_id: detailModal.id, 
+        user_id: user.id, 
+        content: newComment, 
+        author_nickname: nickname, 
+        parent_id: replyingTo?.id || null, 
+        image_url: imageUrl, 
+        is_anonymous: isAnonymousComment, 
+        ip_address: ipAddress,
+        mention_nickname: mentionNickname
+      }).select().single();
       if (error) throw error;
       setComments(prev => [...prev, data]); setNewComment(""); setCommentImages([]); setCommentImagePreviews([]); setReplyingTo(null); setIsAnonymousComment(false);
       await supabase.from("posts").update({ comment_count: (detailModal.comment_count || 0) + 1 }).eq("id", detailModal.id);
@@ -447,7 +514,7 @@ export default function CommunityPage() {
 
   const handleShare = async (post: any) => { const shareUrl = `${window.location.origin}/community/${post.id}`; try { await navigator.clipboard.writeText(shareUrl); alert('링크가 복사되었습니다'); } catch { const textArea = document.createElement('textarea'); textArea.value = shareUrl; document.body.appendChild(textArea); textArea.select(); document.execCommand('copy'); document.body.removeChild(textArea); alert('링크가 복사되었습니다'); } };
 
-  const extractLinks = (text: string): string[] => { const urlRegex = /(https?:\/\/[^\s]+)/g; return text?.match(urlRegex) || []; };
+  const extractLinks = (text: string): string[] => text?.match(/(https?:\/\/[^\s]+)/g) || [];
   const getYoutubeId = (url: string): string | null => { const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([^&\s?]+)/); return match ? match[1] : null; };
   const getYoutubeThumbnail = (url: string): string | null => { const id = getYoutubeId(url); return id ? `https://img.youtube.com/vi/${id}/maxresdefault.jpg` : null; };
   const getDomain = (url: string): string => { try { return new URL(url).hostname.replace('www.', ''); } catch { return url; } };
@@ -461,7 +528,6 @@ export default function CommunityPage() {
 
   const formatDate = (d: string) => { const diff = Date.now() - new Date(d).getTime(); const m = Math.floor(diff / 60000), h = Math.floor(diff / 3600000), dd = Math.floor(diff / 86400000); if (m < 60) return `${m}분 전`; if (h < 24) return `${h}시간 전`; if (dd < 7) return `${dd}일 전`; return new Date(d).toLocaleDateString("ko-KR"); };
   const formatFullDate = (d: string) => new Date(d).toLocaleDateString("ko-KR", { year: 'numeric', month: 'long', day: 'numeric' });
-
   const getMediaItems = (post: any): {url: string, type: 'image' | 'video'}[] => { if (!post?.images) return []; let urls = typeof post.images === 'string' ? JSON.parse(post.images) : post.images; return urls.map((url: string) => ({ url, type: /\.(mp4|mov|webm|avi)/i.test(url) ? 'video' : 'image' })); };
 
   const isAdmin = userProfile?.role === 'admin';
@@ -480,47 +546,338 @@ export default function CommunityPage() {
   const handleTouchMove = (e: React.TouchEvent) => setTouchEnd(e.targetTouches[0].clientX);
   const handleTouchEnd = () => { if (touchStart - touchEnd > 75) nextImage(); if (touchStart - touchEnd < -75) prevImage(); };
   const isVideoUrl = (url: string) => /\.(mp4|mov|webm|avi)/i.test(url);
+  const handleWriteBoxClick = () => { if (!user) return; if (userProfile?.is_banned) { alert("이용이 정지된 계정입니다"); return; } if (isMutedPost()) { alert(getMuteMessage("post")); return; } setIsWriting(true); };
 
-  const handleWriteBoxClick = () => {
-    if (!user) return;
-    if (userProfile?.is_banned) { alert("이용이 정지된 계정입니다"); return; }
-    if (isMutedPost()) { alert(getMuteMessage("post")); return; }
-    setIsWriting(true);
+  const YoutubeLogo = () => (<svg viewBox="0 0 68 48" className="w-16 h-12"><path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55c-2.93.78-4.63 3.26-5.42 6.19C.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="#f00"/><path d="M45 24L27 14v20" fill="#fff"/></svg>);
+
+  // 광고 컴포넌트
+  const AdBanner = ({ ad, type }: { ad: any, type: 'list' | 'detail' }) => {
+    if (!ad) return null;
+    return (
+      <div className="cursor-pointer overflow-hidden rounded-xl" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }} onClick={() => ad.link_url && window.open(ad.link_url, '_blank')}>
+        {ad.image_url ? (
+          <div className="relative">
+            <img src={ad.image_url} alt={ad.title || "광고"} className="w-full object-cover" style={{ maxHeight: type === 'list' ? '120px' : '150px' }} />
+            <span className="absolute top-2 left-2 bg-black/50 text-white text-xs px-2 py-0.5 rounded">광고</span>
+          </div>
+        ) : (
+          <div className="p-4 flex items-center gap-3" style={{ background: `linear-gradient(135deg, ${theme.bgInput}, ${theme.bgCard})` }}>
+            <span className="text-2xl">📢</span>
+            <p className="font-bold text-sm" style={{ color: theme.textPrimary }}>{ad.title}</p>
+            <span className="ml-auto text-xs px-2 py-0.5 rounded" style={{ backgroundColor: theme.bgInput, color: theme.textMuted }}>광고</span>
+          </div>
+        )}
+      </div>
+    );
   };
 
-  const CommentItem = ({ comment, depth = 0 }: { comment: any, depth?: number }) => {
-    const replies = comments.filter(c => c.parent_id === comment.id);
-    const isExpanded = expandedComments.has(comment.id);
-    const showReplies = expandedReplies.has(comment.id);
-    const isLong = comment.content?.length > 150;
-    const getCommentAuthor = () => { if (isAdmin && comment.is_anonymous) { return `익명 (${comment.author_nickname || '?'})`; } return comment.is_anonymous ? '익명' : comment.author_nickname; };
+  // 인라인 답글 입력 컴포넌트 (별도 분리로 리렌더링 방지)
+  const InlineReplyBox = ({ parentComment, mentionNickname, onClose, onSuccess }: { 
+    parentComment: any, 
+    mentionNickname?: string | null,
+    onClose: () => void,
+    onSuccess: (newComment: any) => void
+  }) => {
+    const [content, setContent] = useState("");
+    const [images, setImages] = useState<File[]>([]);
+    const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+    const [isAnonymous, setIsAnonymous] = useState(false);
+    const [showEmoji, setShowEmoji] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+    const inputRef = useRef<HTMLInputElement>(null);
+    const fileRef = useRef<HTMLInputElement>(null);
+    
+    useEffect(() => {
+      setTimeout(() => inputRef.current?.focus(), 100);
+    }, []);
+    
+    const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files || []);
+      if (files.length > 0) {
+        setImages([files[0]]);
+        const reader = new FileReader();
+        reader.onload = (ev) => setImagePreviews([ev.target?.result as string]);
+        reader.readAsDataURL(files[0]);
+      }
+    };
+    
+    const handleSubmit = async () => {
+      if (!user || (!content.trim() && images.length === 0) || submitting) return;
+      if (userProfile?.is_banned) return alert("이용이 정지된 계정입니다");
+      
+      setSubmitting(true);
+      try {
+        let imageUrl = null;
+        if (images.length > 0) imageUrl = await uploadSmallFile(images[0]);
+        const ipAddress = await getClientIP();
+        const nickname = userProfile?.nickname || user.email?.split('@')[0] || '사용자';
+        
+        const { data, error } = await supabase.from("comments").insert({ 
+          post_id: detailModal.id, 
+          user_id: user.id, 
+          content: content, 
+          author_nickname: nickname, 
+          parent_id: parentComment.id,
+          image_url: imageUrl, 
+          is_anonymous: isAnonymous, 
+          ip_address: ipAddress,
+          mention_nickname: mentionNickname || null
+        }).select().single();
+        
+        if (error) throw error;
+        onSuccess(data);
+        onClose();
+      } catch (error: any) { 
+        alert("댓글 작성 실패: " + error.message); 
+      } finally {
+        setSubmitting(false);
+      }
+    };
+    
+    const inlineEmojis = ['😀', '😂', '🥹', '😍', '👍', '❤️', '🔥', '👏', '🎉', '💯'];
+    
     return (
-      <div className={`${depth > 0 ? 'ml-10 mt-2' : ''}`}>
-        <div className="flex gap-3">
-          <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center flex-shrink-0"><span className="text-gray-600 text-xs font-bold">{comment.is_anonymous ? '?' : comment.author_nickname?.[0]?.toUpperCase() || 'U'}</span></div>
-          <div className="flex-1">
-            <div className="bg-gray-100 rounded-2xl px-3 py-2">
-              <div className="flex items-center gap-2"><span className="font-semibold text-gray-900 text-sm">{getCommentAuthor()}</span>{comment.is_anonymous && <span className="text-xs text-gray-400 bg-gray-200 px-1 py-0.5 rounded">익명</span>}</div>
-              {isAdmin && comment.ip_address && (<span className="text-xs text-red-400">IP: {comment.ip_address}</span>)}
-              <p className="text-gray-800 text-sm mt-0.5">{isLong && !isExpanded ? (<>{comment.content.slice(0, 150)}...<button onClick={() => setExpandedComments(prev => new Set(prev).add(comment.id))} className="text-gray-500 ml-1">더보기</button></>) : comment.content}</p>
-              {comment.image_url && (<img src={comment.image_url} alt="" className="mt-2 max-w-[200px] rounded-lg cursor-pointer" onClick={() => openLightbox([{url: comment.image_url}], 0)} />)}
-            </div>
-            <div className="flex items-center gap-3 mt-1 ml-2">
-              <button onClick={() => handleCommentLike(comment)} className={`text-xs font-medium flex items-center gap-1 ${comment.liked ? 'text-blue-500' : 'text-gray-500 hover:text-gray-700'}`}>좋아요{(comment.like_count || 0) > 0 && <span>{comment.like_count}</span>}</button>
-              <span className="text-xs text-gray-500">{formatDate(comment.created_at)}</span>
-              {depth === 0 && (<button onClick={() => setReplyingTo(comment)} className="text-xs text-gray-500 font-medium hover:text-gray-700">답글 달기</button>)}
-            </div>
-            {replies.length > 0 && depth === 0 && (<button onClick={() => setExpandedReplies(prev => { const n = new Set(prev); if (n.has(comment.id)) n.delete(comment.id); else n.add(comment.id); return n; })} className="text-sm text-gray-600 font-medium mt-2 ml-2 flex items-center gap-1"><span className="w-8 h-px bg-gray-400"></span>{showReplies ? '답글 숨기기' : `답글 ${replies.length}개 보기`}</button>)}
-            {showReplies && replies.map(reply => (<CommentItem key={reply.id} comment={reply} depth={depth + 1} />))}
+      <div className="mt-2 ml-10 p-3 rounded-xl" style={{ backgroundColor: theme.bgInput }}>
+        {/* 답글 대상 표시 */}
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs" style={{ color: theme.accent }}>
+            {mentionNickname ? `@${mentionNickname}` : parentComment.author_nickname}님에게 답글
+          </span>
+          <button onClick={onClose} style={{ color: theme.textMuted }}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        
+        {/* 이미지 미리보기 */}
+        {imagePreviews.length > 0 && (
+          <div className="relative inline-block mb-2">
+            <img src={imagePreviews[0]} alt="" className="w-20 h-20 object-cover rounded-lg" />
+            <button 
+              onClick={() => { setImages([]); setImagePreviews([]); }}
+              className="absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: theme.red, color: '#fff' }}
+            >
+              <X className="w-3 h-3" />
+            </button>
           </div>
+        )}
+        
+        {/* 입력창 */}
+        <div className="flex items-center gap-2">
+          <input 
+            ref={inputRef}
+            type="text" 
+            value={content} 
+            onChange={(e) => setContent(e.target.value)} 
+            placeholder="답글 달기..."
+            className="flex-1 bg-transparent focus:outline-none text-sm"
+            style={{ color: theme.textPrimary }}
+            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSubmit()}
+          />
+        </div>
+        
+        {/* 이모티콘 패널 */}
+        {showEmoji && (
+          <div className="flex flex-wrap gap-1 mt-2 p-2 rounded-lg" style={{ backgroundColor: theme.bgInput }}>
+            {inlineEmojis.map(emoji => (
+              <button 
+                key={emoji} 
+                onClick={() => { setContent(prev => prev + emoji); setShowEmoji(false); }}
+                className="text-lg hover:scale-110 transition-transform"
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        )}
+        
+        {/* 하단 버튼들 */}
+        <div className="flex items-center justify-between mt-2">
+          <div className="flex items-center gap-2">
+            {/* 사진 */}
+            <input type="file" ref={fileRef} accept="image/*" onChange={handleImageSelect} className="hidden" />
+            <button onClick={() => fileRef.current?.click()} style={{ color: theme.textMuted }}>
+              <ImageIcon className="w-5 h-5" />
+            </button>
+            {/* 이모티콘 */}
+            <button onClick={() => setShowEmoji(!showEmoji)} style={{ color: showEmoji ? theme.accent : theme.textMuted }}>
+              <Smile className="w-5 h-5" />
+            </button>
+            {/* 익명 */}
+            <label className="flex items-center gap-1 cursor-pointer">
+              <input 
+                type="checkbox" 
+                checked={isAnonymous} 
+                onChange={(e) => setIsAnonymous(e.target.checked)} 
+                className="w-3 h-3 rounded"
+                style={{ accentColor: theme.accent }}
+              />
+              <span className="text-xs" style={{ color: theme.textMuted }}>익명</span>
+            </label>
+          </div>
+          
+          {/* 전송 버튼 */}
+          <button 
+            onClick={handleSubmit}
+            disabled={submitting || (!content.trim() && images.length === 0)}
+            className="px-3 py-1 rounded-full text-sm font-medium disabled:opacity-50"
+            style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}
+          >
+            {submitting ? '...' : '전송'}
+          </button>
         </div>
       </div>
     );
   };
 
-  const YoutubeLogo = () => (<svg viewBox="0 0 68 48" className="w-16 h-12"><path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55c-2.93.78-4.63 3.26-5.42 6.19C.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="#f00"/><path d="M45 24L27 14v20" fill="#fff"/></svg>);
+  // 인라인 답글 상태
+  const [inlineReplyTarget, setInlineReplyTarget] = useState<{ parentComment: any, mentionNickname?: string | null } | null>(null);
 
-  // ✅ 개별 포스트 렌더링
+  // 댓글 컴포넌트
+  const CommentItem = ({ comment, depth = 0, parentId = null }: { comment: any, depth?: number, parentId?: number | null }) => {
+    const replies = comments.filter(c => c.parent_id === comment.id);
+    const isExpanded = expandedComments.has(comment.id);
+    const showReplies = expandedReplies.has(comment.id);
+    const isLong = comment.content?.length > 150;
+    const getCommentAuthor = () => isAdmin && comment.is_anonymous ? `익명 (${comment.author_nickname || '?'})` : comment.is_anonymous ? '익명' : comment.author_nickname;
+    const isPostAuthor = detailModal && comment.user_id === detailModal.user_id;
+    const hasReplies = replies.length > 0;
+    
+    // 이 댓글에 인라인 입력창이 열려있는지
+    const isInlineOpen = inlineReplyTarget?.parentComment?.id === comment.id;
+    
+    // 답글 달기 클릭
+    const handleReplyClick = () => {
+      if (depth === 0) {
+        // 원댓글에 답글
+        setInlineReplyTarget({ parentComment: comment, mentionNickname: null });
+        if (!expandedReplies.has(comment.id) && hasReplies) {
+          setExpandedReplies(prev => new Set(prev).add(comment.id));
+        }
+      } else {
+        // 대댓글에 답글 → 원댓글 아래에 입력창 + 멘션
+        const parentComment = comments.find(c => c.id === parentId);
+        setInlineReplyTarget({ 
+          parentComment: parentComment, 
+          mentionNickname: comment.is_anonymous ? '익명' : comment.author_nickname 
+        });
+      }
+    };
+    
+    // 답글 작성 성공
+    const handleReplySuccess = (newComment: any) => {
+      setComments(prev => [...prev, newComment]);
+      supabase.from("posts").update({ comment_count: (detailModal.comment_count || 0) + 1 }).eq("id", detailModal.id);
+      const updated = { ...detailModal, comment_count: (detailModal.comment_count || 0) + 1 };
+      setPosts(posts.map(p => p.id === detailModal.id ? updated : p));
+      setDetailModal(updated);
+    };
+    
+    return (
+      <div className={`${depth === 0 ? 'mb-3' : 'mb-2 ml-10'}`}>
+        {/* 댓글 본체 */}
+        <div className="flex gap-2">
+          {/* 프로필 */}
+          <div 
+            className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" 
+            style={{ backgroundColor: theme.bgInput }}
+          >
+            <span className="text-xs font-bold" style={{ color: theme.textSecondary }}>
+              {comment.is_anonymous ? '?' : comment.author_nickname?.[0]?.toUpperCase() || 'U'}
+            </span>
+          </div>
+          
+          <div className="flex-1 min-w-0">
+            {/* 댓글 박스 */}
+            <div className="rounded-2xl px-3 py-2" style={{ backgroundColor: theme.bgInput }}>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-sm" style={{ color: theme.textPrimary }}>{getCommentAuthor()}</span>
+                {isPostAuthor && (
+                  <span className="text-xs" style={{ color: theme.accent }}>ㆍ작성자</span>
+                )}
+              </div>
+              {isAdmin && comment.ip_address && <span className="text-xs" style={{ color: theme.red }}>IP: {comment.ip_address}</span>}
+              <p className="text-sm mt-0.5" style={{ color: theme.textPrimary }}>
+                {comment.mention_nickname && (
+                  <span className="font-semibold mr-1" style={{ color: theme.accent }}>@{comment.mention_nickname}</span>
+                )}
+                {isLong && !isExpanded ? (
+                  <>
+                    {comment.content.slice(0, 150)}...
+                    <button onClick={() => setExpandedComments(prev => new Set(prev).add(comment.id))} style={{ color: theme.textMuted }} className="ml-1">더보기</button>
+                  </>
+                ) : comment.content}
+              </p>
+              {comment.image_url && (
+                <img src={comment.image_url} alt="" className="mt-2 max-w-[200px] rounded-lg cursor-pointer" onClick={() => openLightbox([{url: comment.image_url}], 0)} />
+              )}
+            </div>
+            
+            {/* 액션 버튼 */}
+            <div className="flex items-center gap-3 mt-1 ml-2">
+              <span className="text-xs" style={{ color: theme.textMuted }}>{formatDate(comment.created_at)}</span>
+              <button 
+                onClick={() => handleCommentLike(comment)} 
+                className="text-xs font-medium flex items-center gap-1" 
+                style={{ color: comment.liked ? '#3B82F6' : theme.textMuted }}
+              >
+                좋아요{(comment.like_count || 0) > 0 && <span>{comment.like_count}</span>}
+              </button>
+              <button 
+                onClick={handleReplyClick} 
+                className="text-xs font-medium" 
+                style={{ color: theme.textMuted }}
+              >
+                답글 달기
+              </button>
+            </div>
+            
+            {/* 답글 보기/숨기기 - 원댓글에만 */}
+            {hasReplies && depth === 0 && (
+              <button 
+                onClick={() => setExpandedReplies(prev => { 
+                  const n = new Set(prev); 
+                  if (n.has(comment.id)) n.delete(comment.id); 
+                  else n.add(comment.id); 
+                  return n; 
+                })} 
+                className="text-sm font-medium mt-2 ml-2" 
+                style={{ color: theme.accent }}
+              >
+                {showReplies ? '답글 숨기기' : `답글 ${replies.length}개 보기`}
+              </button>
+            )}
+          </div>
+        </div>
+        
+        {/* 답글 목록 - 원댓글 아래에 */}
+        {depth === 0 && showReplies && hasReplies && (
+          <div className="mt-2">
+            {replies.map((reply) => (
+              <CommentItem 
+                key={reply.id} 
+                comment={reply} 
+                depth={1} 
+                parentId={comment.id}
+              />
+            ))}
+          </div>
+        )}
+        
+        {/* 인라인 답글 입력창 - 원댓글 아래에만 */}
+        {depth === 0 && isInlineOpen && user && (
+          <InlineReplyBox
+            parentComment={comment}
+            mentionNickname={inlineReplyTarget?.mentionNickname}
+            onClose={() => setInlineReplyTarget(null)}
+            onSuccess={handleReplySuccess}
+          />
+        )}
+      </div>
+    );
+  };
+
+  // 포스트 렌더링
   const renderPost = (post: any) => {
     const isExpanded = expandedPosts.has(post.id);
     const mediaItems = getMediaItems(post);
@@ -533,138 +890,246 @@ export default function CommunityPage() {
     const isPlaying = playingVideo === post.id;
 
     return (
-      <div key={post.id} ref={(el) => { if (el) postRefs.current.set(post.id, el); }} className="bg-white rounded-xl shadow-md overflow-hidden">
+      <div key={post.id} ref={(el) => { if (el) postRefs.current.set(post.id, el); }} className="rounded-xl overflow-hidden" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}>
+        {/* 헤더 */}
         <div className="flex items-center gap-2 p-4 pb-0">
-          <div className="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center overflow-hidden cursor-pointer hover:ring-2 hover:ring-amber-500" onClick={() => handleProfileClick(post)}><span className="text-white text-sm font-bold">{post.is_anonymous ? '?' : (post.author_nickname?.[0]?.toUpperCase() || 'U')}</span></div>
-          <div className="flex-1"><div className="flex items-center gap-2"><span className="font-bold text-gray-900 text-sm cursor-pointer hover:text-amber-600" onClick={() => handleProfileClick(post)}>{getAuthorName(post)}</span>{post.is_anonymous && <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">익명</span>}</div><div className="flex items-center gap-2"><span className="text-xs text-gray-500">{formatDate(post.created_at)}</span>{isAdmin && post.ip_address && <span className="text-xs text-red-400">IP: {post.ip_address}</span>}</div></div>
-          <div className="relative"><button type="button" onClick={(e) => { e.stopPropagation(); setMenuOpenId(menuOpenId === post.id ? null : post.id); }} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full"><svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" /></svg></button>{menuOpenId === post.id && (<div className="absolute right-0 top-10 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50 min-w-[140px]">{user && (<button onClick={(e) => { e.stopPropagation(); handleBookmark(post.id); }} className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"><svg className="w-4 h-4" fill={bookmarkedPosts.has(post.id) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /></svg>{bookmarkedPosts.has(post.id) ? "저장 취소" : "저장"}</button>)}{canModify(post) && (<><button onClick={(e) => { e.stopPropagation(); handleEditStart(post); }} className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>수정</button><button onClick={(e) => { e.stopPropagation(); handleDelete(post.id); }} className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>삭제</button></>)}<button onClick={(e) => { e.stopPropagation(); setMenuOpenId(null); setReportModal({ postId: post.id, userId: post.user_id }); }} className="w-full px-4 py-2 text-left text-sm text-orange-600 hover:bg-orange-50 flex items-center gap-2"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>신고</button></div>)}</div>
+          <div className="w-10 h-10 rounded-full flex items-center justify-center overflow-hidden cursor-pointer" style={{ backgroundColor: theme.accent }} onClick={() => handleProfileClick(post)}>
+            <span className="text-sm font-bold" style={{ color: isDark ? '#121212' : '#fff' }}>{post.is_anonymous ? '?' : (post.author_nickname?.[0]?.toUpperCase() || 'U')}</span>
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-sm cursor-pointer" style={{ color: theme.textPrimary }} onClick={() => handleProfileClick(post)}>{getAuthorName(post)}</span>
+              {post.is_anonymous && <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: theme.bgInput, color: theme.textMuted }}>익명</span>}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs" style={{ color: theme.textMuted }}>{formatDate(post.created_at)}</span>
+              {isAdmin && post.ip_address && <span className="text-xs" style={{ color: theme.red }}>IP: {post.ip_address}</span>}
+            </div>
+          </div>
+          <div className="relative">
+            <button onClick={(e) => { e.stopPropagation(); setMenuOpenId(menuOpenId === post.id ? null : post.id); }} className="p-2 rounded-full" style={{ color: theme.textMuted }}>
+              <MoreVertical className="w-5 h-5" />
+            </button>
+            {menuOpenId === post.id && (
+              <div className="absolute right-0 top-10 rounded-lg shadow-lg py-1 z-50 min-w-[140px]" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
+                {user && <button onClick={(e) => { e.stopPropagation(); handleBookmark(post.id); }} className="w-full px-4 py-2 text-left text-sm flex items-center gap-2" style={{ color: theme.textPrimary }}><Bookmark className="w-4 h-4" fill={bookmarkedPosts.has(post.id) ? "currentColor" : "none"} />{bookmarkedPosts.has(post.id) ? "저장 취소" : "저장"}</button>}
+                {canModify(post) && (<><button onClick={(e) => { e.stopPropagation(); handleEditStart(post); }} className="w-full px-4 py-2 text-left text-sm flex items-center gap-2" style={{ color: theme.textPrimary }}><Edit className="w-4 h-4" />수정</button><button onClick={(e) => { e.stopPropagation(); handleDelete(post.id); }} className="w-full px-4 py-2 text-left text-sm flex items-center gap-2" style={{ color: theme.red }}><Trash2 className="w-4 h-4" />삭제</button></>)}
+                <button onClick={(e) => { e.stopPropagation(); setMenuOpenId(null); setReportModal({ postId: post.id, userId: post.user_id }); }} className="w-full px-4 py-2 text-left text-sm flex items-center gap-2" style={{ color: '#F97316' }}><Flag className="w-4 h-4" />신고</button>
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* 본문 */}
         <div className="px-4 py-3">
-          {isLongText && !isExpanded ? (<p className="text-gray-900 whitespace-pre-wrap">{post.content.slice(0, 100)}...<button onClick={() => togglePost(post.id)} className="text-amber-600 text-sm ml-1 font-medium">더 보기</button></p>) : (<><p className="text-gray-900 whitespace-pre-wrap">{post.content}</p>{isLongText && isExpanded && (<button onClick={() => togglePost(post.id)} className="text-amber-600 text-sm font-medium mt-1">접기</button>)}</>)}
+          {isLongText && !isExpanded ? (
+            <p className="text-[15px] whitespace-pre-wrap" style={{ color: theme.textPrimary }}>{post.content.slice(0, 100)}...<button onClick={() => togglePost(post.id)} className="text-sm ml-1 font-medium" style={{ color: theme.accent }}>더 보기</button></p>
+          ) : (<><p className="text-[15px] whitespace-pre-wrap" style={{ color: theme.textPrimary }}>{post.content}</p>{isLongText && isExpanded && <button onClick={() => togglePost(post.id)} className="text-sm font-medium mt-1" style={{ color: theme.accent }}>접기</button>}</>)}
         </div>
+
+        {/* 유튜브 */}
         {youtubeId && (<div className="w-full">{isPlaying ? (<div className="relative w-full aspect-video bg-black"><iframe src={`https://www.youtube.com/embed/${youtubeId}?autoplay=1&rel=0`} className="w-full h-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen /></div>) : (<div className="relative w-full cursor-pointer" onClick={() => setPlayingVideo(post.id)}><img src={youtubeThumbnail!} alt="" className="w-full aspect-video object-cover" /><div className="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/30 transition-colors"><YoutubeLogo /></div></div>)}</div>)}
-        {!youtubeId && linkPreview && (<div className="cursor-pointer" onClick={() => openLink(firstLink)}>{linkPreview.image && (<img src={linkPreview.image} alt="" className="w-full h-52 object-cover" />)}<div className="px-4 py-3 bg-gray-50 border-t border-gray-100"><p className="text-xs text-gray-500 uppercase">{linkPreview.domain}</p><p className="font-semibold text-gray-900 mt-1 line-clamp-2">{linkPreview.title}</p>{linkPreview.description && <p className="text-sm text-gray-600 mt-1 line-clamp-2">{linkPreview.description}</p>}</div></div>)}
+
+        {/* 링크 프리뷰 */}
+        {!youtubeId && linkPreview && (<div className="cursor-pointer" onClick={() => openLink(firstLink)}>{linkPreview.image && <img src={linkPreview.image} alt="" className="w-full h-82 object-cover" />}<div className="px-4 py-3" style={{ backgroundColor: theme.bgInput, borderTop: `1px solid ${theme.borderLight}` }}><p className="text-xs uppercase" style={{ color: theme.textMuted }}>{linkPreview.domain}</p><p className="font-semibold mt-1 line-clamp-2" style={{ color: theme.textPrimary }}>{linkPreview.title}</p>{linkPreview.description && <p className="text-sm mt-1 line-clamp-2" style={{ color: theme.textSecondary }}>{linkPreview.description}</p>}</div></div>)}
+
+        {/* 미디어 */}
         {mediaItems.length > 0 && (
           <div className={`cursor-pointer ${mediaItems.length === 1 ? '' : 'grid grid-cols-2 gap-[2px]'}`} onClick={() => mediaItems.length === 1 ? openLightbox(mediaItems, 0) : openDetailModal(post, false, true)}>
             {mediaItems.slice(0, 4).map((item, idx) => (
               <div key={idx} className={`relative overflow-hidden ${mediaItems.length === 3 && idx === 0 ? 'row-span-2' : ''}`}>
-                {item.type === 'video' ? (<div className="relative"><video src={item.url} className={`w-full object-cover ${mediaItems.length === 1 ? 'max-h-[500px]' : 'h-48'}`} /><div className="absolute inset-0 flex items-center justify-center bg-black/20"><div className="w-12 h-12 bg-white/90 rounded-full flex items-center justify-center"><svg className="w-6 h-6 text-gray-900 ml-1" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg></div></div></div>) : (<img src={item.url} alt="" className={`w-full object-cover ${mediaItems.length === 1 ? 'max-h-[500px]' : 'h-48'}`} />)}
-                {idx === 3 && mediaItems.length > 4 && (<div className="absolute inset-0 bg-black/50 flex items-center justify-center"><span className="text-white text-2xl font-bold">+{mediaItems.length - 4}</span></div>)}
+                {item.type === 'video' ? (<div className="relative"><video src={item.url} className={`w-full object-cover ${mediaItems.length === 1 ? 'max-h-[500px]' : 'h-48'}`} /><div className="absolute inset-0 flex items-center justify-center bg-black/20"><div className="w-12 h-12 bg-white/90 rounded-full flex items-center justify-center"><Play className="w-6 h-6 ml-1" style={{ color: theme.textPrimary }} fill="currentColor" /></div></div></div>) : (<img src={item.url} alt="" className={`w-full object-cover ${mediaItems.length === 1 ? 'max-h-[500px]' : 'h-48'}`} />)}
+                {idx === 3 && mediaItems.length > 4 && <div className="absolute inset-0 bg-black/50 flex items-center justify-center"><span className="text-white text-2xl font-bold">+{mediaItems.length - 4}</span></div>}
               </div>
             ))}
           </div>
         )}
-        <div className="flex items-center px-4 py-3 border-t border-gray-100">
-          <button onClick={() => handleLike(post)} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors ${post.liked ? 'text-blue-500' : 'text-gray-500'}`}><svg className="w-5 h-5" fill={post.liked ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" /></svg><span className="text-sm font-medium">좋아요 {post.like_count || 0}</span></button>
-          <button onClick={() => openDetailModal(post, true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-500"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg><span className="text-sm font-medium">댓글 {post.comment_count || 0}</span></button>
-          <button onClick={() => handleShare(post)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-500 ml-auto"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg><span className="text-sm font-medium">공유</span></button>
+
+        {/* 액션 버튼 */}
+        <div className="flex items-center px-4 py-3" style={{ borderTop: `1px solid ${theme.borderLight}` }}>
+          <button onClick={() => handleLike(post)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors" style={{ color: post.liked ? '#3B82F6' : theme.textSecondary }}>
+            <ThumbsUp className="w-5 h-5" fill={post.liked ? 'currentColor' : 'none'} /><span className="text-sm font-medium">좋아요 {post.like_count || 0}</span>
+          </button>
+          <button onClick={() => openDetailModal(post, true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors" style={{ color: theme.textSecondary }}>
+            <MessageCircle className="w-5 h-5" /><span className="text-sm font-medium">댓글 {post.comment_count || 0}</span>
+          </button>
+          <button onClick={() => handleShare(post)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors ml-auto" style={{ color: theme.textSecondary }}>
+            <Share2 className="w-5 h-5" /><span className="text-sm font-medium">공유</span>
+          </button>
         </div>
       </div>
     );
   };
 
-  // ✅ 게시글 + 광고 렌더링
   const renderPostsWithAds = () => {
     const elements: React.ReactNode[] = [];
     posts.forEach((post, index) => {
       elements.push(renderPost(post));
-      if (index === 2 && listAds.length > 0) {
-        const ad = getRandomListAd();
-        if (ad) elements.push(<AdBanner key={`ad-1`} ad={ad} type="list" />);
-      }
-      if (index === 6 && listAds.length > 0) {
-        const ad = getRandomListAd();
-        if (ad) elements.push(<AdBanner key={`ad-2`} ad={ad} type="list" />);
-      }
+      if (index === 2 && listAds.length > 0) { const ad = getRandomListAd(); if (ad) elements.push(<AdBanner key={`ad-1`} ad={ad} type="list" />); }
+      if (index === 6 && listAds.length > 0) { const ad = getRandomListAd(); if (ad) elements.push(<AdBanner key={`ad-2`} ad={ad} type="list" />); }
     });
     return elements;
   };
 
-  return (
-    <div className="min-h-screen bg-gray-100 pb-24 md:pb-10" ref={mainRef}>
-      {lightboxImages.length > 0 && (<div className="fixed inset-0 bg-black z-[200] flex items-center justify-center" onClick={closeLightbox}><button className="absolute top-4 right-4 text-white text-4xl z-10" onClick={closeLightbox}>×</button>{lightboxImages.length > 1 && <div className="absolute top-4 left-4 text-white text-sm bg-black/50 px-3 py-1 rounded-full z-10">{lightboxIndex + 1} / {lightboxImages.length}</div>}<div className="w-full h-full flex items-center justify-center" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onClick={(e) => e.stopPropagation()}>{isVideoUrl(lightboxImages[lightboxIndex]) ? <video src={lightboxImages[lightboxIndex]} controls autoPlay className="max-w-full max-h-full" onClick={(e) => e.stopPropagation()} /> : <img src={lightboxImages[lightboxIndex]} alt="" className="max-w-full max-h-full object-contain" onClick={closeLightbox} />}</div>{lightboxImages.length > 1 && (<><button onClick={(e) => { e.stopPropagation(); prevImage(); }} className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/20 rounded-full flex items-center justify-center text-white"><svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg></button><button onClick={(e) => { e.stopPropagation(); nextImage(); }} className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/20 rounded-full flex items-center justify-center text-white"><svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg></button></>)}</div>)}
+  if (!mounted) return <div className="min-h-screen bg-[#121212]" />;
 
+  return (
+    <div className="min-h-screen pb-20 transition-colors duration-300" style={{ backgroundColor: theme.bgMain }} ref={mainRef}>
+      {/* 라이트박스 */}
+      {lightboxImages.length > 0 && (
+        <div className="fixed inset-0 bg-black z-[200] flex items-center justify-center" onClick={closeLightbox}>
+          <button className="absolute top-4 right-4 text-white z-10" onClick={closeLightbox}><X className="w-8 h-8" /></button>
+          {lightboxImages.length > 1 && <div className="absolute top-4 left-4 text-white text-sm bg-black/50 px-3 py-1 rounded-full z-10">{lightboxIndex + 1} / {lightboxImages.length}</div>}
+          <div className="w-full h-full flex items-center justify-center" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onClick={(e) => e.stopPropagation()}>
+            {isVideoUrl(lightboxImages[lightboxIndex]) ? <video src={lightboxImages[lightboxIndex]} controls autoPlay className="max-w-full max-h-full" onClick={(e) => e.stopPropagation()} /> : <img src={lightboxImages[lightboxIndex]} alt="" className="max-w-full max-h-full object-contain" onClick={closeLightbox} />}
+          </div>
+          {lightboxImages.length > 1 && (<><button onClick={(e) => { e.stopPropagation(); prevImage(); }} className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/20 rounded-full flex items-center justify-center text-white"><ChevronLeft className="w-8 h-8" /></button><button onClick={(e) => { e.stopPropagation(); nextImage(); }} className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/20 rounded-full flex items-center justify-center text-white"><ChevronRight className="w-8 h-8" /></button></>)}
+        </div>
+      )}
+
+      {/* 상세 모달 (바텀시트 스타일) */}
       {detailModal && (
-        <div className={`fixed inset-0 z-[100] flex items-center justify-center transition-all duration-300 ${detailModalVisible ? 'bg-black/70' : 'bg-black/0'}`} onClick={closeDetailModal}>
-          <div className={`bg-white w-full max-w-2xl max-h-[95vh] md:max-h-[90vh] md:rounded-xl overflow-hidden flex flex-col transform transition-all duration-300 ease-out ${detailModalVisible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`} onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <span className="font-bold text-gray-900">{getAuthorName(detailModal)}님의 게시물</span>
-              <button onClick={closeDetailModal} className="w-9 h-9 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center transition-colors"><svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+        <div className={`fixed inset-0 z-[100] flex items-end justify-center transition-all duration-300 ${detailModalVisible ? 'bg-black/70' : 'bg-black/0'}`} onClick={closeDetailModal}>
+          <div 
+            className={`w-full max-w-[631px] h-[95vh] rounded-t-2xl overflow-hidden flex flex-col transform transition-transform duration-300 ease-out ${detailModalVisible ? 'translate-y-0' : 'translate-y-full'}`} 
+            style={{ backgroundColor: theme.bgCard }} 
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 드래그 핸들 */}
+            <div className="flex justify-center pt-3 pb-2">
+              <div className="w-10 h-1 rounded-full" style={{ backgroundColor: theme.border }}></div>
+            </div>
+            <div className="flex items-center justify-between px-4 pb-3" style={{ borderBottom: `1px solid ${theme.borderLight}` }}>
+              <span className="font-bold" style={{ color: theme.textPrimary }}>{getAuthorName(detailModal)}님의 게시물</span>
+              <button onClick={closeDetailModal} className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: theme.bgInput, color: theme.textSecondary }}><X className="w-5 h-5" /></button>
             </div>
             <div className="flex-1 overflow-y-auto" ref={detailContentRef}>
               <div className="flex items-center gap-3 p-4">
-                <div className="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center"><span className="text-white text-sm font-bold">{detailModal.is_anonymous ? '?' : (detailModal.author_nickname?.[0]?.toUpperCase() || 'U')}</span></div>
-                <div><div className="flex items-center gap-2"><span className="font-bold text-gray-900">{getAuthorName(detailModal)}</span>{detailModal.is_anonymous && <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">익명</span>}</div><span className="text-sm text-gray-500">{formatDate(detailModal.created_at)}</span></div>
+                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: theme.accent }}><span className="text-sm font-bold" style={{ color: isDark ? '#121212' : '#fff' }}>{detailModal.is_anonymous ? '?' : (detailModal.author_nickname?.[0]?.toUpperCase() || 'U')}</span></div>
+                <div><div className="flex items-center gap-2"><span className="font-bold" style={{ color: theme.textPrimary }}>{getAuthorName(detailModal)}</span>{detailModal.is_anonymous && <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: theme.bgInput, color: theme.textMuted }}>익명</span>}</div><span className="text-sm" style={{ color: theme.textMuted }}>{formatDate(detailModal.created_at)}</span></div>
               </div>
-              <div className="px-4 pb-3"><p className="text-gray-900 text-sm whitespace-pre-wrap">{detailModal.content}</p></div>
-              
-              {/* ✅ 글 상세 중간 광고 */}
-              {detailAd && (<div className="px-4 pb-3"><AdBanner ad={detailAd} type="detail" /></div>)}
-              
+              <div className="px-4 pb-3">
+                {detailModal.content?.length > 100 && !expandedPosts.has(detailModal.id) ? (
+                  <p className="text-[15px] whitespace-pre-wrap" style={{ color: theme.textPrimary }}>
+                    {detailModal.content.slice(0, 100)}...
+                    <button onClick={() => togglePost(detailModal.id)} className="text-sm ml-1 font-medium" style={{ color: theme.accent }}>더 보기</button>
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-[15px] whitespace-pre-wrap" style={{ color: theme.textPrimary }}>{detailModal.content}</p>
+                    {detailModal.content?.length > 100 && (
+                      <button onClick={() => togglePost(detailModal.id)} className="text-sm font-medium mt-1" style={{ color: theme.accent }}>접기</button>
+                    )}
+                  </>
+                )}
+              </div>
+              {detailAd && <div className="px-4 pb-3"><AdBanner ad={detailAd} type="detail" /></div>}
               {getMediaItems(detailModal).length > 0 && (
                 <div className={`cursor-pointer ${getMediaItems(detailModal).length === 1 ? '' : 'grid grid-cols-2 gap-[2px]'}`}>
                   {getMediaItems(detailModal).slice(0, 4).map((item, idx) => (
                     <div key={idx} className={`relative overflow-hidden ${getMediaItems(detailModal).length === 3 && idx === 0 ? 'row-span-2' : ''}`} onClick={() => openLightbox(getMediaItems(detailModal), idx)}>
-                      {item.type === 'video' ? (<div className="relative"><video src={item.url} className={`w-full object-cover ${getMediaItems(detailModal).length === 1 ? 'max-h-[300px]' : 'h-48'}`} /><div className="absolute inset-0 flex items-center justify-center bg-black/20"><div className="w-10 h-10 bg-white/90 rounded-full flex items-center justify-center"><svg className="w-5 h-5 text-gray-900 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg></div></div></div>) : (<img src={item.url} alt="" className={`w-full object-cover ${getMediaItems(detailModal).length === 1 ? 'max-h-[300px]' : 'h-48'}`} />)}
-                      {idx === 3 && getMediaItems(detailModal).length > 4 && (<div className="absolute inset-0 bg-black/50 flex items-center justify-center"><span className="text-white text-xl font-bold">+{getMediaItems(detailModal).length - 4}</span></div>)}
+                      {item.type === 'video' ? (<div className="relative"><video src={item.url} className={`w-full object-cover ${getMediaItems(detailModal).length === 1 ? 'max-h-[300px]' : 'h-48'}`} /><div className="absolute inset-0 flex items-center justify-center bg-black/20"><div className="w-10 h-10 bg-white/90 rounded-full flex items-center justify-center"><Play className="w-5 h-5 ml-0.5" fill="currentColor" /></div></div></div>) : (<img src={item.url} alt="" className={`w-full object-cover ${getMediaItems(detailModal).length === 1 ? 'max-h-[300px]' : 'h-48'}`} />)}
+                      {idx === 3 && getMediaItems(detailModal).length > 4 && <div className="absolute inset-0 bg-black/50 flex items-center justify-center"><span className="text-white text-xl font-bold">+{getMediaItems(detailModal).length - 4}</span></div>}
                     </div>
                   ))}
                 </div>
               )}
-              <div className="px-4 py-3 flex items-center gap-4 text-sm text-gray-500 border-b border-gray-100">{(detailModal.like_count || 0) > 0 && <span>좋아요 {detailModal.like_count}개</span>}<span>댓글 {detailModal.comment_count || 0}개</span></div>
-              <div className="flex items-center border-b border-gray-100">
-                <button onClick={() => handleLike(detailModal, true)} className={`flex-1 flex items-center justify-center gap-2 py-3 ${detailModal.liked ? 'text-blue-500' : 'text-gray-500'}`}><svg className="w-5 h-5" fill={detailModal.liked ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" /></svg><span className="font-medium text-sm">좋아요</span></button>
-                <button className="flex-1 flex items-center justify-center gap-2 py-3 text-gray-500"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg><span className="font-medium text-sm">댓글</span></button>
-                <button onClick={() => handleShare(detailModal)} className="flex-1 flex items-center justify-center gap-2 py-3 text-gray-500"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg><span className="font-medium text-sm">공유</span></button>
+              <div className="px-4 py-3 flex items-center gap-4 text-sm" style={{ color: theme.textMuted, borderBottom: `1px solid ${theme.borderLight}` }}>{(detailModal.like_count || 0) > 0 && <span>좋아요 {detailModal.like_count}개</span>}<span>댓글 {detailModal.comment_count || 0}개</span></div>
+              <div className="flex items-center" style={{ borderBottom: `1px solid ${theme.borderLight}` }}>
+                <button onClick={() => handleLike(detailModal, true)} className="flex-1 flex items-center justify-center gap-2 py-3" style={{ color: detailModal.liked ? '#3B82F6' : theme.textSecondary }}><ThumbsUp className="w-5 h-5" fill={detailModal.liked ? 'currentColor' : 'none'} /><span className="font-medium text-sm">좋아요</span></button>
+                <button className="flex-1 flex items-center justify-center gap-2 py-3" style={{ color: theme.textSecondary }}><MessageCircle className="w-5 h-5" /><span className="font-medium text-sm">댓글</span></button>
+                <button onClick={() => handleShare(detailModal)} className="flex-1 flex items-center justify-center gap-2 py-3" style={{ color: theme.textSecondary }}><Share2 className="w-5 h-5" /><span className="font-medium text-sm">공유</span></button>
               </div>
               <div className="p-4 space-y-4">
-                {comments.length > 0 && (<div className="flex items-center gap-2 pb-2 border-b border-gray-100"><span className="text-sm text-gray-500">정렬:</span><button onClick={() => setCommentSort('newest')} className={`px-3 py-1 text-sm rounded-full ${commentSort === 'newest' ? 'bg-amber-500 text-gray-900 font-bold' : 'bg-gray-100 text-gray-600'}`}>최신순</button><button onClick={() => setCommentSort('oldest')} className={`px-3 py-1 text-sm rounded-full ${commentSort === 'oldest' ? 'bg-amber-500 text-gray-900 font-bold' : 'bg-gray-100 text-gray-600'}`}>오래된순</button><button onClick={() => setCommentSort('popular')} className={`px-3 py-1 text-sm rounded-full ${commentSort === 'popular' ? 'bg-amber-500 text-gray-900 font-bold' : 'bg-gray-100 text-gray-600'}`}>인기순</button></div>)}
-                {loadingComments ? (<div className="text-center py-4"><div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto" /></div>) : comments.filter(c => !c.parent_id).length === 0 ? (<p className="text-center text-gray-500 py-4">첫 댓글을 남겨보세요</p>) : ([...comments.filter(c => !c.parent_id)].sort((a, b) => { if (commentSort === 'newest') return new Date(b.created_at).getTime() - new Date(a.created_at).getTime(); if (commentSort === 'oldest') return new Date(a.created_at).getTime() - new Date(b.created_at).getTime(); if (commentSort === 'popular') return (b.like_count || 0) - (a.like_count || 0); return 0; }).map((comment) => (<CommentItem key={comment.id} comment={comment} />)))}
+                {comments.length > 0 && (<div className="flex items-center gap-2 pb-2" style={{ borderBottom: `1px solid ${theme.borderLight}` }}><span className="text-sm" style={{ color: theme.textMuted }}>정렬:</span>{(['newest', 'oldest', 'popular'] as const).map(s => (<button key={s} onClick={() => setCommentSort(s)} className="px-3 py-1 text-sm rounded-full" style={{ backgroundColor: commentSort === s ? theme.accent : theme.bgInput, color: commentSort === s ? (isDark ? '#121212' : '#fff') : theme.textSecondary, fontWeight: commentSort === s ? 'bold' : 'normal' }}>{s === 'newest' ? '최신순' : s === 'oldest' ? '오래된순' : '인기순'}</button>))}</div>)}
+                {loadingComments ? <div className="text-center py-4"><div className="w-6 h-6 border-2 rounded-full animate-spin mx-auto" style={{ borderColor: theme.border, borderTopColor: theme.accent }} /></div> : comments.filter(c => !c.parent_id).length === 0 ? <p className="text-center py-4" style={{ color: theme.textMuted }}>첫 댓글을 남겨보세요</p> : ([...comments.filter(c => !c.parent_id)].sort((a, b) => { if (commentSort === 'newest') return new Date(b.created_at).getTime() - new Date(a.created_at).getTime(); if (commentSort === 'oldest') return new Date(a.created_at).getTime() - new Date(b.created_at).getTime(); return (b.like_count || 0) - (a.like_count || 0); }).map(c => <CommentItem key={c.id} comment={c} />))}
               </div>
             </div>
             {user ? (
-              <div className="p-3 border-t border-gray-200 bg-white">
-                {isMutedComment() && (<div className="bg-purple-50 border border-purple-200 rounded-lg p-3 mb-2"><p className="text-purple-700 text-sm">⚠️ 댓글 작성이 제한되어 있습니다.<br/><span className="text-xs">사유: {userProfile?.mute_reason || "커뮤니티 규정 위반"}</span></p></div>)}
-                {replyingTo && (<div className="flex items-center justify-between bg-amber-50 px-3 py-2 rounded-lg mb-2"><span className="text-sm text-amber-700">{replyingTo.author_nickname}님에게 답글</span><button onClick={() => setReplyingTo(null)} className="text-amber-600"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button></div>)}
-                {commentImagePreviews.length > 0 && (<div className="mb-2 relative inline-block"><img src={commentImagePreviews[0]} alt="" className="h-16 rounded-lg" /><button onClick={() => { setCommentImages([]); setCommentImagePreviews([]); }} className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs">✕</button></div>)}
+              <div className="p-3" style={{ borderTop: `1px solid ${theme.borderLight}`, backgroundColor: theme.bgCard }}>
+                {isMutedComment() && <div className="rounded-lg p-3 mb-2" style={{ backgroundColor: theme.redBg, border: `1px solid ${theme.red}30` }}><p className="text-sm" style={{ color: theme.red }}>⚠️ 댓글 작성이 제한되어 있습니다.</p></div>}
+                {replyingTo && <div className="flex items-center justify-between px-3 py-2 rounded-lg mb-2" style={{ backgroundColor: `${theme.accent}20` }}><span className="text-sm" style={{ color: theme.accent }}>{replyingTo.mentionNickname ? `@${replyingTo.mentionNickname}` : replyingTo.author_nickname}님에게 답글</span><button onClick={() => setReplyingTo(null)} style={{ color: theme.accent }}><X className="w-4 h-4" /></button></div>}
+                {commentImagePreviews.length > 0 && <div className="mb-2 relative inline-block"><img src={commentImagePreviews[0]} alt="" className="h-16 rounded-lg" /><button onClick={() => { setCommentImages([]); setCommentImagePreviews([]); }} className="absolute -top-1 -right-1 w-5 h-5 rounded-full text-xs flex items-center justify-center" style={{ backgroundColor: theme.red, color: '#fff' }}><X className="w-3 h-3" /></button></div>}
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center flex-shrink-0"><span className="text-gray-900 text-xs font-bold">{userProfile?.nickname?.[0]?.toUpperCase() || 'U'}</span></div>
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: theme.accent }}><span className="text-xs font-bold" style={{ color: isDark ? '#121212' : '#fff' }}>{userProfile?.nickname?.[0]?.toUpperCase() || 'U'}</span></div>
                   <div className="flex-1 relative">
-                    <input ref={commentInputRef} type="text" value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder={isMutedComment() ? "댓글 작성이 제한되어 있습니다" : replyingTo ? "답글 달기..." : `${userProfile?.nickname || '사용자'} 이름으로 댓글 달기`} className={`w-full pl-4 pr-20 py-2.5 bg-gray-100 rounded-full focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm ${isMutedComment() ? 'opacity-50 cursor-not-allowed' : ''}`} onKeyDown={(e) => e.key === 'Enter' && handleComment()} disabled={isMutedComment()} />
+                    <input ref={commentInputRef} type="text" value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder={isMutedComment() ? "댓글 작성이 제한되어 있습니다" : replyingTo ? "답글 달기..." : `${userProfile?.nickname || '사용자'} 이름으로 댓글 달기`} className="w-full pl-4 pr-20 py-2.5 rounded-full focus:outline-none focus:ring-2 text-sm" style={{ backgroundColor: theme.bgInput, color: theme.textPrimary, opacity: isMutedComment() ? 0.5 : 1 }} onKeyDown={(e) => e.key === 'Enter' && handleComment()} disabled={isMutedComment()} />
                     <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
-                      <button onClick={() => setShowEmojiPicker(!showEmojiPicker)} className="p-1.5 text-gray-400 hover:text-amber-500" disabled={isMutedComment()}><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button>
+                      <button onClick={() => setShowEmojiPicker(!showEmojiPicker)} className="p-1.5" style={{ color: theme.textMuted }} disabled={isMutedComment()}><Smile className="w-5 h-5" /></button>
                       <input type="file" ref={commentImageRef} accept="image/*" className="hidden" onChange={handleCommentImageSelect} />
-                      <button onClick={() => commentImageRef.current?.click()} className="p-1.5 text-gray-400 hover:text-amber-500" disabled={isMutedComment()}><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg></button>
-                      {(newComment.trim() || commentImages.length > 0) && !isMutedComment() && (<button onClick={handleComment} className="p-1.5 text-amber-500"><svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" /></svg></button>)}
+                      <button onClick={() => commentImageRef.current?.click()} className="p-1.5" style={{ color: theme.textMuted }} disabled={isMutedComment()}><ImageIcon className="w-5 h-5" /></button>
+                      {(newComment.trim() || commentImages.length > 0) && !isMutedComment() && <button onClick={handleComment} className="p-1.5" style={{ color: theme.accent }}><Send className="w-5 h-5" /></button>}
                     </div>
-                    {showEmojiPicker && !isMutedComment() && (<div className="absolute bottom-12 right-0 bg-white rounded-xl shadow-lg border p-2 grid grid-cols-10 gap-1 z-10">{emojis.map(emoji => (<button key={emoji} onClick={() => addEmoji(emoji)} className="w-7 h-7 text-lg hover:bg-gray-100 rounded">{emoji}</button>))}</div>)}
+                    {showEmojiPicker && !isMutedComment() && <div className="absolute bottom-12 right-0 rounded-xl shadow-lg p-2 grid grid-cols-10 gap-1 z-10" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>{emojis.map(e => <button key={e} onClick={() => addEmoji(e)} className="w-7 h-7 text-lg rounded">{e}</button>)}</div>}
                   </div>
-                  <label className={`flex items-center gap-1 cursor-pointer select-none ${isMutedComment() ? 'opacity-50' : ''}`}><input type="checkbox" checked={isAnonymousComment} onChange={(e) => setIsAnonymousComment(e.target.checked)} className="w-3.5 h-3.5 rounded border-gray-300 text-amber-500 focus:ring-amber-500" disabled={isMutedComment()} /><span className="text-xs text-gray-500">익명</span></label>
+                  <label className={`flex items-center gap-1 cursor-pointer select-none ${isMutedComment() ? 'opacity-50' : ''}`}><input type="checkbox" checked={isAnonymousComment} onChange={(e) => setIsAnonymousComment(e.target.checked)} className="w-3.5 h-3.5 rounded" style={{ accentColor: theme.accent }} disabled={isMutedComment()} /><span className="text-xs" style={{ color: theme.textMuted }}>익명</span></label>
                 </div>
               </div>
-            ) : (<div className="p-4 border-t border-gray-200 text-center"><span className="text-gray-500 text-sm">댓글을 작성하려면 </span><Link href="/login" className="text-amber-600 font-bold text-sm">로그인</Link></div>)}
+            ) : <div className="p-4 text-center" style={{ borderTop: `1px solid ${theme.borderLight}` }}><span className="text-sm" style={{ color: theme.textMuted }}>댓글을 작성하려면 </span><Link href="/login" className="font-bold text-sm" style={{ color: theme.accent }}>로그인</Link></div>}
           </div>
         </div>
       )}
 
-      {confirmPostModal && (<div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => setConfirmPostModal(false)}><div className="bg-white rounded-2xl p-6 w-full max-w-sm" onClick={(e) => e.stopPropagation()}><p className="text-center text-gray-900 font-medium mb-6">{isAnonymous ? '익명으로 게시물을 등록하시겠습니까?' : '게시물을 등록하시겠습니까?'}</p><div className="flex gap-3"><button onClick={() => setConfirmPostModal(false)} className="flex-1 py-3 bg-gray-200 text-gray-700 font-bold rounded-xl">취소</button><button onClick={handlePost} className="flex-1 py-3 bg-amber-500 text-gray-900 font-bold rounded-xl">확인</button></div></div></div>)}
-      {reportModal && (<div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => { setReportModal(null); setReportReason(""); }}><div className="bg-white rounded-2xl p-6 w-full max-w-sm" onClick={(e) => e.stopPropagation()}><h3 className="text-lg font-bold text-gray-900 mb-4">🚨 신고하기</h3>{reportModal.isAnonymous && <p className="text-sm text-gray-500 mb-3">익명 사용자를 신고합니다</p>}<textarea value={reportReason} onChange={(e) => setReportReason(e.target.value)} placeholder="신고 사유를 입력하세요" className="w-full h-24 p-3 border border-gray-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-red-500 mb-4" /><div className="flex gap-3"><button onClick={() => { setReportModal(null); setReportReason(""); }} className="flex-1 py-3 bg-gray-200 text-gray-700 font-bold rounded-xl">취소</button><button onClick={handleReport} className="flex-1 py-3 bg-red-500 text-white font-bold rounded-xl">신고</button></div></div></div>)}
-      {editingPost && (<div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => setEditingPost(null)}><div className="bg-white rounded-2xl p-4 w-full max-w-lg" onClick={(e) => e.stopPropagation()}><div className="flex items-center justify-between mb-4"><h3 className="text-lg font-bold text-gray-900">게시글 수정</h3><button onClick={() => setEditingPost(null)} className="text-gray-500"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button></div><textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} className="w-full h-40 p-3 border border-gray-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-amber-500" /><div className="flex gap-2 mt-4"><button onClick={() => setEditingPost(null)} className="flex-1 py-3 bg-gray-200 text-gray-700 font-bold rounded-xl">취소</button><button onClick={handleEditSave} className="flex-1 py-3 bg-amber-500 text-gray-900 font-bold rounded-xl">수정</button></div></div></div>)}
-      {editProfileModal && (<div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => setEditProfileModal(false)}><div className="bg-white rounded-2xl p-6 w-full max-w-sm" onClick={(e) => e.stopPropagation()}><h3 className="text-lg font-bold text-gray-900 mb-4">프로필 수정</h3><div className="flex flex-col items-center mb-6"><div className="relative"><div className="w-24 h-24 bg-gray-800 rounded-full flex items-center justify-center overflow-hidden">{userProfile?.avatar_url ? <img src={userProfile.avatar_url} alt="" className="w-full h-full object-cover" /> : <span className="text-white text-3xl font-bold">{userProfile?.nickname?.[0]?.toUpperCase() || 'U'}</span>}</div><button onClick={() => profileAvatarRef.current?.click()} className="absolute bottom-0 right-0 w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center shadow-lg"><svg className="w-4 h-4 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg></button><input ref={profileAvatarRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} /></div></div><div className="mb-4"><label className="block text-sm font-medium text-gray-700 mb-1">닉네임</label><input type="text" value={editNickname} onChange={(e) => setEditNickname(e.target.value)} maxLength={20} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500" />{getNicknameChangeInfo() && <p className="text-xs text-gray-500 mt-1">{getNicknameChangeInfo()!.remaining > 0 ? `변경 가능: ${getNicknameChangeInfo()!.remaining}회` : `${getNicknameChangeInfo()!.daysUntilReset}일 후 리셋`}</p>}</div><div className="flex gap-2"><button onClick={() => setEditProfileModal(false)} className="flex-1 py-3 bg-gray-200 text-gray-700 font-bold rounded-xl">취소</button><button onClick={handleSaveNickname} disabled={editingProfile} className="flex-1 py-3 bg-amber-500 text-gray-900 font-bold rounded-xl disabled:opacity-50">{editingProfile ? '저장 중...' : '저장'}</button></div></div></div>)}
-      {profileModal && (<div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => setProfileModal(null)}><div className="bg-white rounded-2xl p-6 w-full max-w-sm" onClick={(e) => e.stopPropagation()}><div className="flex items-center gap-4 mb-4"><div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center overflow-hidden">{profileModal.avatarUrl ? <img src={profileModal.avatarUrl} alt="" className="w-full h-full object-cover" /> : <span className="text-white text-2xl font-bold">{profileModal.nickname?.[0]?.toUpperCase() || 'U'}</span>}</div><div className="flex-1"><h3 className="text-xl font-bold text-gray-900">{profileModal.nickname}</h3>{profileModal.createdAt && <p className="text-sm text-gray-500">가입일: {formatFullDate(profileModal.createdAt)}</p>}</div></div><div className="grid grid-cols-3 gap-2 mb-4"><div className="bg-gray-100 rounded-xl p-3 text-center"><p className="text-xl font-bold text-gray-900">{profileModal.postCount}</p><p className="text-xs text-gray-500">게시글</p></div><div className="bg-gray-100 rounded-xl p-3 text-center"><p className="text-xl font-bold text-gray-900">{profileModal.followerCount}</p><p className="text-xs text-gray-500">팔로워</p></div><div className="bg-gray-100 rounded-xl p-3 text-center"><p className="text-xl font-bold text-gray-900">{profileModal.followingCount}</p><p className="text-xs text-gray-500">팔로잉</p></div></div>{profileModal.isOwnProfile ? <button onClick={openEditProfile} className="w-full py-3 bg-amber-500 text-gray-900 font-bold rounded-xl mb-3">프로필 수정</button> : user && profileModal.userId !== user.id && <button onClick={handleFollow} disabled={followLoading} className={`w-full py-3 font-bold rounded-xl mb-3 ${isFollowing ? 'bg-gray-200 text-gray-700' : 'bg-amber-500 text-gray-900'}`}>{followLoading ? '처리 중...' : isFollowing ? '팔로잉' : '팔로우'}</button>}<button onClick={() => setProfileModal(null)} className="w-full py-3 bg-gray-900 text-white font-bold rounded-xl">닫기</button></div></div>)}
+      {/* 확인 모달들 */}
+      {confirmPostModal && (<div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => setConfirmPostModal(false)}><div className="rounded-2xl p-6 w-full max-w-sm" style={{ backgroundColor: theme.bgCard }} onClick={(e) => e.stopPropagation()}><p className="text-center font-medium mb-6" style={{ color: theme.textPrimary }}>{isAnonymous ? '익명으로 게시물을 등록하시겠습니까?' : '게시물을 등록하시겠습니까?'}</p><div className="flex gap-3"><button onClick={() => setConfirmPostModal(false)} className="flex-1 py-3 font-bold rounded-xl" style={{ backgroundColor: theme.bgInput, color: theme.textPrimary }}>취소</button><button onClick={handlePost} className="flex-1 py-3 font-bold rounded-xl" style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}>확인</button></div></div></div>)}
+      {reportModal && (<div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => { setReportModal(null); setReportReason(""); }}><div className="rounded-2xl p-6 w-full max-w-sm" style={{ backgroundColor: theme.bgCard }} onClick={(e) => e.stopPropagation()}><h3 className="text-lg font-bold mb-4" style={{ color: theme.textPrimary }}>🚨 신고하기</h3>{reportModal.isAnonymous && <p className="text-sm mb-3" style={{ color: theme.textMuted }}>익명 사용자를 신고합니다</p>}<textarea value={reportReason} onChange={(e) => setReportReason(e.target.value)} placeholder="신고 사유를 입력하세요" className="w-full h-24 p-3 rounded-xl resize-none focus:outline-none focus:ring-2 mb-4" style={{ backgroundColor: theme.bgInput, color: theme.textPrimary, border: `1px solid ${theme.border}` }} /><div className="flex gap-3"><button onClick={() => { setReportModal(null); setReportReason(""); }} className="flex-1 py-3 font-bold rounded-xl" style={{ backgroundColor: theme.bgInput, color: theme.textPrimary }}>취소</button><button onClick={handleReport} className="flex-1 py-3 font-bold rounded-xl" style={{ backgroundColor: theme.red, color: '#fff' }}>신고</button></div></div></div>)}
+      {editingPost && (<div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => setEditingPost(null)}><div className="rounded-2xl p-4 w-full max-w-lg" style={{ backgroundColor: theme.bgCard }} onClick={(e) => e.stopPropagation()}><div className="flex items-center justify-between mb-4"><h3 className="text-lg font-bold" style={{ color: theme.textPrimary }}>게시글 수정</h3><button onClick={() => setEditingPost(null)} style={{ color: theme.textMuted }}><X className="w-6 h-6" /></button></div><textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} className="w-full h-40 p-3 rounded-xl resize-none focus:outline-none focus:ring-2" style={{ backgroundColor: theme.bgInput, color: theme.textPrimary, border: `1px solid ${theme.border}` }} /><div className="flex gap-2 mt-4"><button onClick={() => setEditingPost(null)} className="flex-1 py-3 font-bold rounded-xl" style={{ backgroundColor: theme.bgInput, color: theme.textPrimary }}>취소</button><button onClick={handleEditSave} className="flex-1 py-3 font-bold rounded-xl" style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}>수정</button></div></div></div>)}
+      {editProfileModal && (<div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => setEditProfileModal(false)}><div className="rounded-2xl p-6 w-full max-w-sm" style={{ backgroundColor: theme.bgCard }} onClick={(e) => e.stopPropagation()}><h3 className="text-lg font-bold mb-4" style={{ color: theme.textPrimary }}>프로필 수정</h3><div className="flex flex-col items-center mb-6"><div className="relative"><div className="w-24 h-24 rounded-full flex items-center justify-center overflow-hidden" style={{ backgroundColor: theme.accent }}>{userProfile?.avatar_url ? <img src={userProfile.avatar_url} alt="" className="w-full h-full object-cover" /> : <span className="text-3xl font-bold" style={{ color: isDark ? '#121212' : '#fff' }}>{userProfile?.nickname?.[0]?.toUpperCase() || 'U'}</span>}</div><button onClick={() => profileAvatarRef.current?.click()} className="absolute bottom-0 right-0 w-8 h-8 rounded-full flex items-center justify-center shadow-lg" style={{ backgroundColor: theme.accent }}><Camera className="w-4 h-4" style={{ color: isDark ? '#121212' : '#fff' }} /></button><input ref={profileAvatarRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} /></div></div><div className="mb-4"><label className="block text-sm font-medium mb-1" style={{ color: theme.textSecondary }}>닉네임</label><input type="text" value={editNickname} onChange={(e) => setEditNickname(e.target.value)} maxLength={20} className="w-full px-4 py-3 rounded-xl focus:outline-none focus:ring-2" style={{ backgroundColor: theme.bgInput, color: theme.textPrimary, border: `1px solid ${theme.border}` }} />{getNicknameChangeInfo() && <p className="text-xs mt-1" style={{ color: theme.textMuted }}>{getNicknameChangeInfo()!.remaining > 0 ? `변경 가능: ${getNicknameChangeInfo()!.remaining}회` : `${getNicknameChangeInfo()!.daysUntilReset}일 후 리셋`}</p>}</div><div className="flex gap-2"><button onClick={() => setEditProfileModal(false)} className="flex-1 py-3 font-bold rounded-xl" style={{ backgroundColor: theme.bgInput, color: theme.textPrimary }}>취소</button><button onClick={handleSaveNickname} disabled={editingProfile} className="flex-1 py-3 font-bold rounded-xl disabled:opacity-50" style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}>{editingProfile ? '저장 중...' : '저장'}</button></div></div></div>)}
+      {profileModal && (<div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => setProfileModal(null)}><div className="rounded-2xl p-6 w-full max-w-sm" style={{ backgroundColor: theme.bgCard }} onClick={(e) => e.stopPropagation()}><div className="flex items-center gap-4 mb-4"><div className="w-16 h-16 rounded-full flex items-center justify-center overflow-hidden" style={{ backgroundColor: theme.accent }}>{profileModal.avatarUrl ? <img src={profileModal.avatarUrl} alt="" className="w-full h-full object-cover" /> : <span className="text-2xl font-bold" style={{ color: isDark ? '#121212' : '#fff' }}>{profileModal.nickname?.[0]?.toUpperCase() || 'U'}</span>}</div><div className="flex-1"><h3 className="text-xl font-bold" style={{ color: theme.textPrimary }}>{profileModal.nickname}</h3>{profileModal.createdAt && <p className="text-sm" style={{ color: theme.textMuted }}>가입일: {formatFullDate(profileModal.createdAt)}</p>}</div></div><div className="grid grid-cols-3 gap-2 mb-4">{[{ label: '게시글', value: profileModal.postCount }, { label: '팔로워', value: profileModal.followerCount }, { label: '팔로잉', value: profileModal.followingCount }].map(item => <div key={item.label} className="rounded-xl p-3 text-center" style={{ backgroundColor: theme.bgInput }}><p className="text-xl font-bold" style={{ color: theme.textPrimary }}>{item.value}</p><p className="text-xs" style={{ color: theme.textMuted }}>{item.label}</p></div>)}</div>{profileModal.isOwnProfile ? <button onClick={openEditProfile} className="w-full py-3 font-bold rounded-xl mb-3" style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}>프로필 수정</button> : user && profileModal.userId !== user.id && <button onClick={handleFollow} disabled={followLoading} className="w-full py-3 font-bold rounded-xl mb-3" style={{ backgroundColor: isFollowing ? theme.bgInput : theme.accent, color: isFollowing ? theme.textPrimary : (isDark ? '#121212' : '#fff') }}>{followLoading ? '처리 중...' : isFollowing ? '팔로잉' : '팔로우'}</button>}<button onClick={() => setProfileModal(null)} className="w-full py-3 font-bold rounded-xl" style={{ backgroundColor: theme.bgElevated, color: theme.textPrimary }}>닫기</button></div></div>)}
 
-      <header className="bg-gray-900 sticky top-0 z-50 cursor-pointer" onClick={scrollToTop}><div className="max-w-[631px] mx-auto px-4 h-14 flex items-center justify-between"><div className="flex items-center gap-3"><Link href="/" className="text-gray-400 hover:text-white" onClick={(e) => e.stopPropagation()}><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg></Link><h1 className="text-white font-bold text-lg">커뮤니티</h1></div>{user && <Link href="/notifications" className="relative text-gray-400 hover:text-white" onClick={(e) => e.stopPropagation()}><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>{unreadCount > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">{unreadCount > 9 ? '9+' : unreadCount}</span>}</Link>}</div></header>
+      {/* 헤더 */}
+      <Header title="커뮤니티" showBack />
 
+      {/* 메인 */}
       <main className="max-w-[631px] mx-auto px-4 py-4">
-        {user && (<div ref={writeBoxRef} className="bg-white rounded-xl shadow-md mb-4 overflow-hidden">
-          {isMutedPost() && (<div className="bg-orange-50 border-b border-orange-200 p-3"><p className="text-orange-700 text-sm">⚠️ 글쓰기가 제한되어 있습니다.<br/><span className="text-xs">사유: {userProfile?.mute_reason || "커뮤니티 규정 위반"}</span></p></div>)}
-          {!isWriting ? (<div className={`flex items-center gap-3 p-4 cursor-pointer ${isMutedPost() ? 'opacity-50' : ''}`} onClick={handleWriteBoxClick}><div className="w-10 h-10 bg-amber-500 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden">{userProfile?.avatar_url ? <img src={userProfile.avatar_url} alt="" className="w-full h-full object-cover" /> : <span className="text-gray-900 font-bold text-sm">{userProfile?.nickname?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || "U"}</span>}</div><div className="flex-1 bg-gray-100 rounded-full px-4 py-2.5"><span className="text-gray-500">{isMutedPost() ? "글쓰기가 제한되어 있습니다" : "무슨 생각을 하고 계신가요?"}</span></div></div>) : (<div className="p-4"><div className="flex gap-3"><div className="w-10 h-10 bg-amber-500 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden">{userProfile?.avatar_url ? <img src={userProfile.avatar_url} alt="" className="w-full h-full object-cover" /> : <span className="text-gray-900 font-bold text-sm">{userProfile?.nickname?.[0]?.toUpperCase() || "U"}</span>}</div><div className="flex-1"><textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="무슨 생각을 하고 계신가요?" rows={3} className="w-full resize-none border-0 focus:outline-none focus:ring-0 text-gray-900 placeholder-gray-400" autoFocus disabled={posting} />{writingLinkPreview && (<div className="mt-2 rounded-xl overflow-hidden border border-gray-200 relative">{writingLinkPreview.image && (<img src={writingLinkPreview.image} alt="" className="w-full h-40 object-cover" />)}<div className="p-3 bg-gray-50"><p className="font-medium text-gray-900 text-sm line-clamp-2">{writingLinkPreview.title}</p>{writingLinkPreview.description && <p className="text-xs text-gray-500 line-clamp-2 mt-1">{writingLinkPreview.description}</p>}<p className="text-xs text-gray-400 mt-1">{writingLinkPreview.domain}</p></div><button onClick={() => setWritingLinkPreview(null)} className="absolute top-2 right-2 w-6 h-6 bg-black/50 text-white rounded-full text-sm">✕</button></div>)}{loadingLinkPreview && (<div className="mt-2 p-3 bg-gray-100 rounded-xl flex items-center gap-2"><div className="w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" /><span className="text-sm text-gray-500">링크 미리보기 로딩 중...</span></div>)}{mediaPreviews.length > 0 && (<div className="flex gap-2 mt-2 flex-wrap">{mediaPreviews.map((preview, index) => (<div key={index} className="relative">{preview.type === 'video' ? (<div className="w-20 h-20 bg-gray-900 rounded-lg relative overflow-hidden"><video src={preview.url} className="w-full h-full object-cover" /><div className="absolute inset-0 flex items-center justify-center bg-black/30"><svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg></div></div>) : (<img src={preview.url} alt="" className="w-20 h-20 object-cover rounded-lg" />)}<button onClick={() => removeMedia(index)} disabled={posting} className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs">✕</button></div>))}</div>)}{posting && (<div className="mt-3"><div className="flex items-center justify-between text-xs text-gray-600 mb-1"><span className="truncate">{totalFiles > 0 ? `${currentFileIndex}/${totalFiles} 업로드 중...` : '처리 중...'}</span><span className="font-bold">{uploadProgress}%</span></div><div className="w-full bg-gray-200 rounded-full h-2"><div className="bg-amber-500 h-2 rounded-full transition-all" style={{ width: `${uploadProgress}%` }} /></div></div>)}</div></div><div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100"><div className="flex items-center gap-1"><input type="file" ref={fileInputRef} onChange={handleFileSelect} accept="image/*,video/*" multiple className="hidden" disabled={posting} /><button onClick={() => fileInputRef.current?.click()} disabled={posting} className="p-2 text-gray-500 hover:text-amber-500 hover:bg-gray-100 rounded-lg disabled:opacity-50"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg></button></div><div className="flex items-center gap-3"><label className="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" checked={isAnonymous} onChange={(e) => setIsAnonymous(e.target.checked)} disabled={posting} className="w-4 h-4 rounded border-gray-300 text-amber-500 focus:ring-amber-500" /><span className="text-sm text-gray-600">익명</span></label><button onClick={handlePostButtonClick} disabled={posting || (!content.trim() && mediaFiles.length === 0)} className="px-5 py-2 bg-amber-500 text-gray-900 font-bold rounded-full disabled:opacity-50">{posting ? "업로드 중..." : "게시"}</button></div></div></div>)}</div>)}
-        {!user && (<div className="bg-white rounded-xl shadow-md p-4 mb-4 text-center"><span className="text-gray-500">로그인하고 글을 작성하세요</span><Link href="/login" className="text-amber-600 font-bold ml-2">로그인</Link></div>)}
+        {/* 글쓰기 박스 */}
+        {user && (
+          <div ref={writeBoxRef} className="rounded-xl mb-4 overflow-hidden" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}>
+            {isMutedPost() && <div className="p-3" style={{ backgroundColor: theme.redBg, borderBottom: `1px solid ${theme.red}30` }}><p className="text-sm" style={{ color: theme.red }}>⚠️ 글쓰기가 제한되어 있습니다.</p></div>}
+            {!isWriting ? (
+              <div className={`flex items-center gap-3 p-4 cursor-pointer ${isMutedPost() ? 'opacity-50' : ''}`} onClick={handleWriteBoxClick}>
+                <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden" style={{ backgroundColor: theme.accent }}>{userProfile?.avatar_url ? <img src={userProfile.avatar_url} alt="" className="w-full h-full object-cover" /> : <span className="font-bold text-sm" style={{ color: isDark ? '#121212' : '#fff' }}>{userProfile?.nickname?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || "U"}</span>}</div>
+                <div className="flex-1 rounded-full px-4 py-2.5" style={{ backgroundColor: theme.bgInput }}><span style={{ color: theme.textMuted }}>{isMutedPost() ? "글쓰기가 제한되어 있습니다" : "무슨 생각을 하고 계신가요?"}</span></div>
+              </div>
+            ) : (
+              <div className="p-4">
+                <div className="flex gap-3">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden" style={{ backgroundColor: theme.accent }}>{userProfile?.avatar_url ? <img src={userProfile.avatar_url} alt="" className="w-full h-full object-cover" /> : <span className="font-bold text-sm" style={{ color: isDark ? '#121212' : '#fff' }}>{userProfile?.nickname?.[0]?.toUpperCase() || "U"}</span>}</div>
+                  <div className="flex-1">
+                    <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="무슨 생각을 하고 계신가요?" rows={3} className="w-full resize-none border-0 focus:outline-none focus:ring-0" style={{ backgroundColor: 'transparent', color: theme.textPrimary }} autoFocus disabled={posting} />
+                    {writingLinkPreview && (<div className="mt-2 rounded-xl overflow-hidden relative" style={{ border: `1px solid ${theme.border}` }}>{writingLinkPreview.image && <img src={writingLinkPreview.image} alt="" className="w-full h-40 object-cover" />}<div className="p-3" style={{ backgroundColor: theme.bgInput }}><p className="font-medium text-sm line-clamp-2" style={{ color: theme.textPrimary }}>{writingLinkPreview.title}</p>{writingLinkPreview.description && <p className="text-xs line-clamp-2 mt-1" style={{ color: theme.textMuted }}>{writingLinkPreview.description}</p>}<p className="text-xs mt-1" style={{ color: theme.textMuted }}>{writingLinkPreview.domain}</p></div><button onClick={() => setWritingLinkPreview(null)} className="absolute top-2 right-2 w-6 h-6 bg-black/50 text-white rounded-full text-sm flex items-center justify-center"><X className="w-4 h-4" /></button></div>)}
+                    {loadingLinkPreview && <div className="mt-2 p-3 rounded-xl flex items-center gap-2" style={{ backgroundColor: theme.bgInput }}><div className="w-4 h-4 border-2 rounded-full animate-spin" style={{ borderColor: theme.border, borderTopColor: theme.accent }} /><span className="text-sm" style={{ color: theme.textMuted }}>링크 미리보기 로딩 중...</span></div>}
+                    {mediaPreviews.length > 0 && <div className="flex gap-2 mt-2 flex-wrap">{mediaPreviews.map((preview, index) => (<div key={index} className="relative">{preview.type === 'video' ? (<div className="w-20 h-20 rounded-lg relative overflow-hidden" style={{ backgroundColor: theme.bgElevated }}><video src={preview.url} className="w-full h-full object-cover" /><div className="absolute inset-0 flex items-center justify-center bg-black/30"><Play className="w-6 h-6 text-white" fill="currentColor" /></div></div>) : (<img src={preview.url} alt="" className="w-20 h-20 object-cover rounded-lg" />)}<button onClick={() => removeMedia(index)} disabled={posting} className="absolute -top-1 -right-1 w-5 h-5 rounded-full text-xs flex items-center justify-center" style={{ backgroundColor: theme.red, color: '#fff' }}><X className="w-3 h-3" /></button></div>))}</div>}
+                    {posting && <div className="mt-3"><div className="flex items-center justify-between text-xs mb-1" style={{ color: theme.textSecondary }}><span className="truncate">{totalFiles > 0 ? `${currentFileIndex}/${totalFiles} 업로드 중...` : '처리 중...'}</span><span className="font-bold">{uploadProgress}%</span></div><div className="w-full rounded-full h-2" style={{ backgroundColor: theme.bgInput }}><div className="h-2 rounded-full transition-all" style={{ width: `${uploadProgress}%`, backgroundColor: theme.accent }} /></div></div>}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between mt-3 pt-3" style={{ borderTop: `1px solid ${theme.borderLight}` }}>
+                  <div className="flex items-center gap-1"><input type="file" ref={fileInputRef} onChange={handleFileSelect} accept="image/*,video/*" multiple className="hidden" disabled={posting} /><button onClick={() => fileInputRef.current?.click()} disabled={posting} className="p-2 rounded-lg disabled:opacity-50" style={{ color: theme.textMuted }}><ImageIcon className="w-6 h-6" /></button></div>
+                  <div className="flex items-center gap-3"><label className="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" checked={isAnonymous} onChange={(e) => setIsAnonymous(e.target.checked)} disabled={posting} className="w-4 h-4 rounded" style={{ accentColor: theme.accent }} /><span className="text-sm" style={{ color: theme.textSecondary }}>익명</span></label><button onClick={handlePostButtonClick} disabled={posting || (!content.trim() && mediaFiles.length === 0)} className="px-5 py-2 font-bold rounded-full disabled:opacity-50" style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}>{posting ? "업로드 중..." : "게시"}</button></div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        {!user && <div className="rounded-xl p-4 mb-4 text-center" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}><span style={{ color: theme.textMuted }}>로그인하고 글을 작성하세요</span><Link href="/login" className="font-bold ml-2" style={{ color: theme.accent }}>로그인</Link></div>}
 
-        {loading ? <div className="flex justify-center py-20"><div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div></div> : posts.length === 0 ? <div className="text-center py-20 bg-white rounded-xl shadow-md"><p className="text-gray-500">게시글이 없습니다</p></div> : (<div className="space-y-4">{renderPostsWithAds()}</div>)}
+        {/* 게시글 목록 */}
+        {loading ? <div className="flex justify-center py-20"><div className="w-8 h-8 border-4 rounded-full animate-spin" style={{ borderColor: theme.border, borderTopColor: theme.accent }}></div></div> : posts.length === 0 ? <div className="text-center py-20 rounded-xl" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}><p style={{ color: theme.textMuted }}>게시글이 없습니다</p></div> : <div className="space-y-4">{renderPostsWithAds()}</div>}
       </main>
 
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 z-50"><div className="flex"><Link href="/" className="flex-1 py-3 flex flex-col items-center gap-1"><svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg><span className="text-xs text-gray-500">홈</span></Link><Link href="/community" className="flex-1 py-3 flex flex-col items-center gap-1"><svg className="w-6 h-6 text-amber-500" fill="currentColor" viewBox="0 0 24 24"><path d="M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg><span className="text-xs font-bold text-amber-500">커뮤니티</span></Link><Link href="/market" className="flex-1 py-3 flex flex-col items-center gap-1"><svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg><span className="text-xs text-gray-500">마켓</span></Link><Link href="/videos" className="flex-1 py-3 flex flex-col items-center gap-1"><svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg><span className="text-xs text-gray-500">영상</span></Link><Link href="/mypage" className="flex-1 py-3 flex flex-col items-center gap-1"><svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg><span className="text-xs text-gray-500">MY</span></Link></div></nav>
+      <BottomNav />
     </div>
+  );
+}
+// Suspense로 감싸서 useSearchParams 사용
+export default function CommunityPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#121212' }}>
+        <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#d4af37' }} />
+      </div>
+    }>
+      <CommunityPageContent />
+    </Suspense>
   );
 }

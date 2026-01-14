@@ -2,12 +2,28 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { useTheme } from "@/contexts/ThemeContext";
 import BottomNav from "@/components/BottomNav";
+import {
+  ArrowLeft,
+  Bell,
+  Mail,
+  MessageCircle,
+  Heart,
+  User,
+  FileText,
+  ShoppingCart,
+  Megaphone,
+  X,
+  CheckCheck,
+  Trash2,
+} from "lucide-react";
 
 export default function NotificationsPage() {
   const router = useRouter();
+  const { theme, isDark, mounted } = useTheme();
+  
   const [user, setUser] = useState<any>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,7 +89,6 @@ export default function NotificationsPage() {
       await markAsRead(notification.id);
     }
     
-    // 타입별 이동
     if (notification.type === "message") {
       router.push("/messages");
     } else if (notification.type === "notice" && notification.notice_id) {
@@ -100,53 +115,56 @@ export default function NotificationsPage() {
     return date.toLocaleDateString("ko-KR");
   };
 
-  const getIcon = (type: string, message: string) => {
-    // 메시지에 특정 키워드가 있으면 아이콘 변경
-    if (type === "notice") {
-      if (message.includes("공지")) {
-        return { emoji: "📢", bg: "bg-amber-100", color: "text-amber-600" };
-      }
-      return { emoji: "🔔", bg: "bg-orange-100", color: "text-orange-600" };
-    }
-    
+  const getIcon = (type: string) => {
     switch (type) {
-      case "message": return { emoji: "✉️", bg: "bg-teal-100", color: "text-teal-600" };
-      case "comment": return { emoji: "💬", bg: "bg-blue-100", color: "text-blue-600" };
-      case "like": return { emoji: "❤️", bg: "bg-red-100", color: "text-red-600" };
-      case "follow": return { emoji: "👤", bg: "bg-purple-100", color: "text-purple-600" };
-      case "new_post": return { emoji: "📝", bg: "bg-emerald-100", color: "text-emerald-600" };
-      case "groupbuy": return { emoji: "🛒", bg: "bg-teal-100", color: "text-teal-600" };
-      default: return { emoji: "🔔", bg: "bg-gray-100", color: "text-gray-600" };
+      case "message": return Mail;
+      case "comment": return MessageCircle;
+      case "like": return Heart;
+      case "follow": return User;
+      case "new_post": return FileText;
+      case "groupbuy": return ShoppingCart;
+      case "notice": return Megaphone;
+      default: return Bell;
     }
   };
 
-  // 메시지에서 앞의 이모지 제거
-  const cleanMessage = (message: string) => {
-    return message.replace(/^(📢|🔔|💬|❤️|👤|📝|🛒)\s*/, '');
+  const getIconColor = (type: string) => {
+    switch (type) {
+      case "message": return theme.accent;
+      case "comment": return theme.accent;
+      case "like": return theme.red;
+      case "follow": return theme.accent;
+      case "new_post": return theme.accent;
+      case "groupbuy": return theme.accent;
+      case "notice": return theme.accent;
+      default: return theme.textMuted;
+    }
   };
 
-  if (loading) {
+  const cleanMessage = (message: string) => {
+    return message.replace(/^(📢|🔔|💬|❤️|👤|📝|🛒|✉️)\s*/, '');
+  };
+
+  if (!mounted || loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: theme.bgMain }}>
+        <div className="w-10 h-10 border-2 rounded-full animate-spin" style={{ borderColor: theme.border, borderTopColor: theme.accent }}></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
+    <div className="min-h-screen pb-24 transition-colors duration-300" style={{ backgroundColor: theme.bgMain }}>
       {/* 헤더 */}
-      <header className="bg-white sticky top-0 z-50 border-b border-gray-100">
-        <div className="max-w-[631px] mx-auto px-4 h-14 flex items-center justify-between">
+      <header className="sticky top-0 z-50" style={{ backgroundColor: theme.bgMain, borderBottom: `1px solid ${theme.borderLight}` }}>
+        <div className="max-w-[640px] mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button onClick={() => router.back()} className="text-gray-600">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
+            <button onClick={() => router.back()} className="p-1 -ml-1 rounded-lg" style={{ color: theme.textPrimary }}>
+              <ArrowLeft className="w-6 h-6" strokeWidth={1.5} />
             </button>
-            <h1 className="text-gray-900 font-bold text-lg">알림</h1>
+            <h1 className="text-lg font-bold" style={{ color: theme.textPrimary }}>알림</h1>
             {unreadCount > 0 && (
-              <span className="px-2 py-0.5 bg-red-500 text-white text-xs font-bold rounded-full">
+              <span className="px-2 py-0.5 text-xs font-bold rounded-full" style={{ backgroundColor: theme.red, color: '#FFF' }}>
                 {unreadCount}
               </span>
             )}
@@ -155,17 +173,12 @@ export default function NotificationsPage() {
           {notifications.length > 0 && (
             <div className="flex items-center gap-3">
               {unreadCount > 0 && (
-                <button
-                  onClick={markAllAsRead}
-                  className="text-sm text-emerald-600 font-medium"
-                >
+                <button onClick={markAllAsRead} className="flex items-center gap-1 text-sm font-medium" style={{ color: theme.accent }}>
+                  <CheckCheck className="w-4 h-4" strokeWidth={1.5} />
                   모두 읽음
                 </button>
               )}
-              <button
-                onClick={deleteAllNotifications}
-                className="text-sm text-gray-400"
-              >
+              <button onClick={deleteAllNotifications} className="text-sm" style={{ color: theme.textMuted }}>
                 전체 삭제
               </button>
             </div>
@@ -173,46 +186,50 @@ export default function NotificationsPage() {
         </div>
       </header>
 
-      <main className="max-w-[631px] mx-auto px-4 py-4">
+      <main className="max-w-[640px] mx-auto px-4 py-4">
         {notifications.length === 0 ? (
-          <div className="py-16 text-center">
-            <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <span className="text-4xl">🔔</span>
+          <div className="rounded-2xl py-16 text-center" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}>
+            <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: theme.bgInput }}>
+              <Bell className="w-8 h-8" style={{ color: theme.textMuted }} strokeWidth={1.5} />
             </div>
-            <p className="text-gray-500 font-medium">알림이 없습니다</p>
-            <p className="text-gray-400 text-sm mt-1">새로운 소식이 오면 알려드릴게요</p>
+            <p className="font-medium" style={{ color: theme.textPrimary }}>알림이 없습니다</p>
+            <p className="text-sm mt-1" style={{ color: theme.textMuted }}>새로운 소식이 오면 알려드릴게요</p>
           </div>
         ) : (
           <div className="space-y-3">
             {notifications.map((notification) => {
-              const icon = getIcon(notification.type, notification.message || '');
+              const IconComponent = getIcon(notification.type);
+              const iconColor = getIconColor(notification.type);
               const isUnread = !notification.is_read;
               
               return (
                 <div
                   key={notification.id}
                   onClick={() => handleClick(notification)}
-                  className={`relative bg-white rounded-2xl p-4 shadow-sm cursor-pointer transition-all hover:shadow-md ${
-                    isUnread ? 'ring-2 ring-emerald-200' : ''
-                  }`}
+                  className="relative rounded-2xl p-4 cursor-pointer transition-all"
+                  style={{ 
+                    backgroundColor: theme.bgCard, 
+                    border: `1px solid ${isUnread ? theme.accent : theme.borderLight}`,
+                    boxShadow: isUnread ? `0 0 0 1px ${theme.accent}30` : 'none',
+                  }}
                 >
                   {/* 읽지 않음 표시 */}
                   {isUnread && (
-                    <div className="absolute top-4 right-4 w-2.5 h-2.5 bg-emerald-500 rounded-full"></div>
+                    <div className="absolute top-4 right-4 w-2.5 h-2.5 rounded-full" style={{ backgroundColor: theme.accent }}></div>
                   )}
                   
                   <div className="flex gap-3">
                     {/* 아이콘 */}
-                    <div className={`w-12 h-12 ${icon.bg} rounded-xl flex items-center justify-center flex-shrink-0`}>
-                      <span className="text-xl">{icon.emoji}</span>
+                    <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${iconColor}15` }}>
+                      <IconComponent className="w-5 h-5" style={{ color: iconColor }} strokeWidth={1.5} />
                     </div>
                     
                     {/* 내용 */}
                     <div className="flex-1 min-w-0 pr-6">
-                      <p className={`text-gray-900 ${isUnread ? 'font-semibold' : ''}`}>
+                      <p className={isUnread ? 'font-semibold' : ''} style={{ color: theme.textPrimary }}>
                         {cleanMessage(notification.message || '')}
                       </p>
-                      <p className="text-gray-400 text-sm mt-1">
+                      <p className="text-sm mt-1" style={{ color: theme.textMuted }}>
                         {formatDate(notification.created_at)}
                       </p>
                     </div>
@@ -224,11 +241,10 @@ export default function NotificationsPage() {
                       e.stopPropagation();
                       deleteNotification(notification.id, notification.is_read);
                     }}
-                    className="absolute top-4 right-10 p-1 text-gray-300 hover:text-red-500 transition-colors"
+                    className="absolute top-4 right-10 p-1 rounded transition-colors"
+                    style={{ color: theme.textMuted }}
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
+                    <X className="w-4 h-4" strokeWidth={1.5} />
                   </button>
                 </div>
               );

@@ -4,6 +4,21 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { useTheme } from "@/contexts/ThemeContext";
+import {
+  ArrowLeft,
+  Package,
+  Phone,
+  MapPin,
+  Clock,
+  Copy,
+  X,
+  ShoppingBag,
+  CheckCircle,
+  AlertCircle,
+  XCircle,
+  Truck,
+} from "lucide-react";
 
 interface Order {
   id: number;
@@ -35,6 +50,7 @@ interface Order {
 
 export default function MyGroupBuysPage() {
   const router = useRouter();
+  const { theme, isDark, mounted } = useTheme();
   const [user, setUser] = useState<any>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,12 +63,12 @@ export default function MyGroupBuysPage() {
 
   const checkUser = async () => {
     const { data: { user } } = await supabase.auth.getUser();
-    
+
     if (!user) {
       router.push("/login");
       return;
     }
-    
+
     setUser(user);
     fetchOrders(user.id);
   };
@@ -90,7 +106,7 @@ export default function MyGroupBuysPage() {
       return ["unpaid", "paid", "ready"].includes(order.status);
     }
     if (activeTab === "completed") {
-      return order.status === "completed";
+      return order.status === "picked" || order.status === "completed";
     }
     if (activeTab === "cancelled") {
       return order.status === "cancelled";
@@ -98,25 +114,21 @@ export default function MyGroupBuysPage() {
     return true;
   });
 
-  const getStatusText = (status: string) => {
+  const getStatusInfo = (status: string) => {
     switch (status) {
-      case "unpaid": return "입금 대기";
-      case "paid": return "입금 완료";
-      case "ready": return "픽업 준비완료";
-      case "completed": return "픽업 완료";
-      case "cancelled": return "취소됨";
-      default: return status;
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "unpaid": return "bg-yellow-100 text-yellow-700";
-      case "paid": return "bg-blue-100 text-blue-700";
-      case "ready": return "bg-green-100 text-green-700";
-      case "completed": return "bg-gray-100 text-gray-600";
-      case "cancelled": return "bg-red-100 text-red-700";
-      default: return "bg-gray-100 text-gray-700";
+      case "unpaid":
+        return { text: "입금 대기", color: theme.red, bg: theme.redBg, icon: AlertCircle };
+      case "paid":
+        return { text: "입금 완료", color: "#D97706", bg: "#FFFBEB", icon: CheckCircle };
+      case "ready":
+        return { text: "픽업 준비완료", color: theme.success, bg: theme.successBg, icon: Truck };
+      case "picked":
+      case "completed":
+        return { text: "픽업 완료", color: "#2563EB", bg: "#EBF5FF", icon: Package };
+      case "cancelled":
+        return { text: "취소됨", color: theme.textMuted, bg: theme.bgInput, icon: XCircle };
+      default:
+        return { text: status, color: theme.textMuted, bg: theme.bgInput, icon: Package };
     }
   };
 
@@ -141,8 +153,6 @@ export default function MyGroupBuysPage() {
       year: "numeric",
       month: "long",
       day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit"
     });
   };
 
@@ -154,9 +164,9 @@ export default function MyGroupBuysPage() {
   const openNavigation = (app: string, address: string, name: string) => {
     const encodedAddress = encodeURIComponent(address);
     const encodedName = encodeURIComponent(name);
-    
+
     let url = "";
-    
+
     switch (app) {
       case "kakao":
         url = `https://map.kakao.com/link/search/${encodedAddress}`;
@@ -171,37 +181,39 @@ export default function MyGroupBuysPage() {
         }, 500);
         break;
     }
-    
+
     if (url) {
       window.open(url, "_blank");
     }
   };
 
-  if (loading) {
+  if (!mounted || loading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: theme.bgMain }}>
+        <div className="w-10 h-10 border-2 rounded-full animate-spin" style={{ borderColor: theme.border, borderTopColor: theme.accent }}></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 pb-24 md:pb-10">
+    <div className="min-h-screen pb-24 transition-colors duration-300" style={{ backgroundColor: theme.bgMain }}>
       {/* 헤더 */}
-      <header className="bg-gray-900 sticky top-0 z-50">
-        <div className="max-w-[631px] mx-auto px-4 h-14 flex items-center">
-          <button onClick={() => router.back()} className="text-gray-400 hover:text-white mr-3">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <h1 className="text-white font-bold text-lg">공동구매 참여내역</h1>
-        </div>
+      <header
+        className="sticky top-0 z-50 px-4 py-3 flex items-center gap-3"
+        style={{ backgroundColor: theme.bgMain, borderBottom: `1px solid ${theme.borderLight}` }}
+      >
+        <button onClick={() => router.back()} className="p-2 -ml-2 rounded-xl" style={{ color: theme.textPrimary }}>
+          <ArrowLeft className="w-6 h-6" strokeWidth={1.5} />
+        </button>
+        <h1 className="text-lg font-bold" style={{ color: theme.textPrimary }}>공동구매 참여내역</h1>
       </header>
 
       {/* 탭 */}
-      <div className="bg-white border-b border-gray-200 sticky top-14 z-40">
-        <div className="max-w-[631px] mx-auto flex">
+      <div
+        className="sticky top-14 z-40"
+        style={{ backgroundColor: theme.bgCard, borderBottom: `1px solid ${theme.border}` }}
+      >
+        <div className="max-w-[640px] mx-auto flex">
           {[
             { key: "all", label: "전체" },
             { key: "ongoing", label: "진행중" },
@@ -211,11 +223,11 @@ export default function MyGroupBuysPage() {
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key as any)}
-              className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === tab.key
-                  ? "text-amber-600 border-amber-500"
-                  : "text-gray-500 border-transparent hover:text-gray-700"
-              }`}
+              className="flex-1 py-3 text-sm font-medium border-b-2 transition-colors"
+              style={{
+                color: activeTab === tab.key ? theme.accent : theme.textMuted,
+                borderColor: activeTab === tab.key ? theme.accent : "transparent",
+              }}
             >
               {tab.label}
               {tab.key === "all" && orders.length > 0 && (
@@ -226,146 +238,133 @@ export default function MyGroupBuysPage() {
         </div>
       </div>
 
-      <main className="max-w-[631px] mx-auto px-4 py-4">
+      <main className="max-w-[640px] mx-auto px-4 py-4">
         {filteredOrders.length === 0 ? (
-          <div className="bg-white rounded-xl p-8 text-center">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-              </svg>
+          <div
+            className="rounded-2xl p-10 text-center"
+            style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}
+          >
+            <div
+              className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"
+              style={{ backgroundColor: theme.bgInput }}
+            >
+              <ShoppingBag className="w-8 h-8" style={{ color: theme.textMuted }} strokeWidth={1.5} />
             </div>
-            <p className="text-gray-500 mb-4">참여한 공동구매가 없습니다</p>
-            <Link 
-              href="/groupbuy" 
-              className="inline-block bg-amber-500 text-white font-bold px-6 py-2 rounded-lg hover:bg-amber-600 transition-colors"
+            <p className="mb-4" style={{ color: theme.textMuted }}>참여한 공동구매가 없습니다</p>
+            <Link
+              href="/groupbuy"
+              className="inline-block font-bold px-6 py-3 rounded-xl transition-colors"
+              style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}
             >
               공동구매 둘러보기
             </Link>
           </div>
         ) : (
           <div className="space-y-3">
-            {filteredOrders.map((order) => (
-              <button
-                key={order.id}
-                onClick={() => setSelectedOrder(order)}
-                className="w-full bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow text-left"
-              >
-                <div className="flex gap-3">
-                  <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
-                    {order.group_buy?.image_url ? (
-                      <img 
-                        src={order.group_buy.image_url} 
-                        alt="" 
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <span className="text-3xl">🛒</span>
+            {filteredOrders.map((order) => {
+              const statusInfo = getStatusInfo(order.status);
+              const StatusIcon = statusInfo.icon;
+
+              return (
+                <button
+                  key={order.id}
+                  onClick={() => setSelectedOrder(order)}
+                  className="w-full rounded-2xl p-4 text-left transition-all"
+                  style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}
+                >
+                  <div className="flex gap-3">
+                    <div
+                      className="w-20 h-20 rounded-xl overflow-hidden flex-shrink-0"
+                      style={{ backgroundColor: theme.bgInput }}
+                    >
+                      {order.group_buy?.image_url ? (
+                        <img
+                          src={order.group_buy.image_url}
+                          alt=""
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <span className="text-3xl">🛒</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="font-bold line-clamp-1" style={{ color: theme.textPrimary }}>
+                          {order.group_buy?.title || "상품명 없음"}
+                        </p>
+                        <span
+                          className="flex-shrink-0 px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-1"
+                          style={{ backgroundColor: statusInfo.bg, color: statusInfo.color }}
+                        >
+                          <StatusIcon className="w-3 h-3" strokeWidth={2} />
+                          {statusInfo.text}
+                        </span>
                       </div>
-                    )}
-                  </div>
-                  
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="font-bold text-gray-900 line-clamp-1">
-                        {order.group_buy?.title || "상품명 없음"}
+
+                      <p className="text-sm mt-1" style={{ color: theme.textMuted }}>
+                        {order.group_buy?.shop?.name}
                       </p>
-                      <span className={`flex-shrink-0 px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(order.status)}`}>
-                        {getStatusText(order.status)}
-                      </span>
-                    </div>
-                    
-                    <p className="text-sm text-gray-500 mt-1">
-                      {order.group_buy?.shop?.name}
-                    </p>
-                    
-                    <div className="flex items-center justify-between mt-2">
-                      <p className="text-amber-600 font-bold">
-                        {((order.group_buy?.sale_price || 0) * order.quantity).toLocaleString()}원
-                      </p>
-                      <p className="text-xs text-gray-400">
-                        {order.quantity}개 · {formatDateTime(order.created_at).split(" ").slice(0, 3).join(" ")}
-                      </p>
+
+                      <div className="flex items-center justify-between mt-2">
+                        <p className="font-bold" style={{ color: theme.accent }}>
+                          {((order.group_buy?.sale_price || 0) * order.quantity).toLocaleString()}원
+                        </p>
+                        <p className="text-xs" style={{ color: theme.textMuted }}>
+                          {order.quantity}개 · {formatDateTime(order.created_at)}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
         )}
       </main>
 
-      {/* 하단 네비게이션 */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 z-50">
-        <div className="flex">
-          <Link href="/" className="flex-1 py-3 flex flex-col items-center gap-1">
-            <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-            </svg>
-            <span className="text-xs text-gray-500">홈</span>
-          </Link>
-          <Link href="/community" className="flex-1 py-3 flex flex-col items-center gap-1">
-            <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-            </svg>
-            <span className="text-xs text-gray-500">커뮤니티</span>
-          </Link>
-          <Link href="/groupbuy" className="flex-1 py-3 flex flex-col items-center gap-1">
-            <svg className="w-6 h-6 text-gray-500" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49c.08-.14.12-.31.12-.48 0-.55-.45-1-1-1H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z"/>
-            </svg>
-            <span className="text-xs text-gray-500">공동구매</span>
-          </Link>
-          <Link href="/videos" className="flex-1 py-3 flex flex-col items-center gap-1">
-            <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span className="text-xs text-gray-500">영상</span>
-          </Link>
-          <Link href="/mypage" className="flex-1 py-3 flex flex-col items-center gap-1">
-            <svg className="w-6 h-6 text-amber-500" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
-            </svg>
-            <span className="text-xs font-bold text-amber-500">MY</span>
-          </Link>
-        </div>
-      </nav>
-
       {/* 주문 상세 모달 */}
       {selectedOrder && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div 
-            className="absolute inset-0 bg-black/70"
+          <div
+            className="absolute inset-0 bg-black/60"
             onClick={() => setSelectedOrder(null)}
           />
-          
-          <div className="relative w-full max-w-[400px] bg-white rounded-3xl overflow-hidden max-h-[90vh] flex flex-col">
+
+          <div
+            className="relative w-full max-w-[400px] rounded-2xl overflow-hidden max-h-[90vh] flex flex-col"
+            style={{ backgroundColor: theme.bgCard }}
+          >
             {/* 헤더 */}
-            <div className="flex-shrink-0 px-6 py-5 bg-gray-900 text-white">
-              <div className="flex items-center justify-between">
-                <p className="text-lg font-bold">주문 상세</p>
-                <button 
-                  onClick={() => setSelectedOrder(null)}
-                  className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
+            <div
+              className="flex-shrink-0 px-5 py-4 flex items-center justify-between"
+              style={{ backgroundColor: theme.accent }}
+            >
+              <p className="text-lg font-bold" style={{ color: isDark ? '#121212' : '#fff' }}>주문 상세</p>
+              <button
+                onClick={() => setSelectedOrder(null)}
+                className="w-8 h-8 flex items-center justify-center rounded-full"
+                style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}
+              >
+                <X className="w-5 h-5" style={{ color: isDark ? '#121212' : '#fff' }} strokeWidth={2} />
+              </button>
             </div>
-            
+
             {/* 내용 */}
             <div className="flex-1 overflow-y-auto">
               {/* 상품 정보 */}
-              <div className="p-6 border-b border-gray-100">
+              <div className="p-5" style={{ borderBottom: `1px solid ${theme.border}` }}>
                 <div className="flex gap-4">
-                  <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
+                  <div
+                    className="w-20 h-20 rounded-xl overflow-hidden flex-shrink-0"
+                    style={{ backgroundColor: theme.bgInput }}
+                  >
                     {selectedOrder.group_buy?.image_url ? (
-                      <img 
-                        src={selectedOrder.group_buy.image_url} 
-                        alt="" 
+                      <img
+                        src={selectedOrder.group_buy.image_url}
+                        alt=""
                         className="w-full h-full object-cover"
                       />
                     ) : (
@@ -374,103 +373,119 @@ export default function MyGroupBuysPage() {
                       </div>
                     )}
                   </div>
-                  <div>
-                    <p className="font-bold text-gray-900">{selectedOrder.group_buy?.title}</p>
-                    <p className="text-sm text-gray-500 mt-1">{selectedOrder.group_buy?.shop?.name}</p>
+                  <div className="flex-1">
+                    <p className="font-bold" style={{ color: theme.textPrimary }}>{selectedOrder.group_buy?.title}</p>
+                    <p className="text-sm mt-1" style={{ color: theme.textMuted }}>{selectedOrder.group_buy?.shop?.name}</p>
+                    <div className="mt-2">
+                      {(() => {
+                        const statusInfo = getStatusInfo(selectedOrder.status);
+                        const StatusIcon = statusInfo.icon;
+                        return (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold"
+                            style={{ backgroundColor: statusInfo.bg, color: statusInfo.color }}
+                          >
+                            <StatusIcon className="w-3 h-3" strokeWidth={2} />
+                            {statusInfo.text}
+                          </span>
+                        );
+                      })()}
+                    </div>
                   </div>
                 </div>
               </div>
 
               {/* 주문 정보 */}
-              <div className="p-6 space-y-4">
-                <div className="flex justify-between py-2 border-b border-gray-100">
-                  <span className="text-gray-500">상품명</span>
-                  <span className="font-medium text-gray-900 text-right max-w-[200px]">{selectedOrder.group_buy?.title}</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-gray-100">
-                  <span className="text-gray-500">주문 수량</span>
-                  <span className="font-bold text-gray-900">{selectedOrder.quantity}개</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-gray-100">
-                  <span className="text-gray-500">신청자</span>
-                  <span className="font-medium text-gray-900">{selectedOrder.name}</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-gray-100">
-                  <span className="text-gray-500">결제 금액</span>
-                  <span className="font-bold text-amber-600">
-                    {((selectedOrder.group_buy?.sale_price || 0) * selectedOrder.quantity).toLocaleString()}원
-                  </span>
-                </div>
-                <div className="flex justify-between py-2 items-center">
-                  <span className="text-gray-500">주문 상태</span>
-                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(selectedOrder.status)}`}>
-                    {getStatusText(selectedOrder.status)}
-                  </span>
+              <div className="p-5 space-y-3">
+                <h4 className="font-bold mb-3" style={{ color: theme.textPrimary }}>📋 주문 정보</h4>
+                
+                <div className="rounded-xl p-4 space-y-3" style={{ backgroundColor: theme.bgInput }}>
+                  <div className="flex justify-between">
+                    <span style={{ color: theme.textMuted }}>주문 수량</span>
+                    <span className="font-semibold" style={{ color: theme.textPrimary }}>{selectedOrder.quantity}개</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span style={{ color: theme.textMuted }}>주문자</span>
+                    <span className="font-semibold" style={{ color: theme.textPrimary }}>{selectedOrder.name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span style={{ color: theme.textMuted }}>결제 금액</span>
+                    <span className="font-bold" style={{ color: theme.accent }}>
+                      {((selectedOrder.group_buy?.sale_price || 0) * selectedOrder.quantity).toLocaleString()}원
+                    </span>
+                  </div>
                 </div>
               </div>
 
               {/* 픽업 정보 */}
-              <div className="px-6 pb-6">
-                <div className="bg-gray-50 rounded-xl p-4">
-                  <h4 className="font-bold text-gray-900 mb-3">📍 픽업 장소</h4>
-                  
-                  <p className="text-gray-900 font-medium">
-                    {selectedOrder.group_buy?.pickup_location || selectedOrder.group_buy?.shop?.address || "매장 방문"}
-                  </p>
-                  
-                  {selectedOrder.group_buy?.pickup_date && (
-                    <p className="text-sm text-gray-500 mt-2">
-                      {formatDate(selectedOrder.group_buy.pickup_date)}
-                      {selectedOrder.group_buy.pickup_start_time && selectedOrder.group_buy.pickup_end_time && (
-                        <> {formatTime(selectedOrder.group_buy.pickup_start_time)} ~ {formatTime(selectedOrder.group_buy.pickup_end_time)}</>
-                      )}
+              <div className="px-5 pb-5">
+                <h4 className="font-bold mb-3" style={{ color: theme.textPrimary }}>📍 픽업 정보</h4>
+                
+                <div className="rounded-xl p-4" style={{ backgroundColor: theme.bgInput }}>
+                  <div className="flex items-start gap-2 mb-2">
+                    <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: theme.accent }} strokeWidth={1.5} />
+                    <p className="font-medium" style={{ color: theme.textPrimary }}>
+                      {selectedOrder.group_buy?.pickup_location || selectedOrder.group_buy?.shop?.address || "매장 방문"}
                     </p>
+                  </div>
+
+                  {selectedOrder.group_buy?.pickup_date && (
+                    <div className="flex items-center gap-2 mt-2">
+                      <Clock className="w-4 h-4 flex-shrink-0" style={{ color: theme.accent }} strokeWidth={1.5} />
+                      <p className="text-sm" style={{ color: theme.textMuted }}>
+                        {formatDate(selectedOrder.group_buy.pickup_date)}
+                        {selectedOrder.group_buy.pickup_start_time && selectedOrder.group_buy.pickup_end_time && (
+                          <> {formatTime(selectedOrder.group_buy.pickup_start_time)} ~ {formatTime(selectedOrder.group_buy.pickup_end_time)}</>
+                        )}
+                      </p>
+                    </div>
                   )}
-                  
-                  {/* 네비게이션 버튼 - 1열 아이콘 */}
-                  <div className="flex gap-2 mt-4">
-                    <button 
+
+                  {/* 네비게이션 버튼 */}
+                  <div className="flex gap-2 mt-4 pt-4" style={{ borderTop: `1px solid ${theme.border}` }}>
+                    <button
                       onClick={() => copyAddress(selectedOrder.group_buy?.pickup_location || selectedOrder.group_buy?.shop?.address || "")}
-                      className="w-11 h-11 bg-white border border-gray-200 rounded-xl flex items-center justify-center hover:bg-gray-50 transition-colors"
-                      title="주소 복사"
+                      className="flex-1 h-10 rounded-xl flex items-center justify-center gap-1 text-sm font-medium transition-colors"
+                      style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}`, color: theme.textPrimary }}
                     >
-                      <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
+                      <Copy className="w-4 h-4" strokeWidth={1.5} />
+                      복사
                     </button>
-                    <button 
+                    <button
                       onClick={() => openNavigation("kakao", selectedOrder.group_buy?.pickup_location || selectedOrder.group_buy?.shop?.address || "", selectedOrder.group_buy?.shop?.name || "")}
-                      className="w-11 h-11 bg-[#FEE500] rounded-xl flex items-center justify-center hover:bg-[#fdd800] transition-colors"
+                      className="w-10 h-10 rounded-xl flex items-center justify-center"
+                      style={{ backgroundColor: "#FEE500" }}
                       title="카카오맵"
                     >
-                      <span className="text-xl">🗺️</span>
+                      <span className="text-lg">🗺️</span>
                     </button>
-                    <button 
+                    <button
                       onClick={() => openNavigation("naver", selectedOrder.group_buy?.pickup_location || selectedOrder.group_buy?.shop?.address || "", selectedOrder.group_buy?.shop?.name || "")}
-                      className="w-11 h-11 bg-[#03C75A] rounded-xl flex items-center justify-center hover:bg-[#02b350] transition-colors"
+                      className="w-10 h-10 rounded-xl flex items-center justify-center"
+                      style={{ backgroundColor: "#03C75A" }}
                       title="네이버지도"
                     >
                       <span className="text-lg font-bold text-white">N</span>
                     </button>
-                    <button 
+                    <button
                       onClick={() => openNavigation("tmap", selectedOrder.group_buy?.pickup_location || selectedOrder.group_buy?.shop?.address || "", selectedOrder.group_buy?.shop?.name || "")}
-                      className="w-11 h-11 bg-[#4285F4] rounded-xl flex items-center justify-center hover:bg-[#3b78db] transition-colors"
-                      title="T맵"
+                      className="w-10 h-10 rounded-xl flex items-center justify-center"
+                      style={{ backgroundColor: "#4285F4" }}
+                      title="티맵"
                     >
                       <span className="text-lg font-bold text-white">T</span>
                     </button>
                   </div>
                 </div>
-                
-                {/* 매장 연락처 */}
+
+                {/* 매장 전화 */}
                 {selectedOrder.group_buy?.shop?.phone && (
-                  <a 
+                  <a
                     href={`tel:${selectedOrder.group_buy.shop.phone}`}
-                    className="mt-3 flex items-center justify-center gap-2 w-full py-3 bg-gray-100 rounded-xl text-gray-700 font-medium hover:bg-gray-200 transition-colors"
+                    className="mt-3 flex items-center justify-center gap-2 w-full py-3 rounded-xl font-medium transition-colors"
+                    style={{ backgroundColor: theme.bgInput, color: theme.textPrimary }}
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                    </svg>
+                    <Phone className="w-5 h-5" strokeWidth={1.5} />
                     매장에 전화하기
                   </a>
                 )}
@@ -478,13 +493,17 @@ export default function MyGroupBuysPage() {
             </div>
 
             {/* 하단 버튼 */}
-            <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100">
-              <button
-                onClick={() => setSelectedOrder(null)}
-                className="w-full h-12 bg-gray-900 text-white font-bold rounded-xl hover:bg-gray-800 transition-colors"
+            <div
+              className="flex-shrink-0 px-5 py-4"
+              style={{ borderTop: `1px solid ${theme.border}` }}
+            >
+              <Link
+                href={`/groupbuy/${selectedOrder.group_buy_id}`}
+                className="block w-full py-3 text-center font-bold rounded-xl transition-colors"
+                style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}
               >
-                닫기
-              </button>
+                공구 상세 보기
+              </Link>
             </div>
           </div>
         </div>

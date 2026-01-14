@@ -4,14 +4,27 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { useTheme } from "@/contexts/ThemeContext";
+import {
+  ArrowLeft,
+  Search,
+  Eye,
+  Trash2,
+  Heart,
+  MessageCircle,
+  Image,
+  UserX,
+  ChevronDown,
+} from "lucide-react";
 
 export default function AdminPostsPage() {
   const router = useRouter();
+  const { theme, isDark, mounted } = useTheme();
+  
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
-  const [selectedPost, setSelectedPost] = useState<any>(null);
 
   useEffect(() => {
     checkAdminAndFetch();
@@ -41,7 +54,6 @@ export default function AdminPostsPage() {
     
     await supabase.from("posts").delete().eq("id", postId);
     setPosts(posts.filter(p => p.id !== postId));
-    setSelectedPost(null);
     alert("삭제되었습니다");
   };
 
@@ -71,120 +83,129 @@ export default function AdminPostsPage() {
     return matchesSearch;
   });
 
-  if (loading) {
+  if (!mounted || loading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: theme.bgMain }}>
+        <div className="w-10 h-10 border-2 rounded-full animate-spin" style={{ borderColor: theme.border, borderTopColor: theme.accent }}></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 pb-10">
+    <div className="min-h-screen pb-10 transition-colors duration-300" style={{ backgroundColor: theme.bgMain }}>
       {/* 헤더 */}
-      <header className="bg-gray-900 sticky top-0 z-50">
-        <div className="max-w-[631px] mx-auto px-4 h-14 flex items-center gap-3">
-          <Link href="/admin" className="text-gray-400 hover:text-white">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
+      <header className="sticky top-0 z-50" style={{ backgroundColor: theme.bgElevated, borderBottom: `1px solid ${theme.borderLight}` }}>
+        <div className="max-w-[640px] mx-auto px-4 py-3 flex items-center gap-3">
+          <Link href="/admin" className="p-1 -ml-1 rounded-lg" style={{ color: theme.textPrimary }}>
+            <ArrowLeft className="w-6 h-6" strokeWidth={1.5} />
           </Link>
-          <h1 className="text-white font-bold text-lg">📝 게시물 관리</h1>
+          <h1 className="text-lg font-bold" style={{ color: theme.textPrimary }}>📝 게시물 관리</h1>
         </div>
       </header>
 
-      <main className="max-w-[631px] mx-auto px-4 py-6">
+      <main className="max-w-[640px] mx-auto px-4 py-4">
         {/* 검색 & 필터 */}
-        <div className="bg-white rounded-xl p-4 shadow-md mb-4">
+        <section className="rounded-2xl p-4 mb-4" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}>
           <div className="flex flex-col md:flex-row gap-3">
             <div className="flex-1 relative">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5" style={{ color: theme.textMuted }} strokeWidth={1.5} />
               <input
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="내용 또는 작성자 검색"
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl text-[15px] outline-none"
+                style={{ backgroundColor: theme.bgInput, border: `1px solid ${theme.border}`, color: theme.textPrimary }}
               />
             </div>
-            <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-            >
-              <option value="all">전체</option>
-              <option value="anonymous">익명 글</option>
-              <option value="media">미디어 포함</option>
-            </select>
+            <div className="relative">
+              <select
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+                className="w-full md:w-auto px-4 py-2.5 pr-10 rounded-xl text-[15px] outline-none appearance-none"
+                style={{ backgroundColor: theme.bgInput, border: `1px solid ${theme.border}`, color: theme.textPrimary }}
+              >
+                <option value="all">전체</option>
+                <option value="anonymous">익명 글</option>
+                <option value="media">미디어 포함</option>
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: theme.textMuted }} />
+            </div>
           </div>
-        </div>
+        </section>
 
         {/* 통계 */}
-        <div className="flex items-center justify-between mb-4 px-1">
-          <span className="text-sm text-gray-500">총 {filteredPosts.length}개</span>
+        <div className="flex items-center justify-between mb-3 px-1">
+          <span className="text-sm" style={{ color: theme.textMuted }}>총 {filteredPosts.length}개</span>
         </div>
 
         {/* 게시물 목록 */}
-        <div className="bg-white rounded-xl shadow-md overflow-hidden">
+        <section className="rounded-2xl overflow-hidden" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}>
           {filteredPosts.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">검색 결과가 없습니다</div>
+            <div className="p-8 text-center" style={{ color: theme.textMuted }}>검색 결과가 없습니다</div>
           ) : (
             filteredPosts.map((post, index) => (
               <div
                 key={post.id}
-                className={`p-4 ${index !== filteredPosts.length - 1 ? "border-b border-gray-100" : ""}`}
+                className="p-4"
+                style={{ borderBottom: index !== filteredPosts.length - 1 ? `1px solid ${theme.border}` : 'none' }}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-bold text-gray-900 text-sm">
+                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                      <span className="font-semibold text-sm" style={{ color: theme.textPrimary }}>
                         {post.is_anonymous ? `익명 (${post.author_nickname})` : post.author_nickname}
                       </span>
                       {post.is_anonymous && (
-                        <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">익명</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5" style={{ backgroundColor: theme.bgInput, color: theme.textMuted }}>
+                          <UserX className="w-3 h-3" strokeWidth={1.5} /> 익명
+                        </span>
                       )}
                       {getMediaCount(post) > 0 && (
-                        <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded">
-                          📷 {getMediaCount(post)}
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5" style={{ backgroundColor: `${theme.accent}15`, color: theme.accent }}>
+                          <Image className="w-3 h-3" strokeWidth={1.5} /> {getMediaCount(post)}
                         </span>
                       )}
                     </div>
-                    <p className="text-gray-700 text-sm line-clamp-2 mb-2">{post.content}</p>
-                    <div className="flex items-center gap-3 text-xs text-gray-400">
+                    <p className="text-sm line-clamp-2 mb-2" style={{ color: theme.textSecondary }}>{post.content}</p>
+                    <div className="flex items-center gap-3 text-xs" style={{ color: theme.textMuted }}>
                       <span>{formatDate(post.created_at)}</span>
-                      <span>좋아요 {post.like_count || 0}</span>
-                      <span>댓글 {post.comment_count || 0}</span>
-                      {post.ip_address && <span className="text-red-400">IP: {post.ip_address}</span>}
+                      <span className="flex items-center gap-0.5">
+                        <Heart className="w-3 h-3" style={{ color: theme.red }} strokeWidth={1.5} />
+                        {post.like_count || 0}
+                      </span>
+                      <span className="flex items-center gap-0.5">
+                        <MessageCircle className="w-3 h-3" strokeWidth={1.5} />
+                        {post.comment_count || 0}
+                      </span>
+                      {post.ip_address && (
+                        <span style={{ color: theme.red }}>IP: {post.ip_address}</span>
+                      )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
                     <Link
                       href={`/community/${post.id}`}
-                      className="p-2 text-gray-400 hover:text-amber-500 hover:bg-gray-100 rounded-lg"
+                      className="p-2 rounded-lg transition-colors"
+                      style={{ color: theme.textMuted }}
                       title="보기"
                     >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                      </svg>
+                      <Eye className="w-5 h-5" strokeWidth={1.5} />
                     </Link>
                     <button
                       onClick={() => handleDelete(post.id)}
-                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg"
+                      className="p-2 rounded-lg transition-colors"
+                      style={{ color: theme.red }}
                       title="삭제"
                     >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
+                      <Trash2 className="w-5 h-5" strokeWidth={1.5} />
                     </button>
                   </div>
                 </div>
               </div>
             ))
           )}
-        </div>
+        </section>
       </main>
     </div>
   );

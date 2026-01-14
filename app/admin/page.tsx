@@ -4,9 +4,27 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { useTheme } from "@/contexts/ThemeContext";
+import {
+  ArrowLeft,
+  Users,
+  FileText,
+  AlertTriangle,
+  Store,
+  Mail,
+  Megaphone,
+  ChevronRight,
+  TrendingUp,
+  UserPlus,
+  PenSquare,
+  MessageSquare,
+  ShoppingBag,
+} from "lucide-react";
 
 export default function AdminDashboard() {
   const router = useRouter();
+  const { theme, isDark, mounted } = useTheme();
+  
   const [user, setUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -54,34 +72,15 @@ export default function AdminDashboard() {
     today.setHours(0, 0, 0, 0);
     const todayISO = today.toISOString();
 
-    // 전체 회원수
     const { count: totalUsers } = await supabase.from("profiles").select("*", { count: "exact", head: true });
-
-    // 전체 게시글
     const { count: totalPosts } = await supabase.from("posts").select("*", { count: "exact", head: true });
-
-    // 전체 댓글
     const { count: totalComments } = await supabase.from("comments").select("*", { count: "exact", head: true });
-
-    // 전체 상점
     const { count: totalShops } = await supabase.from("shops").select("*", { count: "exact", head: true });
-
-    // 승인 대기 상점
     const { count: pendingShops } = await supabase.from("shops").select("*", { count: "exact", head: true }).eq("status", "pending");
-
-    // 전체 신고
     const { count: totalReports } = await supabase.from("reports").select("*", { count: "exact", head: true });
-
-    // 미처리 신고
     const { count: pendingReports } = await supabase.from("reports").select("*", { count: "exact", head: true }).is("handled_at", null);
-
-    // 전체 공지
     const { count: totalNotices } = await supabase.from("notices").select("*", { count: "exact", head: true });
-
-    // 오늘 가입 회원
     const { count: todayUsers } = await supabase.from("profiles").select("*", { count: "exact", head: true }).gte("created_at", todayISO);
-
-    // 오늘 게시글
     const { count: todayPosts } = await supabase.from("posts").select("*", { count: "exact", head: true }).gte("created_at", todayISO);
 
     setStats({
@@ -98,128 +97,179 @@ export default function AdminDashboard() {
     });
   };
 
-  if (loading) {
+  if (!mounted || loading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: theme.bgMain }}>
+        <div className="w-10 h-10 border-2 rounded-full animate-spin" style={{ borderColor: theme.border, borderTopColor: theme.accent }}></div>
       </div>
     );
   }
 
   const menuItems = [
-    { href: "/admin/users", icon: "👥", label: "회원 관리", count: stats.totalUsers, color: "bg-blue-500" },
-    { href: "/admin/posts", icon: "📝", label: "게시물 관리", count: stats.totalPosts, color: "bg-green-500" },
-    { href: "/admin/reports", icon: "🚨", label: "신고 관리", count: stats.pendingReports, badge: true, color: "bg-red-500" },
-    { href: "/admin/shops", icon: "🏪", label: "상점 관리", count: stats.pendingShops, badge: true, color: "bg-purple-500" },
-    { href: "/admin/messages", icon: "✉️", label: "쪽지 관리", count: 0, color: "bg-emerald-500" },
-    { href: "/notices", icon: "📢", label: "공지사항", count: stats.totalNotices, color: "bg-amber-500" },
+    { href: "/admin/users", icon: Users, label: "회원 관리", count: stats.totalUsers, color: theme.accent },
+    { href: "/admin/posts", icon: FileText, label: "게시물 관리", count: stats.totalPosts, color: theme.accent },
+    { href: "/admin/reports", icon: AlertTriangle, label: "신고 관리", count: stats.pendingReports, badge: true, color: theme.red },
+    { href: "/admin/shops", icon: Store, label: "상점 관리", count: stats.pendingShops, badge: true, color: theme.accent },
+    { href: "/admin/messages", icon: Mail, label: "쪽지 관리", count: 0, color: theme.accent },
+    { href: "/notices", icon: Megaphone, label: "공지사항", count: stats.totalNotices, color: theme.accent },
+  ];
+
+  const statCards = [
+    { label: "전체 회원", value: stats.totalUsers, icon: Users },
+    { label: "전체 게시글", value: stats.totalPosts, icon: FileText },
+    { label: "전체 댓글", value: stats.totalComments, icon: MessageSquare },
+    { label: "전체 상점", value: stats.totalShops, icon: ShoppingBag },
   ];
 
   return (
-    <div className="min-h-screen bg-gray-100 pb-10">
+    <div className="min-h-screen pb-10 transition-colors duration-300" style={{ backgroundColor: theme.bgMain }}>
       {/* 헤더 */}
-      <header className="bg-gray-900 sticky top-0 z-50">
-        <div className="max-w-[631px] mx-auto px-4 h-14 flex items-center justify-between">
+      <header
+        className="sticky top-0 z-50"
+        style={{ backgroundColor: theme.bgElevated, borderBottom: `1px solid ${theme.borderLight}` }}
+      >
+        <div className="max-w-[640px] mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link href="/" className="text-gray-400 hover:text-white">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
+            <Link
+              href="/"
+              className="p-1 -ml-1 rounded-lg transition-colors"
+              style={{ color: theme.textPrimary }}
+            >
+              <ArrowLeft className="w-6 h-6" strokeWidth={1.5} />
             </Link>
-            <h1 className="text-white font-bold text-lg">🛠️ 관리자</h1>
+            <h1 className="text-lg font-bold" style={{ color: theme.textPrimary }}>🛠️ 관리자</h1>
           </div>
-          <span className="text-gray-400 text-sm">{userProfile?.nickname || user?.email}</span>
+          <span className="text-sm" style={{ color: theme.textMuted }}>{userProfile?.nickname || user?.email}</span>
         </div>
       </header>
 
-      <main className="max-w-[631px] mx-auto px-4 py-6">
+      <main className="max-w-[640px] mx-auto px-4 py-4">
         {/* 오늘 통계 */}
-        <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-2xl p-6 mb-6 text-white">
-          <h2 className="text-lg font-bold mb-4">📊 오늘의 통계</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-white/20 rounded-xl p-4">
-              <p className="text-3xl font-bold">{stats.todayUsers}</p>
-              <p className="text-sm opacity-80">신규 가입</p>
+        <section
+          className="rounded-2xl p-5 mb-4 relative overflow-hidden"
+          style={{ background: `linear-gradient(135deg, ${theme.accent}, ${theme.accentDark || theme.accent})` }}
+        >
+          <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full blur-3xl" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}></div>
+          <div className="relative z-10">
+            <div className="flex items-center gap-2 mb-4">
+              <TrendingUp className="w-5 h-5" style={{ color: isDark ? '#121212' : '#FFFFFF' }} strokeWidth={1.5} />
+              <h2 className="font-bold" style={{ color: isDark ? '#121212' : '#FFFFFF' }}>오늘의 통계</h2>
             </div>
-            <div className="bg-white/20 rounded-xl p-4">
-              <p className="text-3xl font-bold">{stats.todayPosts}</p>
-              <p className="text-sm opacity-80">신규 게시글</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div
+                className="rounded-xl p-4"
+                style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <UserPlus className="w-4 h-4" style={{ color: isDark ? '#121212' : '#FFFFFF' }} strokeWidth={1.5} />
+                  <span className="text-xs" style={{ color: isDark ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.8)' }}>신규 가입</span>
+                </div>
+                <p className="text-3xl font-bold" style={{ color: isDark ? '#121212' : '#FFFFFF' }}>{stats.todayUsers}</p>
+              </div>
+              <div
+                className="rounded-xl p-4"
+                style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <PenSquare className="w-4 h-4" style={{ color: isDark ? '#121212' : '#FFFFFF' }} strokeWidth={1.5} />
+                  <span className="text-xs" style={{ color: isDark ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.8)' }}>신규 게시글</span>
+                </div>
+                <p className="text-3xl font-bold" style={{ color: isDark ? '#121212' : '#FFFFFF' }}>{stats.todayPosts}</p>
+              </div>
             </div>
           </div>
-        </div>
+        </section>
 
         {/* 전체 통계 */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white rounded-xl p-4 shadow-md">
-            <p className="text-2xl font-bold text-gray-900">{stats.totalUsers}</p>
-            <p className="text-sm text-gray-500">전체 회원</p>
-          </div>
-          <div className="bg-white rounded-xl p-4 shadow-md">
-            <p className="text-2xl font-bold text-gray-900">{stats.totalPosts}</p>
-            <p className="text-sm text-gray-500">전체 게시글</p>
-          </div>
-          <div className="bg-white rounded-xl p-4 shadow-md">
-            <p className="text-2xl font-bold text-gray-900">{stats.totalComments}</p>
-            <p className="text-sm text-gray-500">전체 댓글</p>
-          </div>
-          <div className="bg-white rounded-xl p-4 shadow-md">
-            <p className="text-2xl font-bold text-gray-900">{stats.totalShops}</p>
-            <p className="text-sm text-gray-500">전체 상점</p>
-          </div>
-        </div>
-
-        {/* 메뉴 */}
-        <h2 className="text-lg font-bold text-gray-900 mb-4">관리 메뉴</h2>
-        <div className="space-y-3">
-          {menuItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="flex items-center justify-between bg-white rounded-xl p-4 shadow-md hover:shadow-lg transition-shadow"
+        <section className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          {statCards.map((stat) => (
+            <div
+              key={stat.label}
+              className="rounded-2xl p-4"
+              style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}
             >
-              <div className="flex items-center gap-4">
-                <div className={`w-12 h-12 ${item.color} rounded-xl flex items-center justify-center text-2xl`}>
-                  {item.icon}
-                </div>
-                <div>
-                  <p className="font-bold text-gray-900">{item.label}</p>
-                  <p className="text-sm text-gray-500">
-                    {item.badge && item.count > 0 ? `${item.count}건 처리 필요` : `총 ${item.count}건`}
-                  </p>
-                </div>
+              <div
+                className="w-9 h-9 rounded-xl flex items-center justify-center mb-2"
+                style={{ backgroundColor: theme.bgInput }}
+              >
+                <stat.icon className="w-4 h-4" style={{ color: theme.accent }} strokeWidth={1.5} />
               </div>
-              <div className="flex items-center gap-2">
-                {item.badge && item.count > 0 && (
-                  <span className="px-2 py-1 bg-red-500 text-white text-xs font-bold rounded-full">
-                    {item.count}
-                  </span>
-                )}
-                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
-            </Link>
+              <p className="text-xl font-bold" style={{ color: theme.textPrimary }}>{stat.value}</p>
+              <p className="text-xs" style={{ color: theme.textMuted }}>{stat.label}</p>
+            </div>
           ))}
-        </div>
+        </section>
+
+        {/* 관리 메뉴 */}
+        <section>
+          <h2 className="text-base font-bold mb-3" style={{ color: theme.textPrimary }}>관리 메뉴</h2>
+          <div
+            className="rounded-2xl overflow-hidden"
+            style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}
+          >
+            {menuItems.map((item, index) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="flex items-center justify-between p-4 transition-colors"
+                style={{ borderBottom: index < menuItems.length - 1 ? `1px solid ${theme.border}` : 'none' }}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-11 h-11 rounded-xl flex items-center justify-center"
+                    style={{ backgroundColor: item.badge && item.count > 0 ? theme.redBg : theme.bgInput }}
+                  >
+                    <item.icon
+                      className="w-5 h-5"
+                      style={{ color: item.badge && item.count > 0 ? theme.red : theme.accent }}
+                      strokeWidth={1.5}
+                    />
+                  </div>
+                  <div>
+                    <p className="font-semibold" style={{ color: theme.textPrimary }}>{item.label}</p>
+                    <p className="text-xs" style={{ color: theme.textMuted }}>
+                      {item.badge && item.count > 0 ? `${item.count}건 처리 필요` : `총 ${item.count}건`}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {item.badge && item.count > 0 && (
+                    <span
+                      className="px-2 py-0.5 text-xs font-bold rounded-full"
+                      style={{ backgroundColor: theme.red, color: '#FFFFFF' }}
+                    >
+                      {item.count}
+                    </span>
+                  )}
+                  <ChevronRight className="w-5 h-5" style={{ color: theme.textMuted }} strokeWidth={1.5} />
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
 
         {/* 빠른 액션 */}
-        <h2 className="text-lg font-bold text-gray-900 mt-8 mb-4">빠른 액션</h2>
-        <div className="grid grid-cols-2 gap-3">
-          <Link
-            href="/notices/write"
-            className="flex items-center justify-center gap-2 bg-amber-500 text-gray-900 font-bold py-4 rounded-xl"
-          >
-            <span>📢</span>
-            <span>공지 작성</span>
-          </Link>
-          <Link
-            href="/admin/reports"
-            className="flex items-center justify-center gap-2 bg-red-500 text-white font-bold py-4 rounded-xl"
-          >
-            <span>🚨</span>
-            <span>신고 확인</span>
-          </Link>
-        </div>
+        <section className="mt-6">
+          <h2 className="text-base font-bold mb-3" style={{ color: theme.textPrimary }}>빠른 액션</h2>
+          <div className="grid grid-cols-2 gap-3">
+            <Link
+              href="/notices/write"
+              className="flex items-center justify-center gap-2 py-4 rounded-2xl font-semibold transition-colors"
+              style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#FFFFFF' }}
+            >
+              <Megaphone className="w-5 h-5" strokeWidth={1.5} />
+              공지 작성
+            </Link>
+            <Link
+              href="/admin/reports"
+              className="flex items-center justify-center gap-2 py-4 rounded-2xl font-semibold transition-colors"
+              style={{ backgroundColor: theme.red, color: '#FFFFFF' }}
+            >
+              <AlertTriangle className="w-5 h-5" strokeWidth={1.5} />
+              신고 확인
+            </Link>
+          </div>
+        </section>
       </main>
     </div>
   );

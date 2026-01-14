@@ -3,6 +3,21 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { useTheme } from "@/contexts/ThemeContext";
+import {
+  ArrowLeft,
+  Store,
+  Phone,
+  MapPin,
+  FileText,
+  CreditCard,
+  Building2,
+  User,
+  Upload,
+  AlertTriangle,
+  Info,
+  ChevronRight,
+} from "lucide-react";
 
 const banks = [
   "국민은행", "신한은행", "우리은행", "하나은행", "농협은행",
@@ -23,6 +38,8 @@ declare global {
 
 export default function ShopRegisterPage() {
   const router = useRouter();
+  const { theme, isDark, mounted } = useTheme();
+  
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -52,7 +69,6 @@ export default function ShopRegisterPage() {
     loadDaumPostcode();
   }, []);
 
-  // 다음 주소 API 스크립트 로드
   const loadDaumPostcode = () => {
     const script = document.createElement("script");
     script.src = "//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";
@@ -60,7 +76,6 @@ export default function ShopRegisterPage() {
     document.head.appendChild(script);
   };
 
-  // 주소 검색 팝업 열기
   const openAddressSearch = () => {
     if (!window.daum) {
       alert("주소 검색 기능을 불러오는 중입니다. 잠시 후 다시 시도해주세요.");
@@ -69,7 +84,6 @@ export default function ShopRegisterPage() {
 
     new window.daum.Postcode({
       oncomplete: function(data: any) {
-        // 도로명 주소 또는 지번 주소
         const fullAddress = data.roadAddress || data.jibunAddress;
         setAddress(fullAddress);
       }
@@ -97,7 +111,6 @@ export default function ShopRegisterPage() {
     }
     setUser(user);
 
-    // 이미 상점이 있는지 확인
     const { data: existingShop } = await supabase
       .from("shops")
       .select("*")
@@ -206,71 +219,70 @@ export default function ShopRegisterPage() {
     }
   };
 
-  if (loading) {
+  if (!mounted || loading) {
     return (
-      <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-[#19643D] border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: theme.bgMain }}>
+        <div className="w-10 h-10 border-2 rounded-full animate-spin" style={{ borderColor: theme.border, borderTopColor: theme.accent }}></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#FDFBF7]">
+    <div className="min-h-screen transition-colors duration-300" style={{ backgroundColor: theme.bgMain }}>
       {/* 헤더 */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-[#19643D]">
-        <div className="max-w-[640px] mx-auto px-5 h-14 flex items-center justify-between">
-          <button 
-            onClick={() => router.back()} 
-            className="w-10 h-10 flex items-center justify-center text-[#F2D38D] hover:text-white transition-colors"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
+      <header className="fixed top-0 left-0 right-0 z-50" style={{ backgroundColor: theme.bgElevated, borderBottom: `1px solid ${theme.borderLight}` }}>
+        <div className="max-w-[640px] mx-auto px-4 py-3 flex items-center justify-between">
+          <button onClick={() => router.back()} className="p-1 -ml-1 rounded-lg" style={{ color: theme.textPrimary }}>
+            <ArrowLeft className="w-6 h-6" strokeWidth={1.5} />
           </button>
-          <span className="text-white font-bold text-lg">입점 신청</span>
-          <div className="w-10" />
+          <span className="font-bold text-lg" style={{ color: theme.textPrimary }}>입점 신청</span>
+          <div className="w-8" />
         </div>
       </header>
 
       <main className="pt-14 pb-32 max-w-[640px] mx-auto">
         {/* 진행 상태 */}
-        <div className="px-5 py-6 bg-white border-b border-[#19643D]/10">
+        <div className="px-4 py-6" style={{ backgroundColor: theme.bgCard, borderBottom: `1px solid ${theme.borderLight}` }}>
           <div className="flex items-center justify-center gap-3">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${
-              step >= 1 ? "bg-[#19643D] text-white" : "bg-gray-200 text-gray-400"
-            }`}>1</div>
-            <div className={`w-16 h-1 rounded ${step >= 2 ? "bg-[#19643D]" : "bg-gray-200"}`} />
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${
-              step >= 2 ? "bg-[#19643D] text-white" : "bg-gray-200 text-gray-400"
-            }`}>2</div>
+            <div
+              className="w-10 h-10 rounded-full flex items-center justify-center font-bold"
+              style={{ backgroundColor: step >= 1 ? theme.accent : theme.bgInput, color: step >= 1 ? (isDark ? '#121212' : '#FFF') : theme.textMuted }}
+            >1</div>
+            <div className="w-16 h-1 rounded" style={{ backgroundColor: step >= 2 ? theme.accent : theme.bgInput }} />
+            <div
+              className="w-10 h-10 rounded-full flex items-center justify-center font-bold"
+              style={{ backgroundColor: step >= 2 ? theme.accent : theme.bgInput, color: step >= 2 ? (isDark ? '#121212' : '#FFF') : theme.textMuted }}
+            >2</div>
           </div>
           <div className="flex justify-center gap-12 mt-2">
-            <span className={`text-sm ${step === 1 ? "text-[#19643D] font-bold" : "text-gray-400"}`}>기본 정보</span>
-            <span className={`text-sm ${step === 2 ? "text-[#19643D] font-bold" : "text-gray-400"}`}>정산 정보</span>
+            <span className="text-sm font-medium" style={{ color: step === 1 ? theme.accent : theme.textMuted }}>기본 정보</span>
+            <span className="text-sm font-medium" style={{ color: step === 2 ? theme.accent : theme.textMuted }}>정산 정보</span>
           </div>
         </div>
 
         {/* Step 1: 기본 정보 */}
         {step === 1 && (
-          <div className="px-5 py-6 space-y-6">
+          <div className="px-4 py-6 space-y-6">
             {/* 상점명 */}
             <div>
-              <label className="block text-sm font-bold text-[#19643D] mb-2">
-                상호명 <span className="text-[#DA451F]">*</span>
+              <label className="flex items-center gap-1.5 text-sm font-semibold mb-2" style={{ color: theme.textPrimary }}>
+                <Store className="w-4 h-4" style={{ color: theme.accent }} strokeWidth={1.5} />
+                상호명 <span style={{ color: theme.red }}>*</span>
               </label>
               <input
                 type="text"
                 value={shopName}
                 onChange={(e) => setShopName(e.target.value)}
-                placeholder="상호명.."
-                className="w-full px-4 py-3.5 bg-white border border-[#19643D]/20 rounded-xl text-[#19643D] placeholder-[#19643D]/40 focus:outline-none focus:ring-2 focus:ring-[#19643D]/30"
+                placeholder="상호명을 입력하세요"
+                className="w-full px-4 py-3.5 rounded-xl text-[15px] outline-none"
+                style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}`, color: theme.textPrimary }}
               />
             </div>
 
-            {/* 카테고리 - DB에서 불러옴 */}
+            {/* 카테고리 */}
             <div>
-              <label className="block text-sm font-bold text-[#19643D] mb-2">
-                카테고리 <span className="text-[#DA451F]">*</span>
+              <label className="flex items-center gap-1.5 text-sm font-semibold mb-2" style={{ color: theme.textPrimary }}>
+                카테고리 <span style={{ color: theme.red }}>*</span>
               </label>
               <div className="grid grid-cols-3 gap-2">
                 {categories.map((cat) => (
@@ -278,11 +290,12 @@ export default function ShopRegisterPage() {
                     key={cat.id}
                     type="button"
                     onClick={() => setCategory(cat.name)}
-                    className={`px-3 py-3 rounded-xl text-sm font-medium transition-all ${
-                      category === cat.name
-                        ? "bg-[#19643D] text-white"
-                        : "bg-white border border-[#19643D]/20 text-[#19643D] hover:border-[#19643D]/50"
-                    }`}
+                    className="px-3 py-3 rounded-xl text-sm font-medium transition-all"
+                    style={{
+                      backgroundColor: category === cat.name ? theme.accent : theme.bgCard,
+                      color: category === cat.name ? (isDark ? '#121212' : '#FFF') : theme.textPrimary,
+                      border: `1px solid ${category === cat.name ? theme.accent : theme.border}`,
+                    }}
                   >
                     {cat.icon} {cat.name}
                   </button>
@@ -292,31 +305,37 @@ export default function ShopRegisterPage() {
 
             {/* 연락처 */}
             <div>
-              <label className="block text-sm font-bold text-[#19643D] mb-2">
-                연락처 <span className="text-[#DA451F]">*</span>
+              <label className="flex items-center gap-1.5 text-sm font-semibold mb-2" style={{ color: theme.textPrimary }}>
+                <Phone className="w-4 h-4" style={{ color: theme.accent }} strokeWidth={1.5} />
+                연락처 <span style={{ color: theme.red }}>*</span>
               </label>
               <input
                 type="tel"
                 value={phone}
                 onChange={handlePhoneChange}
-                placeholder="010-0000-0000 (숫자만 입력)"
+                placeholder="010-0000-0000"
                 maxLength={13}
-                className="w-full px-4 py-3.5 bg-white border border-[#19643D]/20 rounded-xl text-[#19643D] placeholder-[#19643D]/40 focus:outline-none focus:ring-2 focus:ring-[#19643D]/30"
+                className="w-full px-4 py-3.5 rounded-xl text-[15px] outline-none"
+                style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}`, color: theme.textPrimary }}
               />
               {/* 개인정보 보호 안내 */}
-              <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                <p className="text-xs text-amber-800 font-medium mb-1">⚠️ 개인정보 보호 안내</p>
-                <ul className="text-xs text-amber-700 space-y-0.5">
-                  <li>• 개인 휴대폰 번호 대신 <strong>가게 대표전화</strong> 또는 <strong>안심번호</strong> 사용을 권장합니다</li>
-                  <li>• 연락처 공개로 인한 개인정보 유출 및 스팸 등의 피해에 대해 여주마켓은 책임지지 않습니다</li>
+              <div className="mt-2 p-3 rounded-xl" style={{ backgroundColor: `${theme.accent}15`, border: `1px solid ${theme.accent}30` }}>
+                <p className="text-xs font-medium mb-1 flex items-center gap-1" style={{ color: theme.accent }}>
+                  <AlertTriangle className="w-3 h-3" strokeWidth={1.5} />
+                  개인정보 보호 안내
+                </p>
+                <ul className="text-xs space-y-0.5" style={{ color: theme.textSecondary }}>
+                  <li>• 개인 휴대폰 번호 대신 <strong>가게 대표전화</strong> 또는 <strong>안심번호</strong> 사용 권장</li>
+                  <li>• 연락처 공개로 인한 피해에 대해 여주마켓은 책임지지 않습니다</li>
                 </ul>
               </div>
             </div>
 
-            {/* 주소 - 다음 주소 API */}
+            {/* 주소 */}
             <div>
-              <label className="block text-sm font-bold text-[#19643D] mb-2">
-                주소 <span className="text-[#DA451F]">*</span>
+              <label className="flex items-center gap-1.5 text-sm font-semibold mb-2" style={{ color: theme.textPrimary }}>
+                <MapPin className="w-4 h-4" style={{ color: theme.accent }} strokeWidth={1.5} />
+                주소 <span style={{ color: theme.red }}>*</span>
               </label>
               <div className="flex gap-2 mb-2">
                 <input
@@ -324,13 +343,15 @@ export default function ShopRegisterPage() {
                   value={address}
                   readOnly
                   placeholder="주소 검색을 클릭하세요"
-                  className="flex-1 px-4 py-3.5 bg-gray-50 border border-[#19643D]/20 rounded-xl text-[#19643D] placeholder-[#19643D]/40 focus:outline-none cursor-pointer"
                   onClick={openAddressSearch}
+                  className="flex-1 px-4 py-3.5 rounded-xl text-[15px] outline-none cursor-pointer"
+                  style={{ backgroundColor: theme.bgInput, border: `1px solid ${theme.border}`, color: theme.textPrimary }}
                 />
                 <button
                   type="button"
                   onClick={openAddressSearch}
-                  className="px-4 py-3.5 bg-[#19643D] text-white font-medium rounded-xl hover:bg-[#145231] transition-colors whitespace-nowrap"
+                  className="px-4 py-3.5 rounded-xl font-medium whitespace-nowrap transition-colors"
+                  style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#FFF' }}
                 >
                   주소 검색
                 </button>
@@ -340,19 +361,24 @@ export default function ShopRegisterPage() {
                 value={addressDetail}
                 onChange={(e) => setAddressDetail(e.target.value)}
                 placeholder="상세주소 입력 (선택)"
-                className="w-full px-4 py-3.5 bg-white border border-[#19643D]/20 rounded-xl text-[#19643D] placeholder-[#19643D]/40 focus:outline-none focus:ring-2 focus:ring-[#19643D]/30"
+                className="w-full px-4 py-3.5 rounded-xl text-[15px] outline-none"
+                style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}`, color: theme.textPrimary }}
               />
             </div>
 
             {/* 상점 소개 */}
             <div>
-              <label className="block text-sm font-bold text-[#19643D] mb-2">상점 소개</label>
+              <label className="flex items-center gap-1.5 text-sm font-semibold mb-2" style={{ color: theme.textPrimary }}>
+                <FileText className="w-4 h-4" style={{ color: theme.accent }} strokeWidth={1.5} />
+                상점 소개
+              </label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="우리 가게를 소개해주세요"
                 rows={3}
-                className="w-full px-4 py-3.5 bg-white border border-[#19643D]/20 rounded-xl text-[#19643D] placeholder-[#19643D]/40 focus:outline-none focus:ring-2 focus:ring-[#19643D]/30 resize-none"
+                className="w-full px-4 py-3.5 rounded-xl text-[15px] outline-none resize-none"
+                style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}`, color: theme.textPrimary }}
               />
             </div>
           </div>
@@ -360,19 +386,20 @@ export default function ShopRegisterPage() {
 
         {/* Step 2: 정산 정보 */}
         {step === 2 && (
-          <div className="px-5 py-6 space-y-6">
+          <div className="px-4 py-6 space-y-6">
             {/* 안내 문구 */}
-            <div className="bg-[#F2D38D]/30 rounded-2xl p-4">
-              <p className="text-sm text-[#19643D]/80 leading-relaxed">
-                💰 공동구매 대금을 받으실 계좌 정보를 입력해주세요.<br/>
-                고객이 직접 입금하는 방식으로, 계좌 정보가 주문서에 표시됩니다.
+            <div className="rounded-2xl p-4" style={{ backgroundColor: `${theme.accent}15`, border: `1px solid ${theme.accent}30` }}>
+              <p className="text-sm leading-relaxed flex items-start gap-2" style={{ color: theme.textSecondary }}>
+                <Info className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: theme.accent }} strokeWidth={1.5} />
+                공동구매 대금을 받으실 계좌 정보를 입력해주세요. 고객이 직접 입금하는 방식으로, 계좌 정보가 주문서에 표시됩니다.
               </p>
             </div>
 
             {/* 은행 선택 */}
             <div>
-              <label className="block text-sm font-bold text-[#19643D] mb-2">
-                은행 <span className="text-[#DA451F]">*</span>
+              <label className="flex items-center gap-1.5 text-sm font-semibold mb-2" style={{ color: theme.textPrimary }}>
+                <Building2 className="w-4 h-4" style={{ color: theme.accent }} strokeWidth={1.5} />
+                은행 <span style={{ color: theme.red }}>*</span>
               </label>
               <div className="grid grid-cols-2 gap-2">
                 {banks.map((bank) => (
@@ -380,11 +407,12 @@ export default function ShopRegisterPage() {
                     key={bank}
                     type="button"
                     onClick={() => setBankName(bank)}
-                    className={`px-3 py-3 rounded-xl text-sm font-medium transition-all ${
-                      bankName === bank
-                        ? "bg-[#19643D] text-white"
-                        : "bg-white border border-[#19643D]/20 text-[#19643D] hover:border-[#19643D]/50"
-                    }`}
+                    className="px-3 py-3 rounded-xl text-sm font-medium transition-all"
+                    style={{
+                      backgroundColor: bankName === bank ? theme.accent : theme.bgCard,
+                      color: bankName === bank ? (isDark ? '#121212' : '#FFF') : theme.textPrimary,
+                      border: `1px solid ${bankName === bank ? theme.accent : theme.border}`,
+                    }}
                   >
                     {bank}
                   </button>
@@ -394,48 +422,52 @@ export default function ShopRegisterPage() {
 
             {/* 계좌번호 */}
             <div>
-              <label className="block text-sm font-bold text-[#19643D] mb-2">
-                계좌번호 <span className="text-[#DA451F]">*</span>
+              <label className="flex items-center gap-1.5 text-sm font-semibold mb-2" style={{ color: theme.textPrimary }}>
+                <CreditCard className="w-4 h-4" style={{ color: theme.accent }} strokeWidth={1.5} />
+                계좌번호 <span style={{ color: theme.red }}>*</span>
               </label>
               <input
                 type="text"
                 value={bankAccount}
                 onChange={(e) => setBankAccount(e.target.value.replace(/[^0-9-]/g, ''))}
                 placeholder="- 없이 숫자만 입력"
-                className="w-full px-4 py-3.5 bg-white border border-[#19643D]/20 rounded-xl text-[#19643D] placeholder-[#19643D]/40 focus:outline-none focus:ring-2 focus:ring-[#19643D]/30 text-lg tracking-wide"
+                className="w-full px-4 py-3.5 rounded-xl text-[15px] outline-none tracking-wide"
+                style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}`, color: theme.textPrimary }}
               />
             </div>
 
             {/* 예금주 */}
             <div>
-              <label className="block text-sm font-bold text-[#19643D] mb-2">
-                예금주 <span className="text-[#DA451F]">*</span>
+              <label className="flex items-center gap-1.5 text-sm font-semibold mb-2" style={{ color: theme.textPrimary }}>
+                <User className="w-4 h-4" style={{ color: theme.accent }} strokeWidth={1.5} />
+                예금주 <span style={{ color: theme.red }}>*</span>
               </label>
               <input
                 type="text"
                 value={bankHolder}
                 onChange={(e) => setBankHolder(e.target.value)}
                 placeholder="예금주명"
-                className="w-full px-4 py-3.5 bg-white border border-[#19643D]/20 rounded-xl text-[#19643D] placeholder-[#19643D]/40 focus:outline-none focus:ring-2 focus:ring-[#19643D]/30"
+                className="w-full px-4 py-3.5 rounded-xl text-[15px] outline-none"
+                style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}`, color: theme.textPrimary }}
               />
             </div>
 
             {/* 사업자등록증 */}
             <div>
-              <label className="block text-sm font-bold text-[#19643D] mb-2">
-                사업자등록증 <span className="text-[#DA451F]">*</span>
+              <label className="flex items-center gap-1.5 text-sm font-semibold mb-2" style={{ color: theme.textPrimary }}>
+                <FileText className="w-4 h-4" style={{ color: theme.accent }} strokeWidth={1.5} />
+                사업자등록증 <span style={{ color: theme.red }}>*</span>
               </label>
               <div 
                 onClick={() => document.getElementById("bizreg-input")?.click()}
-                className="relative aspect-[4/3] bg-white rounded-xl overflow-hidden cursor-pointer border-2 border-dashed border-[#19643D]/30 hover:border-[#19643D] transition-colors"
+                className="relative aspect-[4/3] rounded-2xl overflow-hidden cursor-pointer transition-colors"
+                style={{ backgroundColor: theme.bgCard, border: `2px dashed ${theme.border}` }}
               >
                 {bizRegPreview ? (
                   <img src={bizRegPreview} alt="사업자등록증" className="w-full h-full object-contain" />
                 ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center text-[#19643D]/40">
-                    <svg className="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
+                  <div className="w-full h-full flex flex-col items-center justify-center" style={{ color: theme.textMuted }}>
+                    <Upload className="w-12 h-12 mb-2" strokeWidth={1.5} />
                     <p className="font-medium">사업자등록증 사진 첨부</p>
                     <p className="text-sm mt-1">클릭하여 업로드</p>
                   </div>
@@ -448,16 +480,16 @@ export default function ShopRegisterPage() {
                 onChange={(e) => handleFileChange(e, setBizRegFile, setBizRegPreview)}
                 className="hidden"
               />
-              <p className="text-xs text-[#19643D]/50 mt-2">
+              <p className="text-xs mt-2" style={{ color: theme.textMuted }}>
                 * 사업자등록증이 확인되어야 승인됩니다
               </p>
             </div>
 
             {/* 경고 문구 */}
-            <div className="bg-[#DA451F]/10 rounded-2xl p-4 border border-[#DA451F]/20">
-              <p className="text-sm text-[#DA451F]/80 leading-relaxed">
-                ⚠️ 입력하신 계좌 정보는 고객의 주문서에 표시됩니다.<br/>
-                정확한 정보를 입력해주세요.
+            <div className="rounded-2xl p-4" style={{ backgroundColor: theme.redBg, border: `1px solid ${theme.red}30` }}>
+              <p className="text-sm leading-relaxed flex items-start gap-2" style={{ color: theme.textSecondary }}>
+                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: theme.red }} strokeWidth={1.5} />
+                입력하신 계좌 정보는 고객의 주문서에 표시됩니다. 정확한 정보를 입력해주세요.
               </p>
             </div>
           </div>
@@ -465,12 +497,13 @@ export default function ShopRegisterPage() {
       </main>
 
       {/* 하단 버튼 */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-[#19643D]/10">
-        <div className="max-w-[640px] mx-auto px-5 py-4 flex gap-3">
+      <div className="fixed bottom-0 left-0 right-0" style={{ backgroundColor: theme.bgCard, borderTop: `1px solid ${theme.borderLight}` }}>
+        <div className="max-w-[640px] mx-auto px-4 py-4 flex gap-3">
           {step === 2 && (
             <button
               onClick={() => setStep(1)}
-              className="w-24 h-14 bg-white border-2 border-[#19643D] text-[#19643D] font-bold rounded-2xl hover:bg-[#19643D]/5 transition-colors"
+              className="w-24 h-14 rounded-2xl font-bold transition-colors"
+              style={{ backgroundColor: theme.bgInput, color: theme.textPrimary, border: `1px solid ${theme.border}` }}
             >
               이전
             </button>
@@ -478,10 +511,9 @@ export default function ShopRegisterPage() {
           
           {step === 1 ? (
             <button
-              onClick={() => {
-                if (validateStep1()) setStep(2);
-              }}
-              className="flex-1 h-14 bg-[#19643D] hover:bg-[#145231] text-white font-bold text-lg rounded-2xl transition-colors"
+              onClick={() => { if (validateStep1()) setStep(2); }}
+              className="flex-1 h-14 rounded-2xl font-bold text-lg transition-colors"
+              style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#FFF' }}
             >
               다음
             </button>
@@ -489,11 +521,12 @@ export default function ShopRegisterPage() {
             <button
               onClick={handleSubmit}
               disabled={submitting}
-              className="flex-1 h-14 bg-[#DA451F] hover:bg-[#c23d1b] disabled:bg-gray-300 text-white font-bold text-lg rounded-2xl transition-colors shadow-lg shadow-[#DA451F]/20"
+              className="flex-1 h-14 rounded-2xl font-bold text-lg transition-colors disabled:opacity-50"
+              style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#FFF' }}
             >
               {submitting ? (
                 <div className="flex items-center justify-center gap-2">
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <div className="w-5 h-5 border-2 rounded-full animate-spin" style={{ borderColor: 'rgba(255,255,255,0.3)', borderTopColor: '#FFF' }} />
                   <span>신청 중...</span>
                 </div>
               ) : (

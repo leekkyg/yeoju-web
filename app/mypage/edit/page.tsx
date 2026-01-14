@@ -3,12 +3,24 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { useTheme } from "@/contexts/ThemeContext";
 import BottomNav from "@/components/BottomNav";
+import {
+  ArrowLeft,
+  Camera,
+  Trash2,
+  Mail,
+  User,
+  Info,
+  AlertCircle,
+} from "lucide-react";
 
 const R2_WORKER_URL = "https://yeoju-r2-worker.kkyg9300.workers.dev";
 
 export default function ProfileEditPage() {
   const router = useRouter();
+  const { theme, isDark, mounted } = useTheme();
+  
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [nickname, setNickname] = useState("");
@@ -49,7 +61,6 @@ export default function ProfileEditPage() {
       setAvatarUrl(profileData.avatar_url || null);
       setAvatarPreview(profileData.avatar_url || null);
       
-      // 닉네임 변경 가능 여부 체크
       if (profileData.nickname_changed_at) {
         const lastChanged = new Date(profileData.nickname_changed_at);
         const now = new Date();
@@ -108,7 +119,6 @@ export default function ProfileEditPage() {
       return;
     }
 
-    // 닉네임이 변경되었는데 변경 불가능한 경우
     const nicknameChanged = nickname.trim() !== originalNickname;
     if (nicknameChanged && !canChangeNickname) {
       alert(`닉네임은 ${daysUntilChange}일 후에 변경 가능합니다`);
@@ -128,7 +138,6 @@ export default function ProfileEditPage() {
         avatar_url: newAvatarUrl,
       };
 
-      // 닉네임이 변경된 경우에만 업데이트
       if (nicknameChanged) {
         updateData.nickname = nickname.trim();
         updateData.nickname_changed_at = new Date().toISOString();
@@ -159,41 +168,53 @@ export default function ProfileEditPage() {
     }
   };
 
-  if (loading) {
+  if (!mounted || loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: theme.bgMain }}>
+        <div className="w-10 h-10 border-2 rounded-full animate-spin" style={{ borderColor: theme.border, borderTopColor: theme.accent }}></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
+    <div className="min-h-screen pb-24 transition-colors duration-300" style={{ backgroundColor: theme.bgMain }}>
       {/* 헤더 */}
-      <header className="bg-white sticky top-0 z-50 border-b border-gray-100">
-        <div className="max-w-[631px] mx-auto px-4 h-14 flex items-center justify-between">
+      <header
+        className="sticky top-0 z-50"
+        style={{ backgroundColor: theme.bgMain, borderBottom: `1px solid ${theme.borderLight}` }}
+      >
+        <div className="max-w-[640px] mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button onClick={() => router.back()} className="text-gray-600">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
+            <button
+              onClick={() => router.back()}
+              className="p-1 -ml-1 rounded-lg transition-colors"
+              style={{ color: theme.textPrimary }}
+            >
+              <ArrowLeft className="w-6 h-6" strokeWidth={1.5} />
             </button>
-            <h1 className="text-gray-900 font-bold text-lg">프로필 수정</h1>
+            <h1 className="text-lg font-bold" style={{ color: theme.textPrimary }}>프로필 수정</h1>
           </div>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-4 py-1.5 bg-emerald-500 text-white font-semibold text-sm rounded-full disabled:opacity-50"
+            className="px-4 py-1.5 rounded-full text-sm font-semibold transition-colors disabled:opacity-50"
+            style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#FFFFFF' }}
           >
             {saving ? "저장중..." : "저장"}
           </button>
         </div>
       </header>
 
-      <main className="max-w-[631px] mx-auto px-4 py-6">
+      <main className="max-w-[640px] mx-auto px-4 py-4">
         {/* 프로필 사진 */}
-        <div className="bg-white rounded-2xl p-6 mb-4">
-          <p className="text-sm font-medium text-gray-500 mb-4">프로필 사진</p>
+        <section
+          className="rounded-2xl p-6 mb-4"
+          style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}
+        >
+          <div className="flex items-center gap-2 mb-5">
+            <Camera className="w-5 h-5" style={{ color: theme.accent }} strokeWidth={1.5} />
+            <span className="font-semibold" style={{ color: theme.textPrimary }}>프로필 사진</span>
+          </div>
           
           <div className="flex flex-col items-center">
             <div className="relative">
@@ -201,11 +222,15 @@ export default function ProfileEditPage() {
                 <img 
                   src={avatarPreview} 
                   alt="프로필" 
-                  className="w-24 h-24 rounded-full object-cover border-4 border-emerald-100"
+                  className="w-24 h-24 rounded-2xl object-cover"
+                  style={{ border: `3px solid ${theme.border}` }}
                 />
               ) : (
-                <div className="w-24 h-24 bg-emerald-100 rounded-full flex items-center justify-center">
-                  <span className="text-emerald-600 font-bold text-3xl">
+                <div
+                  className="w-24 h-24 rounded-2xl flex items-center justify-center"
+                  style={{ backgroundColor: theme.bgInput, border: `3px solid ${theme.border}` }}
+                >
+                  <span className="text-3xl font-bold" style={{ color: theme.accent }}>
                     {nickname?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || "?"}
                   </span>
                 </div>
@@ -213,12 +238,10 @@ export default function ProfileEditPage() {
               
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="absolute bottom-0 right-0 w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg"
+                className="absolute -bottom-1 -right-1 w-8 h-8 rounded-xl flex items-center justify-center shadow-lg"
+                style={{ backgroundColor: theme.accent }}
               >
-                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
+                <Camera className="w-4 h-4" style={{ color: isDark ? '#121212' : '#FFFFFF' }} strokeWidth={2} />
               </button>
             </div>
 
@@ -230,46 +253,65 @@ export default function ProfileEditPage() {
               className="hidden"
             />
 
-            <div className="flex gap-2 mt-4">
+            <div className="flex gap-2 mt-5">
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="px-4 py-2 bg-emerald-50 text-emerald-600 font-medium text-sm rounded-lg"
+                className="px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
+                style={{ backgroundColor: theme.bgInput, color: theme.accent, border: `1px solid ${theme.border}` }}
               >
                 사진 변경
               </button>
               {avatarPreview && (
                 <button
                   onClick={removeAvatar}
-                  className="px-4 py-2 bg-gray-100 text-gray-600 font-medium text-sm rounded-lg"
+                  className="px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-1.5 transition-colors"
+                  style={{ backgroundColor: theme.redBg, color: theme.red, border: `1px solid ${theme.red}30` }}
                 >
+                  <Trash2 className="w-4 h-4" strokeWidth={1.5} />
                   삭제
                 </button>
               )}
             </div>
           </div>
-        </div>
+        </section>
 
         {/* 기본 정보 */}
-        <div className="bg-white rounded-2xl p-6">
-          <p className="text-sm font-medium text-gray-500 mb-4">기본 정보</p>
+        <section
+          className="rounded-2xl p-6"
+          style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}
+        >
+          <div className="flex items-center gap-2 mb-5">
+            <User className="w-5 h-5" style={{ color: theme.accent }} strokeWidth={1.5} />
+            <span className="font-semibold" style={{ color: theme.textPrimary }}>기본 정보</span>
+          </div>
           
-          {/* 이메일 (수정 불가) */}
-          <div className="mb-4">
-            <label className="block text-sm text-gray-600 mb-1">이메일</label>
+          {/* 이메일 */}
+          <div className="mb-5">
+            <label className="flex items-center gap-1.5 text-sm mb-2" style={{ color: theme.textMuted }}>
+              <Mail className="w-4 h-4" strokeWidth={1.5} />
+              이메일
+            </label>
             <input
               type="email"
               value={user?.email || ""}
               disabled
-              className="w-full px-4 py-3 bg-gray-100 text-gray-500 rounded-xl"
+              className="w-full px-4 py-3 rounded-xl text-[15px] transition-colors"
+              style={{ backgroundColor: theme.bgInput, color: theme.textMuted, border: `1px solid ${theme.border}` }}
             />
           </div>
 
           {/* 닉네임 */}
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-sm text-gray-600">닉네임 *</label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="flex items-center gap-1.5 text-sm" style={{ color: theme.textMuted }}>
+                <User className="w-4 h-4" strokeWidth={1.5} />
+                닉네임 <span style={{ color: theme.red }}>*</span>
+              </label>
               {!canChangeNickname && (
-                <span className="text-xs text-red-500">{daysUntilChange}일 후 변경 가능</span>
+                <span className="text-xs font-medium flex items-center gap-1" style={{ color: theme.red }}>
+                  <AlertCircle className="w-3 h-3" strokeWidth={1.5} />
+                  {daysUntilChange}일 후 변경 가능
+                </span>
               )}
             </div>
             <input
@@ -279,27 +321,41 @@ export default function ProfileEditPage() {
               placeholder="닉네임을 입력하세요"
               maxLength={20}
               disabled={!canChangeNickname}
-              className={`w-full px-4 py-3 rounded-xl border focus:outline-none ${
-                canChangeNickname 
-                  ? 'bg-gray-50 text-gray-900 border-gray-200 focus:border-emerald-500' 
-                  : 'bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed'
-              }`}
+              className="w-full px-4 py-3 rounded-xl text-[15px] outline-none transition-colors"
+              style={{
+                backgroundColor: canChangeNickname ? theme.bgInput : theme.bgMain,
+                color: canChangeNickname ? theme.textPrimary : theme.textMuted,
+                border: `1px solid ${theme.border}`,
+                cursor: canChangeNickname ? 'text' : 'not-allowed',
+              }}
             />
-            <div className="flex items-center justify-between mt-1">
-              <p className="text-xs text-gray-400">닉네임은 한 달에 1회만 변경할 수 있습니다</p>
-              <p className="text-xs text-gray-400">{nickname.length}/20</p>
+            <div className="flex items-center justify-between mt-2">
+              <p className="text-xs" style={{ color: theme.textMuted }}>닉네임은 30일에 1회만 변경 가능</p>
+              <p className="text-xs" style={{ color: theme.textMuted }}>{nickname.length}/20</p>
             </div>
           </div>
-        </div>
+        </section>
 
         {/* 안내 */}
-        <div className="mt-4 p-4 bg-emerald-50 rounded-xl">
-          <p className="text-emerald-700 text-sm font-medium mb-1">💡 안내</p>
-          <ul className="text-emerald-600 text-xs space-y-1">
-            <li>• 프로필 사진은 5MB 이하의 이미지만 가능합니다</li>
-            <li>• 닉네임은 한 달(30일)에 1회만 변경할 수 있습니다</li>
+        <section
+          className="mt-4 rounded-2xl p-4"
+          style={{ backgroundColor: `${theme.accent}15`, border: `1px solid ${theme.accent}30` }}
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <Info className="w-4 h-4" style={{ color: theme.accent }} strokeWidth={1.5} />
+            <span className="text-sm font-semibold" style={{ color: theme.accent }}>안내</span>
+          </div>
+          <ul className="text-xs space-y-1.5" style={{ color: theme.textSecondary }}>
+            <li className="flex items-start gap-1.5">
+              <span style={{ color: theme.accent }}>•</span>
+              프로필 사진은 5MB 이하의 이미지만 가능합니다
+            </li>
+            <li className="flex items-start gap-1.5">
+              <span style={{ color: theme.accent }}>•</span>
+              닉네임은 한 달(30일)에 1회만 변경할 수 있습니다
+            </li>
           </ul>
-        </div>
+        </section>
       </main>
 
       <BottomNav />

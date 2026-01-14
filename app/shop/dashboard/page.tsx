@@ -1,607 +1,694 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { useTheme } from "@/contexts/ThemeContext";
+import BottomNav from "@/components/BottomNav";
+import {
+  Store,
+  Plus,
+  Package,
+  ShoppingCart,
+  Users,
+  Clock,
+  Bell,
+  Settings,
+  ChevronRight,
+  ChevronLeft,
+  Wallet,
+  BarChart3,
+  AlertCircle,
+  Sun,
+  Moon,
+  Home,
+  CheckCircle,
+  XCircle,
+  Calendar,
+  CreditCard,
+  TrendingUp,
+  Eye,
+} from "lucide-react";
 
-interface Shop {
-  id: number;
-  name: string;
-  category: string;
-  logo_url: string;
-  description: string;
-  phone: string;
-  address: string;
-  approval_status: string;
-}
-
-interface GroupBuy {
-  id: number;
-  title: string;
-  status: string;
-  sale_price: number;
-  min_quantity: number;
-  current_quantity: number;
-  end_at: string;
-  pickup_date: string;
-  created_at: string;
-}
-
-interface Participant {
-  id: number;
-  group_buy_id: number;
-  quantity: number;
-  status: string;
-  is_paid: boolean;
-  created_at: string;
-  group_buy?: {
-    title: string;
-    sale_price: number;
-    pickup_date: string;
-  };
-}
-
-interface DailyStat {
-  date: string;
-  revenue: number;
-  orders: number;
-}
+type TabType = "all" | "active" | "completed" | "cancelled";
 
 export default function ShopDashboardPage() {
   const router = useRouter();
+  const { theme, isDark, mounted, toggleTheme } = useTheme();
+  
+  const [user, setUser] = useState<any>(null);
+  const [profile, setProfile] = useState<any>(null);
+  const [shop, setShop] = useState<any>(null);
+  const [groupBuys, setGroupBuys] = useState<any[]>([]);
+  const [recentOrders, setRecentOrders] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<TabType>("all");
+  const [stats, setStats] = useState({
+    activeCount: 0,
+    completedCount: 0,
+    cancelledCount: 0,
+    totalOrders: 0,
+    totalRevenue: 0,
+    pendingPayments: 0,
+    todayOrders: 0,
+    todayRevenue: 0,
+  });
   const [loading, setLoading] = useState(true);
-  const [shop, setShop] = useState<Shop | null>(null);
-  const [groupBuys, setGroupBuys] = useState<GroupBuy[]>([]);
-  const [participants, setParticipants] = useState<Participant[]>([]);
-  const [dateRange, setDateRange] = useState<"7days" | "30days" | "6months" | "1year" | "all">("30days");
-  const [dailyStats, setDailyStats] = useState<DailyStat[]>([]);
+  
+  // 스와이프용 ref
+  const sliderRef = useRef<HTMLDivElement>(null);
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [touchStart, setTouchStart] = useState(0);
+  const [touchEnd, setTouchEnd] = useState(0);
 
   useEffect(() => {
-    checkAuthAndLoadData();
+    fetchData();
   }, []);
 
-  useEffect(() => {
-    if (participants.length > 0) {
-      calculateDailyStats();
-    }
-  }, [participants, dateRange]);
-
-  const checkAuthAndLoadData = async () => {
+  const fetchData = async () => {
     const { data: { user } } = await supabase.auth.getUser();
-    
     if (!user) {
-      alert("로그인이 필요합니다");
       router.push("/login");
       return;
     }
+    setUser(user);
 
-    const { data: shopData, error: shopError } = await supabase
+    const { data: profileData } = await supabase
+      .from("profiles")
+      .select("nickname, avatar_url")
+      .eq("id", user.id)
+      .single();
+    setProfile(profileData);
+
+    const { data: shopData } = await supabase
       .from("shops")
       .select("*")
       .eq("user_id", user.id)
       .single();
 
-    if (shopError || !shopData) {
-      alert("등록된 상점이 없습니다");
+    if (!shopData) {
       router.push("/shop/register");
       return;
     }
-
     setShop(shopData);
 
-    const { data: groupBuyData } = await supabase
+    // 공동구매 목록 (image_url 포함)
+    const { data: gbData } = await supabase
       .from("group_buys")
       .select("*")
       .eq("shop_id", shopData.id)
       .order("created_at", { ascending: false });
+    setGroupBuys(gbData || []);
 
-    if (groupBuyData) {
-      setGroupBuys(groupBuyData);
-    }
-
-    const groupBuyIds = groupBuyData?.map(g => g.id) || [];
-    if (groupBuyIds.length > 0) {
-      const { data: participantData } = await supabase
+    // 최근 주문 목록
+    const gbIds = (gbData || []).map(g => g.id);
+    if (gbIds.length > 0) {
+      const { data: ordersData } = await supabase
         .from("group_buy_participants")
-        .select(`
-          *,
-          group_buy:group_buys(title, sale_price, pickup_date)
-        `)
-        .in("group_buy_id", groupBuyIds)
-        .order("created_at", { ascending: false });
-
-      if (participantData) {
-        setParticipants(participantData);
-      }
+        .select("*, group_buy:group_buys(title, image_url)")
+        .in("group_buy_id", gbIds)
+        .order("created_at", { ascending: false })
+        .limit(10);
+      setRecentOrders(ordersData || []);
     }
+
+    // 통계 계산
+    const activeGbs = (gbData || []).filter(gb => gb.status === "active");
+    const completedGbs = (gbData || []).filter(gb => gb.status === "completed");
+    const cancelledGbs = (gbData || []).filter(gb => gb.status === "cancelled");
+
+    const { data: allParticipants } = await supabase
+      .from("group_buy_participants")
+      .select("quantity, status, created_at, group_buy:group_buys(sale_price)")
+      .in("group_buy_id", gbIds);
+
+    const today = new Date().toDateString();
+    const todayOrders = (allParticipants || []).filter(p => 
+      new Date(p.created_at).toDateString() === today
+    );
+
+    const totalRevenue = (allParticipants || [])
+      .filter(p => p.status === "paid" || p.status === "picked")
+      .reduce((sum, p) => sum + ((p.group_buy?.sale_price || 0) * (p.quantity || 1)), 0);
+
+    const todayRevenue = todayOrders
+      .filter(p => p.status === "paid" || p.status === "picked")
+      .reduce((sum, p) => sum + ((p.group_buy?.sale_price || 0) * (p.quantity || 1)), 0);
+
+    const pendingPayments = (allParticipants || [])
+      .filter(p => p.status === "unpaid").length;
+
+    setStats({
+      activeCount: activeGbs.length,
+      completedCount: completedGbs.length,
+      cancelledCount: cancelledGbs.length,
+      totalOrders: allParticipants?.length || 0,
+      totalRevenue,
+      pendingPayments,
+      todayOrders: todayOrders.length,
+      todayRevenue,
+    });
 
     setLoading(false);
   };
 
-  const calculateDailyStats = () => {
-    const now = new Date();
-    let startDate = new Date();
+  // 필터된 공동구매 목록
+  const filteredGroupBuys = groupBuys.filter(gb => {
+    if (activeTab === "all") return true;
+    return gb.status === activeTab;
+  });
+
+  // 스와이프 핸들러
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > 50;
+    const isRightSwipe = distance < -50;
     
-    switch (dateRange) {
-      case "7days":
-        startDate.setDate(now.getDate() - 7);
-        break;
-      case "30days":
-        startDate.setDate(now.getDate() - 30);
-        break;
-      case "6months":
-        startDate.setMonth(now.getMonth() - 6);
-        break;
-      case "1year":
-        startDate.setFullYear(now.getFullYear() - 1);
-        break;
-      case "all":
-        startDate = new Date(0);
-        break;
+    if (isLeftSwipe && currentSlide < filteredGroupBuys.length - 1) {
+      setCurrentSlide(prev => prev + 1);
     }
-
-    const filteredParticipants = participants.filter(p => {
-      const date = new Date(p.created_at);
-      return date >= startDate && p.is_paid;
-    });
-
-    const statsMap: { [key: string]: DailyStat } = {};
-    
-    filteredParticipants.forEach(p => {
-      const date = new Date(p.created_at).toISOString().split('T')[0];
-      if (!statsMap[date]) {
-        statsMap[date] = { date, revenue: 0, orders: 0 };
-      }
-      statsMap[date].revenue += (p.group_buy?.sale_price || 0) * p.quantity;
-      statsMap[date].orders += 1;
-    });
-
-    const stats = Object.values(statsMap).sort((a, b) => a.date.localeCompare(b.date));
-    setDailyStats(stats);
-  };
-
-  const getFilteredData = () => {
-    const now = new Date();
-    let startDate = new Date();
-    
-    switch (dateRange) {
-      case "7days":
-        startDate.setDate(now.getDate() - 7);
-        break;
-      case "30days":
-        startDate.setDate(now.getDate() - 30);
-        break;
-      case "6months":
-        startDate.setMonth(now.getMonth() - 6);
-        break;
-      case "1year":
-        startDate.setFullYear(now.getFullYear() - 1);
-        break;
-      case "all":
-        startDate = new Date(0);
-        break;
+    if (isRightSwipe && currentSlide > 0) {
+      setCurrentSlide(prev => prev - 1);
     }
-
-    return participants.filter(p => new Date(p.created_at) >= startDate);
+    
+    setTouchStart(0);
+    setTouchEnd(0);
   };
 
-  const filteredParticipants = getFilteredData();
-
-  // 통계 계산
-  const totalRevenue = filteredParticipants
-    .filter(p => p.is_paid)
-    .reduce((sum, p) => sum + (p.group_buy?.sale_price || 0) * p.quantity, 0);
-
-  const totalOrders = filteredParticipants.length;
-  const paidOrders = filteredParticipants.filter(p => p.is_paid).length;
-  const unpaidOrders = filteredParticipants.filter(p => p.status === "unpaid").length;
-  const cancelledOrders = filteredParticipants.filter(p => p.status === "cancelled").length;
-  
-  const pickedUpOrders = filteredParticipants.filter(p => {
-    if (!p.is_paid || !p.group_buy?.pickup_date) return false;
-    return new Date(p.group_buy.pickup_date) < new Date();
-  }).length;
-
-  const activeGroupBuys = groupBuys.filter(g => g.status === "active").length;
-  const completedGroupBuys = groupBuys.filter(g => g.status === "ended" || g.status === "completed").length;
-  const totalGroupBuys = groupBuys.length;
-
-  const avgOrderAmount = paidOrders > 0 ? Math.round(totalRevenue / paidOrders) : 0;
-  const maxRevenue = Math.max(...dailyStats.map(s => s.revenue), 1);
-
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return `${date.getMonth() + 1}/${date.getDate()}`;
+  const scrollToSlide = (index: number) => {
+    setCurrentSlide(index);
+    if (sliderRef.current) {
+      const slideWidth = sliderRef.current.offsetWidth;
+      sliderRef.current.scrollTo({
+        left: slideWidth * index,
+        behavior: 'smooth'
+      });
+    }
   };
 
-  const formatFullDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return `${date.getMonth() + 1}월 ${date.getDate()}일`;
+  const prevSlide = () => {
+    if (currentSlide > 0) {
+      scrollToSlide(currentSlide - 1);
+    }
   };
 
-  // 승인 상태 체크
-  const isApproved = shop?.approval_status === "approved";
-  const isPending = shop?.approval_status === "pending";
-  const isRejected = shop?.approval_status === "rejected";
+  const nextSlide = () => {
+    if (currentSlide < filteredGroupBuys.length - 1) {
+      scrollToSlide(currentSlide + 1);
+    }
+  };
 
-  if (loading) {
+  const formatPrice = (price: number) => {
+    if (price >= 10000000) {
+      return (price / 10000000).toFixed(1) + "천만";
+    }
+    if (price >= 10000) {
+      return (price / 10000).toFixed(price % 10000 === 0 ? 0 : 1) + "만원";
+    }
+    return price.toLocaleString() + "원";
+  };
+
+  const getStatusInfo = (status: string) => {
+    const map: Record<string, { label: string; color: string; bg: string; icon: any }> = {
+      active: { label: "진행중", color: theme.accent, bg: `${theme.accent}20`, icon: Clock },
+      completed: { label: "완료", color: "#2563EB", bg: "#2563EB20", icon: CheckCircle },
+      cancelled: { label: "취소", color: theme.red, bg: theme.redBg, icon: XCircle },
+    };
+    return map[status] || map.active;
+  };
+
+  const getOrderStatusInfo = (status: string) => {
+    const map: Record<string, { label: string; color: string }> = {
+      unpaid: { label: "입금대기", color: theme.red },
+      paid: { label: "입금완료", color: "#D97706" },
+      picked: { label: "픽업완료", color: "#2563EB" },
+      cancelled: { label: "취소", color: theme.textMuted },
+    };
+    return map[status] || { label: "확인중", color: theme.textMuted };
+  };
+
+  const tabs: { key: TabType; label: string; count: number }[] = [
+    { key: "all", label: "전체", count: groupBuys.length },
+    { key: "active", label: "진행중", count: stats.activeCount },
+    { key: "completed", label: "완료", count: stats.completedCount },
+    { key: "cancelled", label: "취소", count: stats.cancelledCount },
+  ];
+
+  if (!mounted || loading) {
     return (
-      <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-[#19643D] border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: theme.bgMain }}>
+        <div className="w-10 h-10 border-2 rounded-full animate-spin" style={{ borderColor: theme.border, borderTopColor: theme.accent }}></div>
       </div>
     );
   }
 
+  const isApproved = shop?.approval_status === "approved";
+
   return (
-    <div className="min-h-screen bg-[#FDFBF7]">
-      <header className="fixed top-0 left-0 right-0 z-50 bg-[#19643D]">
-        <div className="max-w-[640px] mx-auto px-5 h-14 flex items-center justify-between">
-          <button 
-            onClick={() => router.back()} 
-            className="w-10 h-10 flex items-center justify-center text-[#F2D38D]"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <span className="text-white font-medium">상점 대시보드</span>
-          <Link 
-            href="/shop/settings"
-            className="w-10 h-10 flex items-center justify-center text-[#F2D38D]"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-          </Link>
-        </div>
-      </header>
+    <div className="min-h-screen pb-24 transition-colors duration-300" style={{ backgroundColor: theme.bgMain }}>
+      <style jsx global>{`
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+      `}</style>
 
-      <main className="pt-14 pb-32 max-w-[640px] mx-auto">
-        {/* 승인 대기 배너 */}
-        {isPending && (
-          <div className="mx-5 mt-4 bg-[#F2D38D] rounded-2xl p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center">
-                <svg className="w-5 h-5 text-[#19643D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div>
-                <p className="font-bold text-[#19643D]">승인 대기 중</p>
-                <p className="text-sm text-[#19643D]/70">관리자 승인 후 공동구매를 등록할 수 있습니다</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 승인 거절 배너 */}
-        {isRejected && (
-          <div className="mx-5 mt-4 bg-[#DA451F]/10 border border-[#DA451F]/30 rounded-2xl p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-[#DA451F] rounded-full flex items-center justify-center">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </div>
-              <div>
-                <p className="font-bold text-[#DA451F]">승인 거절됨</p>
-                <p className="text-sm text-[#DA451F]/70">관리자에게 문의해주세요</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 상점 정보 - 클릭 가능 */}
-        <Link href="/shop/info" className="block px-5 py-5 bg-white border-b border-[#19643D]/10 hover:bg-[#19643D]/5 transition-colors">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-[#19643D] flex items-center justify-center text-[#F2D38D] font-bold text-xl overflow-hidden">
+      {/* 헤더 */}
+      <header className="sticky top-0 z-50 border-b" style={{ backgroundColor: theme.bgCard, borderColor: theme.borderLight }}>
+        <div className="max-w-[640px] mx-auto px-4 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div 
+              className="w-9 h-9 rounded-xl flex items-center justify-center overflow-hidden"
+              style={{ backgroundColor: theme.bgInput, border: `1px solid ${theme.border}` }}
+            >
               {shop?.logo_url ? (
                 <img src={shop.logo_url} alt="" className="w-full h-full object-cover" />
               ) : (
-                shop?.name?.charAt(0)
+                <Store className="w-5 h-5" style={{ color: theme.accent }} strokeWidth={1.5} />
               )}
             </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <h1 className="text-lg font-bold text-[#19643D]">{shop?.name}</h1>
-                {isApproved && (
-                  <span className="px-2 py-0.5 bg-[#19643D] text-white text-xs font-medium rounded-full">승인됨</span>
-                )}
-                {isPending && (
-                  <span className="px-2 py-0.5 bg-[#F2D38D] text-[#19643D] text-xs font-medium rounded-full">대기중</span>
-                )}
-                {isRejected && (
-                  <span className="px-2 py-0.5 bg-[#DA451F] text-white text-xs font-medium rounded-full">거절됨</span>
-                )}
-              </div>
-              <p className="text-sm text-[#19643D]/50">{shop?.category}</p>
-            </div>
-            <div className="flex items-center gap-1 text-[#19643D]/40">
-              <span className="text-xs">상점 관리</span>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
+            <div>
+              <h1 className="font-bold text-base" style={{ color: theme.textPrimary }}>{shop?.name}</h1>
+              <p className="text-[11px]" style={{ color: theme.textMuted }}>상점 대시보드</p>
             </div>
           </div>
-        </Link>
+          <div className="flex items-center gap-1">
+            <button onClick={toggleTheme} className="w-10 h-10 flex items-center justify-center">
+              {isDark ? (
+                <Sun className="w-5 h-5" style={{ color: theme.accent }} strokeWidth={1.5} />
+              ) : (
+                <Moon className="w-5 h-5" style={{ color: theme.accent }} strokeWidth={1.5} />
+              )}
+            </button>
+            <Link href="/" className="w-10 h-10 flex items-center justify-center">
+              <Home className="w-5 h-5" style={{ color: theme.textSecondary }} strokeWidth={1.5} />
+            </Link>
+            <Link href="/shop/info" className="w-10 h-10 flex items-center justify-center">
+              <Settings className="w-5 h-5" style={{ color: theme.textSecondary }} strokeWidth={1.5} />
+            </Link>
+          </div>
+        </div>
+      </header>
 
-        {/* 기간 선택 - 확장됨 */}
-        <div className="px-5 py-3 bg-white border-b border-[#19643D]/10 sticky top-14 z-40">
-          <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+      <main className="max-w-[640px] mx-auto">
+        {/* 승인 대기 알림 */}
+        {!isApproved && (
+          <section className="px-4 pt-4">
+            <div 
+              className="rounded-2xl p-4 flex items-center gap-3"
+              style={{ backgroundColor: theme.redBg, border: `1px solid ${theme.red}30` }}
+            >
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${theme.red}20` }}>
+                <AlertCircle className="w-5 h-5" style={{ color: theme.red }} strokeWidth={1.5} />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold" style={{ color: theme.red }}>상점 승인 대기중</p>
+                <p className="text-xs mt-0.5" style={{ color: `${theme.red}90` }}>승인 완료 후 공동구매를 등록할 수 있어요</p>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* 오늘의 현황 */}
+        <section className="px-4 pt-4">
+          <div 
+            className="rounded-2xl p-4"
+            style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <Calendar className="w-4 h-4" style={{ color: theme.accent }} />
+              <span className="text-sm font-semibold" style={{ color: theme.textPrimary }}>오늘의 현황</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl p-4" style={{ backgroundColor: theme.bgInput }}>
+                <div className="flex items-center gap-2 mb-2">
+                  <ShoppingCart className="w-4 h-4" style={{ color: theme.accent }} />
+                  <span className="text-xs" style={{ color: theme.textMuted }}>오늘 주문</span>
+                </div>
+                <p className="text-2xl font-bold" style={{ color: theme.textPrimary }}>{stats.todayOrders}<span className="text-sm font-normal ml-1">건</span></p>
+              </div>
+              <div className="rounded-xl p-4" style={{ backgroundColor: theme.bgInput }}>
+                <div className="flex items-center gap-2 mb-2">
+                  <TrendingUp className="w-4 h-4" style={{ color: theme.accent }} />
+                  <span className="text-xs" style={{ color: theme.textMuted }}>오늘 매출</span>
+                </div>
+                <p className="text-2xl font-bold" style={{ color: theme.accent }}>{formatPrice(stats.todayRevenue)}</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* 전체 통계 */}
+        <section className="px-4 mt-4">
+          <div 
+            className="rounded-2xl p-4 grid grid-cols-4 gap-2"
+            style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}
+          >
             {[
-              { key: "7days", label: "7일" },
-              { key: "30days", label: "30일" },
-              { key: "6months", label: "6개월" },
-              { key: "1year", label: "1년" },
-              { key: "all", label: "전체" },
-            ].map((item) => (
-              <button
-                key={item.key}
-                onClick={() => setDateRange(item.key as typeof dateRange)}
-                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
-                  dateRange === item.key 
-                    ? "bg-[#19643D] text-white" 
-                    : "bg-[#19643D]/5 text-[#19643D]"
-                }`}
-              >
-                {item.label}
-              </button>
+              { icon: Package, label: "총 주문", value: stats.totalOrders, unit: "건", color: theme.accent },
+              { icon: Wallet, label: "총 매출", value: formatPrice(stats.totalRevenue), unit: "", color: theme.accent },
+              { icon: Clock, label: "미입금", value: stats.pendingPayments, unit: "건", color: stats.pendingPayments > 0 ? theme.red : theme.textMuted, alert: stats.pendingPayments > 0 },
+              { icon: Eye, label: "진행중", value: stats.activeCount, unit: "개", color: theme.accent },
+            ].map((stat, i) => (
+              <div key={i} className="text-center">
+                <div 
+                  className="w-10 h-10 rounded-xl flex items-center justify-center mx-auto mb-2"
+                  style={{ backgroundColor: stat.alert ? theme.redBg : theme.bgInput }}
+                >
+                  <stat.icon className="w-5 h-5" style={{ color: stat.color }} strokeWidth={1.5} />
+                </div>
+                <p className="text-sm font-bold" style={{ color: stat.alert ? theme.red : theme.textPrimary }}>
+                  {stat.value}{stat.unit}
+                </p>
+                <p className="text-[10px] mt-0.5" style={{ color: theme.textMuted }}>{stat.label}</p>
+              </div>
             ))}
           </div>
-        </div>
+        </section>
 
-        {/* 핵심 지표 */}
-        <div className="px-5 py-4">
-          <div className="bg-gradient-to-br from-[#19643D] to-[#2a8a56] rounded-2xl p-5 text-white mb-4">
-            <p className="text-[#F2D38D]/80 text-sm mb-1">총 매출</p>
-            <p className="text-3xl font-black">{totalRevenue.toLocaleString()}원</p>
-            <p className="text-[#F2D38D]/60 text-xs mt-2">
-              평균 주문 금액: {avgOrderAmount.toLocaleString()}원
-            </p>
+        {/* 빠른 메뉴 */}
+        <section className="px-3 mt-3">
+          <div className="grid grid-cols-3 gap-2">
+           {[
+  { href: "/shop/groupbuy/create", icon: Plus, label: "공구등록", accent: true, disabled: !isApproved },
+  { href: "/shop/groupbuys", icon: Package, label: "내 공구", accent: false, disabled: false },
+  { href: "/shop/info", icon: Settings, label: "상점정보", accent: false, disabled: false },
+].map((menu) => (
+              <Link
+                key={menu.href}
+                href={menu.disabled ? "#" : menu.href}
+                onClick={(e) => {
+                  if (menu.disabled) {
+                    e.preventDefault();
+                    alert("상점 승인 후 이용 가능합니다");
+                  }
+                }}
+                className={`flex flex-col items-center gap-2 p-3 rounded-xl transition-all ${menu.disabled ? 'opacity-50' : ''}`}
+                style={{ 
+                  backgroundColor: menu.accent ? theme.accent : theme.bgCard,
+                  border: `1px solid ${menu.accent ? theme.accent : theme.borderLight}`,
+                }}
+              >
+                <menu.icon 
+                  className="w-6 h-6" 
+                  style={{ color: menu.accent ? (isDark ? '#121212' : '#FFFFFF') : theme.accent }} 
+                  strokeWidth={1.5} 
+                />
+                <span 
+                  className="text-xs font-medium"
+                  style={{ color: menu.accent ? (isDark ? '#121212' : '#FFFFFF') : theme.textPrimary }}
+                >
+                  {menu.label}
+                </span>
+              </Link>
+            ))}
           </div>
+        </section>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white rounded-2xl p-4 border border-[#19643D]/10">
-              <p className="text-sm text-[#19643D]/50 mb-1">총 주문</p>
-              <p className="text-2xl font-black text-[#19643D]">{totalOrders}건</p>
-            </div>
-            <div className="bg-white rounded-2xl p-4 border border-[#19643D]/10">
-              <p className="text-sm text-[#19643D]/50 mb-1">입금 완료</p>
-              <p className="text-2xl font-black text-[#19643D]">{paidOrders}건</p>
-            </div>
-            <div className="bg-white rounded-2xl p-4 border border-[#DA451F]/20">
-              <p className="text-sm text-[#DA451F]/70 mb-1">입금 대기</p>
-              <p className="text-2xl font-black text-[#DA451F]">{unpaidOrders}건</p>
-            </div>
-            <div className="bg-white rounded-2xl p-4 border border-[#19643D]/10">
-              <p className="text-sm text-[#19643D]/50 mb-1">픽업 완료</p>
-              <p className="text-2xl font-black text-[#19643D]">{pickedUpOrders}건</p>
-            </div>
-          </div>
-        </div>
-
-        {/* 공동구매 현황 */}
-        <div className="px-5 py-4">
-          <h2 className="text-lg font-bold text-[#19643D] mb-3">📦 공동구매 현황</h2>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="bg-white rounded-2xl p-4 border border-[#19643D]/10 text-center">
-              <p className="text-3xl font-black text-[#19643D]">{activeGroupBuys}</p>
-              <p className="text-xs text-[#19643D]/50 mt-1">진행중</p>
-            </div>
-            <div className="bg-white rounded-2xl p-4 border border-[#19643D]/10 text-center">
-              <p className="text-3xl font-black text-[#19643D]">{completedGroupBuys}</p>
-              <p className="text-xs text-[#19643D]/50 mt-1">완료</p>
-            </div>
-            <div className="bg-white rounded-2xl p-4 border border-[#19643D]/10 text-center">
-              <p className="text-3xl font-black text-[#19643D]">{totalGroupBuys}</p>
-              <p className="text-xs text-[#19643D]/50 mt-1">전체</p>
-            </div>
-          </div>
-        </div>
-
-        {/* 매출 그래프 */}
-        <div className="px-5 py-4">
-          <h2 className="text-lg font-bold text-[#19643D] mb-3">📊 일별 매출 추이</h2>
-          <div className="bg-white rounded-2xl p-5 border border-[#19643D]/10">
-            {dailyStats.length === 0 ? (
-              <p className="text-center text-[#19643D]/40 py-8">해당 기간에 매출 데이터가 없습니다</p>
-            ) : (
-              <>
-                <div className="flex items-end gap-1 h-40 mb-3">
-                  {dailyStats.slice(-14).map((stat, index) => (
-                    <div key={stat.date} className="flex-1 flex flex-col items-center">
-                      <div 
-                        className="w-full bg-gradient-to-t from-[#19643D] to-[#2a8a56] rounded-t-sm transition-all duration-300 hover:from-[#DA451F] hover:to-[#e85a3a]"
-                        style={{ 
-                          height: `${Math.max((stat.revenue / maxRevenue) * 100, 5)}%`,
-                          minHeight: '4px'
-                        }}
-                        title={`${formatFullDate(stat.date)}: ${stat.revenue.toLocaleString()}원 (${stat.orders}건)`}
-                      />
-                    </div>
-                  ))}
-                </div>
-                <div className="flex gap-1">
-                  {dailyStats.slice(-14).map((stat) => (
-                    <div key={stat.date} className="flex-1 text-center">
-                      <p className="text-[10px] text-[#19643D]/40">{formatDate(stat.date)}</p>
-                    </div>
-                  ))}
-                </div>
-                
-                <div className="mt-4 pt-4 border-t border-[#19643D]/10">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[#19643D]/50">기간 내 최고 매출</span>
-                    <span className="font-bold text-[#19643D]">{maxRevenue.toLocaleString()}원</span>
-                  </div>
-                </div>
-              </>
+        {/* 내 공동구매 - 탭뷰 */}
+        <section className="mt-6">
+          <div className="px-4 flex items-center justify-between mb-3">
+            <h3 className="text-base font-bold" style={{ color: theme.textPrimary }}>내 공동구매</h3>
+            {isApproved && (
+              <Link 
+                href="/shop/groupbuy/create"
+                className="flex items-center gap-1 text-sm font-semibold"
+                style={{ color: theme.accent }}
+              >
+                <Plus className="w-4 h-4" strokeWidth={2} />
+                새 공구
+              </Link>
             )}
           </div>
-        </div>
 
-        {/* 주문 상태 분석 */}
-        <div className="px-5 py-4">
-          <h2 className="text-lg font-bold text-[#19643D] mb-3">📈 주문 분석</h2>
-          <div className="bg-white rounded-2xl p-5 border border-[#19643D]/10">
-            <div className="mb-4">
-              <div className="flex justify-between text-sm mb-2">
-                <span className="text-[#19643D]/60">주문 상태 비율</span>
-                <span className="text-[#19643D]/60">총 {totalOrders}건</span>
-              </div>
-              <div className="h-4 bg-gray-100 rounded-full overflow-hidden flex">
-                {totalOrders > 0 && (
-                  <>
-                    <div 
-                      className="bg-[#19643D] transition-all"
-                      style={{ width: `${(paidOrders / totalOrders) * 100}%` }}
-                    />
-                    <div 
-                      className="bg-[#DA451F] transition-all"
-                      style={{ width: `${(unpaidOrders / totalOrders) * 100}%` }}
-                    />
-                    <div 
-                      className="bg-gray-300 transition-all"
-                      style={{ width: `${(cancelledOrders / totalOrders) * 100}%` }}
-                    />
-                  </>
-                )}
-              </div>
-              <div className="flex justify-between mt-2 text-xs">
-                <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 bg-[#19643D] rounded-full" />
-                  <span className="text-[#19643D]/60">입금완료 {paidOrders}건</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 bg-[#DA451F] rounded-full" />
-                  <span className="text-[#19643D]/60">대기 {unpaidOrders}건</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 bg-gray-300 rounded-full" />
-                  <span className="text-[#19643D]/60">취소 {cancelledOrders}건</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-4 border-t border-[#19643D]/10 space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-[#19643D]/60">입금 전환율</span>
-                <span className="font-bold text-[#19643D]">
-                  {totalOrders > 0 ? Math.round((paidOrders / totalOrders) * 100) : 0}%
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[#19643D]/60">취소율</span>
-                <span className="font-bold text-[#DA451F]">
-                  {totalOrders > 0 ? Math.round((cancelledOrders / totalOrders) * 100) : 0}%
-                </span>
-              </div>
+          {/* 탭 버튼 */}
+          <div className="px-4 mb-4">
+            <div 
+              className="flex rounded-xl p-1"
+              style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}
+            >
+              {tabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => {
+                    setActiveTab(tab.key);
+                    setCurrentSlide(0);
+                  }}
+                  className="flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all"
+                  style={{ 
+                    backgroundColor: activeTab === tab.key ? theme.accent : 'transparent',
+                    color: activeTab === tab.key ? (isDark ? '#121212' : '#FFFFFF') : theme.textMuted,
+                  }}
+                >
+                  {tab.label} ({tab.count})
+                </button>
+              ))}
             </div>
           </div>
-        </div>
 
-        {/* 빠른 메뉴 - 주문관리, 알림발송 제거 */}
-        <div className="px-5 py-4">
-          <h2 className="text-lg font-bold text-[#19643D] mb-3">⚡ 빠른 메뉴</h2>
-          <div className="grid grid-cols-2 gap-3">
-            <Link 
-              href="/shop/groupbuys"
-              className="bg-white rounded-2xl p-4 border border-[#DA451F]/20 flex items-center gap-3 hover:bg-[#DA451F]/5 transition-colors"
+          {/* 슬라이드 영역 */}
+          {filteredGroupBuys.length === 0 ? (
+            <div 
+              className="mx-4 rounded-2xl p-10 text-center"
+              style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}
             >
-              <div className="w-10 h-10 bg-[#DA451F]/10 rounded-xl flex items-center justify-center">
-                <svg className="w-5 h-5 text-[#DA451F]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                </svg>
+              <div 
+                className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"
+                style={{ backgroundColor: theme.bgInput }}
+              >
+                <ShoppingCart className="w-7 h-7" style={{ color: theme.textMuted }} strokeWidth={1.5} />
               </div>
-              <div>
-                <p className="font-medium text-[#19643D]">공동구매 관리</p>
-                <p className="text-xs text-[#DA451F]">{activeGroupBuys}개 진행중</p>
+              <p className="font-medium" style={{ color: theme.textMuted }}>
+                {activeTab === "all" ? "등록된 공동구매가 없습니다" : `${tabs.find(t => t.key === activeTab)?.label} 공동구매가 없습니다`}
+              </p>
+              {isApproved && activeTab === "all" && (
+                <Link
+                  href="/shop/groupbuy/create"
+                  className="inline-flex items-center gap-1.5 mt-4 px-5 py-2.5 rounded-xl text-sm font-semibold"
+                  style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#FFFFFF' }}
+                >
+                  <Plus className="w-4 h-4" strokeWidth={2} />
+                  첫 공동구매 등록하기
+                </Link>
+              )}
+            </div>
+          ) : (
+            <div className="relative">
+              {/* 이전 버튼 */}
+              {currentSlide > 0 && (
+                <button
+                  onClick={prevSlide}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full flex items-center justify-center shadow-lg"
+                  style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
+                >
+                  <ChevronLeft className="w-5 h-5" style={{ color: theme.textPrimary }} />
+                </button>
+              )}
+
+              {/* 다음 버튼 */}
+              {currentSlide < filteredGroupBuys.length - 1 && (
+                <button
+                  onClick={nextSlide}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full flex items-center justify-center shadow-lg"
+                  style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
+                >
+                  <ChevronRight className="w-5 h-5" style={{ color: theme.textPrimary }} />
+                </button>
+              )}
+
+              {/* 슬라이드 컨테이너 */}
+              <div 
+                ref={sliderRef}
+                className="overflow-x-auto hide-scrollbar snap-x snap-mandatory"
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+                onScroll={(e) => {
+                  const target = e.target as HTMLDivElement;
+                  const slideWidth = target.offsetWidth;
+                  const newSlide = Math.round(target.scrollLeft / slideWidth);
+                  setCurrentSlide(newSlide);
+                }}
+              >
+                <div className="flex">
+                  {filteredGroupBuys.map((gb) => {
+                    const statusInfo = getStatusInfo(gb.status);
+                    const progress = gb.min_quantity ? Math.min(((gb.current_quantity || 0) / gb.min_quantity) * 100, 100) : 0;
+                    const dday = gb.end_at ? Math.ceil((new Date(gb.end_at).getTime() - new Date().getTime()) / 86400000) : null;
+
+                    return (
+                      <div 
+                        key={gb.id} 
+                        className="w-full flex-shrink-0 snap-center px-4"
+                      >
+                        <Link
+                          href={`/shop/groupbuy/${gb.id}`}
+                          className="block rounded-2xl overflow-hidden transition-all"
+                          style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}
+                        >
+                          {/* 썸네일 */}
+                          <div className="aspect-video relative overflow-hidden" style={{ backgroundColor: theme.bgInput }}>
+                            {gb.image_url ? (
+                              <img src={gb.image_url} alt={gb.title} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <ShoppingCart className="w-16 h-16 opacity-20" style={{ color: theme.textMuted }} />
+                              </div>
+                            )}
+                            
+                            {/* 상태 뱃지 */}
+                            <div 
+                              className="absolute top-3 left-3 px-3 py-1 text-xs font-bold rounded-full flex items-center gap-1"
+                              style={{ backgroundColor: statusInfo.bg, color: statusInfo.color }}
+                            >
+                              <statusInfo.icon className="w-3 h-3" />
+                              {statusInfo.label}
+                            </div>
+
+                            {/* D-day */}
+                            {gb.status === "active" && dday !== null && dday >= 0 && (
+                              <div 
+                                className="absolute top-3 right-3 px-3 py-1 text-xs font-bold rounded-full"
+                                style={{ backgroundColor: dday <= 2 ? theme.red : theme.accent, color: isDark ? '#121212' : '#FFFFFF' }}
+                              >
+                                D-{dday}
+                              </div>
+                            )}
+
+                            {/* 진행률 바 */}
+                            <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-black/70 to-transparent flex items-end px-3 pb-1">
+                              <div className="flex-1 h-1.5 bg-white/30 rounded-full overflow-hidden mr-2">
+                                <div 
+                                  className="h-full rounded-full transition-all"
+                                  style={{ width: `${progress}%`, backgroundColor: theme.accent }}
+                                />
+                              </div>
+                              <span className="text-xs font-bold text-white">
+                                {Math.round(progress)}%
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* 정보 */}
+                          <div className="p-4">
+                            <h4 className="text-lg font-bold line-clamp-1 mb-2" style={{ color: theme.textPrimary }}>
+                              {gb.title}
+                            </h4>
+                            <div className="flex items-center justify-between">
+                              <p className="text-xl font-bold" style={{ color: theme.accent }}>
+                                {gb.sale_price?.toLocaleString()}원
+                              </p>
+                              <div className="flex items-center gap-1 text-sm" style={{ color: theme.textMuted }}>
+                                <Users className="w-4 h-4" strokeWidth={1.5} />
+                                {gb.current_quantity || 0}/{gb.min_quantity || 0}명
+                              </div>
+                            </div>
+                          </div>
+                        </Link>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            </Link>
-            
-            <Link 
-              href="/shop/info"
-              className="bg-white rounded-2xl p-4 border border-[#19643D]/10 flex items-center gap-3 hover:bg-[#19643D]/5 transition-colors"
-            >
-              <div className="w-10 h-10 bg-[#19643D]/10 rounded-xl flex items-center justify-center">
-                <svg className="w-5 h-5 text-[#19643D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div>
-                <p className="font-medium text-[#19643D]">상점 정보</p>
-                <p className="text-xs text-[#19643D]/50">수정하기</p>
-              </div>
-            </Link>
+
+              {/* 인디케이터 */}
+              {filteredGroupBuys.length > 1 && (
+                <div className="flex justify-center gap-1.5 mt-3">
+                  {filteredGroupBuys.map((_, index) => (
+                    <button
+                      key={index}
+                      onClick={() => scrollToSlide(index)}
+                      className="w-2 h-2 rounded-full transition-all"
+                      style={{ 
+                        backgroundColor: currentSlide === index ? theme.accent : theme.border,
+                        width: currentSlide === index ? '16px' : '8px',
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* 최근 주문 */}
+        <section className="px-4 mt-6 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="text-base font-bold" style={{ color: theme.textPrimary }}>최근 주문</h3>
+              <p className="text-xs mt-0.5" style={{ color: theme.textMuted }}>
+                미입금 {stats.pendingPayments}건
+              </p>
+            </div>
+
           </div>
-        </div>
 
-        {/* 인기 공동구매 */}
-        <div className="px-5 py-4">
-          <h2 className="text-lg font-bold text-[#19643D] mb-3">🏆 인기 공동구매</h2>
-          <div className="bg-white rounded-2xl border border-[#19643D]/10 overflow-hidden">
-            {groupBuys.length === 0 ? (
-              <p className="text-center text-[#19643D]/40 py-8">등록된 공동구매가 없습니다</p>
-            ) : (
-              groupBuys
-                .sort((a, b) => b.current_quantity - a.current_quantity)
-                .slice(0, 5)
-                .map((g, index) => (
-                  <Link 
-                    key={g.id} 
-                    href={`/shop/groupbuy/${g.id}`}
-                    className="flex items-center gap-3 p-4 border-b border-[#19643D]/5 last:border-0 hover:bg-[#19643D]/5 transition-colors"
+          {recentOrders.length === 0 ? (
+            <div
+              className="rounded-2xl p-8 text-center"
+              style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}
+            >
+              <Package className="w-10 h-10 mx-auto mb-3" style={{ color: theme.textMuted }} strokeWidth={1.5} />
+              <p style={{ color: theme.textMuted }}>아직 주문이 없습니다</p>
+            </div>
+          ) : (
+            <div 
+              className="rounded-2xl overflow-hidden"
+              style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}
+            >
+              {recentOrders.slice(0, 5).map((order, index) => {
+                const orderStatus = getOrderStatusInfo(order.status);
+                return (
+                  <Link
+                    key={order.id}
+                    href="/shop/orders"
+                    className="flex items-center gap-3 p-4 transition-colors"
+                    style={{ borderBottom: index < Math.min(recentOrders.length, 5) - 1 ? `1px solid ${theme.border}` : 'none' }}
                   >
-                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                      index === 0 ? "bg-[#F2D38D] text-[#19643D]" :
-                      index === 1 ? "bg-gray-200 text-gray-600" :
-                      index === 2 ? "bg-orange-200 text-orange-700" :
-                      "bg-gray-100 text-gray-500"
-                    }`}>
-                      {index + 1}
-                    </span>
+                    <div 
+                      className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0"
+                      style={{ backgroundColor: theme.bgInput }}
+                    >
+                      {order.group_buy?.image_url ? (
+                        <img src={order.group_buy.image_url} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Package className="w-5 h-5" style={{ color: theme.textMuted }} />
+                        </div>
+                      )}
+                    </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-[#19643D] truncate">{g.title}</p>
-                      <p className="text-xs text-[#19643D]/50">
-                        {g.current_quantity}명 참여 · {g.sale_price.toLocaleString()}원
+                      <p className="text-sm font-medium truncate" style={{ color: theme.textPrimary }}>
+                        {order.name} ({order.quantity}개)
+                      </p>
+                      <p className="text-xs truncate" style={{ color: theme.textMuted }}>
+                        {order.group_buy?.title}
                       </p>
                     </div>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      g.status === "active" 
-                        ? "bg-[#19643D]/10 text-[#19643D]" 
-                        : "bg-gray-100 text-gray-500"
-                    }`}>
-                      {g.status === "active" ? "진행중" : "종료"}
-                    </span>
+                    <div className="text-right">
+                      <span 
+                        className="text-xs font-semibold px-2 py-1 rounded-full"
+                        style={{ backgroundColor: `${orderStatus.color}20`, color: orderStatus.color }}
+                      >
+                        {orderStatus.label}
+                      </span>
+                    </div>
                   </Link>
-                ))
-            )}
-          </div>
-        </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
       </main>
 
-      {/* 하단 버튼 - 승인 상태에 따라 */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-[#19643D]/10">
-        <div className="max-w-[640px] mx-auto px-5 py-4">
-          {isApproved ? (
-            <Link
-              href="/shop/groupbuy/create"
-              className="block w-full py-4 bg-[#DA451F] text-white font-bold text-center rounded-2xl hover:bg-[#c23d1b] transition-colors"
-            >
-              + 새 공동구매 등록
-            </Link>
-          ) : (
-            <button
-              disabled
-              className="block w-full py-4 bg-gray-300 text-gray-500 font-bold text-center rounded-2xl cursor-not-allowed"
-            >
-              {isPending ? "승인 대기 중..." : "승인 후 등록 가능"}
-            </button>
-          )}
-        </div>
-      </div>
+      <BottomNav />
     </div>
   );
 }

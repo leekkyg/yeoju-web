@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { useTheme } from "@/contexts/ThemeContext";
 
 interface GroupBuy {
   id: number;
@@ -35,6 +36,7 @@ const categories = [
 
 export default function GroupBuyListPage() {
   const router = useRouter();
+  const { theme, isDark, mounted } = useTheme();
   const [groupBuys, setGroupBuys] = useState<GroupBuy[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState("전체");
@@ -158,8 +160,17 @@ export default function GroupBuyListPage() {
       return 0;
     });
 
+  // 로딩 중 표시
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[#FDFBF7]">
+    <div className="min-h-screen" style={{ backgroundColor: theme.bgMain }}>
       {/* 스크롤바 숨기기 스타일 */}
       <style jsx global>{`
         .scrollbar-hide {
@@ -178,20 +189,22 @@ export default function GroupBuyListPage() {
       `}</style>
 
       {/* 헤더 */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-[#19643D]">
-        <div className="max-w-[640px] mx-auto px-5 h-14 flex items-center justify-between">
+      <header className="fixed top-0 left-0 right-0 z-50" style={{ backgroundColor: theme.bgCard }}>
+        <div className="max-w-[640px] mx-auto px-5 h-14 flex items-center justify-between border-b" style={{ borderColor: theme.border }}>
           <button 
             onClick={() => router.back()} 
-            className="w-10 h-10 flex items-center justify-center text-[#F2D38D] hover:text-white transition-colors"
+            className="w-10 h-10 flex items-center justify-center transition-colors"
+            style={{ color: theme.textSecondary }}
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <h1 className="text-white font-bold text-lg tracking-tight">공동구매</h1>
+          <h1 className="font-bold text-lg tracking-tight" style={{ color: theme.textPrimary }}>공동구매</h1>
           <Link 
             href="/shop/dashboard" 
-            className="text-[#F2D38D] text-sm font-medium hover:text-white transition-colors"
+            className="text-sm font-medium transition-colors"
+            style={{ color: theme.accent }}
           >
             내 상점
           </Link>
@@ -199,13 +212,14 @@ export default function GroupBuyListPage() {
       </header>
 
       {/* 카테고리 - 화살표 + 드래그 스크롤 */}
-      <div className="fixed top-14 left-0 right-0 z-40 bg-[#19643D]/95 backdrop-blur-sm border-t border-[#F2D38D]/10">
+      <div className="fixed top-14 left-0 right-0 z-40 backdrop-blur-sm border-b" style={{ backgroundColor: theme.bgCard, borderColor: theme.border }}>
         <div className="max-w-[640px] mx-auto relative">
           {/* 왼쪽 화살표 */}
           {canScrollLeft && (
             <button
               onClick={() => scrollCategory('left')}
-              className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 bg-[#19643D] flex items-center justify-center text-white shadow-lg"
+              className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 flex items-center justify-center shadow-lg"
+              style={{ backgroundColor: theme.bgCard, color: theme.textPrimary }}
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -228,11 +242,11 @@ export default function GroupBuyListPage() {
                 <button
                   key={cat.id}
                   onClick={() => !isDragging && setSelectedCategory(cat.name)}
-                  className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all select-none ${
-                    selectedCategory === cat.name
-                      ? "bg-[#F2D38D] text-[#19643D] shadow-lg"
-                      : "bg-white/10 text-white/80 hover:bg-white/20"
-                  }`}
+                  className="px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all select-none"
+                  style={{
+                    backgroundColor: selectedCategory === cat.name ? theme.accent : theme.bgInput,
+                    color: selectedCategory === cat.name ? (isDark ? '#121212' : '#fff') : theme.textSecondary
+                  }}
                 >
                   {cat.icon} {cat.name}
                 </button>
@@ -244,7 +258,8 @@ export default function GroupBuyListPage() {
           {canScrollRight && (
             <button
               onClick={() => scrollCategory('right')}
-              className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 bg-[#19643D] flex items-center justify-center text-white shadow-lg"
+              className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 flex items-center justify-center shadow-lg"
+              style={{ backgroundColor: theme.bgCard, color: theme.textPrimary }}
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -254,9 +269,9 @@ export default function GroupBuyListPage() {
         </div>
       </div>
 
-      <main className="pt-[120px] pb-8 max-w-[640px] mx-auto px-3">
+      <main className="pt-[130px] pb-8 max-w-[640px] mx-auto px-3">
         {/* 정렬 + 개수 */}
-        <div className="flex items-center justify-between mb-4 px-1">
+        <div className="flex items-center justify-between mb-4 px-1 mt-2">
           <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
             {[
               { key: "latest", label: "최신순" },
@@ -266,17 +281,18 @@ export default function GroupBuyListPage() {
               <button
                 key={s.key}
                 onClick={() => setSortBy(s.key as typeof sortBy)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
-                  sortBy === s.key
-                    ? "bg-[#19643D] text-white"
-                    : "bg-white text-[#19643D]/60 border border-[#19643D]/20"
-                }`}
+                className="px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap border"
+                style={{
+                  backgroundColor: sortBy === s.key ? theme.accent : theme.bgCard,
+                  color: sortBy === s.key ? (isDark ? '#121212' : '#fff') : theme.textSecondary,
+                  borderColor: sortBy === s.key ? theme.accent : theme.border
+                }}
               >
                 {s.label}
               </button>
             ))}
           </div>
-          <span className="text-xs text-[#19643D]/50 whitespace-nowrap ml-2">
+          <span className="text-xs whitespace-nowrap ml-2" style={{ color: theme.textMuted }}>
             {filteredGroupBuys.length}개
           </span>
         </div>
@@ -284,18 +300,18 @@ export default function GroupBuyListPage() {
         {/* 로딩 */}
         {loading && (
           <div className="py-20 flex justify-center">
-            <div className="w-8 h-8 border-2 border-[#19643D] border-t-transparent rounded-full animate-spin" />
+            <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: theme.accent }} />
           </div>
         )}
 
         {/* 빈 상태 */}
         {!loading && filteredGroupBuys.length === 0 && (
           <div className="py-20 text-center">
-            <div className="w-24 h-24 bg-[#F2D38D]/30 rounded-full flex items-center justify-center mx-auto mb-5">
+            <div className="w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-5" style={{ backgroundColor: `${theme.accent}30` }}>
               <span className="text-5xl">🛒</span>
             </div>
-            <p className="text-[#19643D] font-medium text-lg mb-2">진행 중인 공동구매가 없어요</p>
-            <p className="text-[#19643D]/50 text-sm">조금만 기다려주세요!</p>
+            <p className="font-medium text-lg mb-2" style={{ color: theme.textPrimary }}>진행 중인 공동구매가 없어요</p>
+            <p className="text-sm" style={{ color: theme.textMuted }}>조금만 기다려주세요!</p>
           </div>
         )}
 
@@ -311,10 +327,11 @@ export default function GroupBuyListPage() {
               <Link
                 key={gb.id}
                 href={`/groupbuy/${gb.id}`}
-                className="block bg-white rounded-xl overflow-hidden border border-[#19643D]/10 shadow-sm hover:shadow-md transition-all group"
+                className="block rounded-xl overflow-hidden border shadow-sm hover:shadow-md transition-all group"
+                style={{ backgroundColor: theme.bgCard, borderColor: theme.border }}
               >
                 {/* 이미지 */}
-                <div className="aspect-square bg-gradient-to-br from-[#F2D38D]/50 to-[#F2D38D]/30 relative overflow-hidden">
+                <div className="aspect-square relative overflow-hidden" style={{ backgroundColor: theme.bgInput }}>
                   {gb.image_url ? (
                     <img 
                       src={gb.image_url} 
@@ -328,22 +345,23 @@ export default function GroupBuyListPage() {
                   )}
                   
                   {/* 할인율 뱃지 */}
-                  <div className="absolute top-1.5 left-1.5 bg-[#DA451F] text-white px-1.5 py-0.5 rounded text-[10px] font-bold">
+                  <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: theme.red, color: '#fff' }}>
                     {discountPercent}%
                   </div>
 
                   {/* 마감 시간 */}
-                  <div className={`absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                    isUrgent 
-                      ? "bg-[#DA451F] text-white" 
-                      : "bg-black/50 text-white"
-                  }`}>
+                  <div className={`absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold`}
+                    style={{ 
+                      backgroundColor: isUrgent ? theme.red : 'rgba(0,0,0,0.5)', 
+                      color: '#fff' 
+                    }}
+                  >
                     {timeLeft}
                   </div>
 
                   {/* 공구 확정 뱃지 */}
                   {progress >= 100 && (
-                    <div className="absolute top-1.5 right-1.5 bg-[#19643D] text-white px-1.5 py-0.5 rounded text-[10px] font-bold">
+                    <div className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}>
                       확정
                     </div>
                   )}
@@ -352,36 +370,35 @@ export default function GroupBuyListPage() {
                 {/* 정보 */}
                 <div className="p-2">
                   {/* 상점명 */}
-                  <p className="text-[10px] text-[#19643D]/50 truncate mb-0.5">
+                  <p className="text-[10px] truncate mb-0.5" style={{ color: theme.textMuted }}>
                     {gb.shop?.name}
                   </p>
 
                   {/* 상품명 */}
-                  <h3 className="text-xs font-medium text-[#19643D] line-clamp-2 leading-tight mb-1.5 min-h-[32px]">
+                  <h3 className="text-xs font-medium line-clamp-2 leading-tight mb-1.5 min-h-[32px]" style={{ color: theme.textPrimary }}>
                     {gb.title}
                   </h3>
 
                   {/* 가격 */}
                   <div className="flex items-baseline gap-1">
-                    <span className="text-sm font-bold text-[#19643D]">
+                    <span className="text-sm font-bold" style={{ color: theme.textPrimary }}>
                       {gb.sale_price.toLocaleString()}
                     </span>
-                    <span className="text-[10px] text-[#19643D]">원</span>
+                    <span className="text-[10px]" style={{ color: theme.textPrimary }}>원</span>
                   </div>
 
                   {/* 참여 현황 바 */}
                   <div className="mt-1.5">
-                    <div className="h-1.5 bg-[#19643D]/10 rounded-full overflow-hidden">
+                    <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: theme.bgInput }}>
                       <div 
-                        className={`h-full rounded-full transition-all ${
-                          progress >= 100 
-                            ? "bg-[#19643D]" 
-                            : "bg-gradient-to-r from-[#DA451F] to-[#e85a35]"
-                        }`}
-                        style={{ width: `${progress}%` }}
+                        className="h-full rounded-full transition-all"
+                        style={{ 
+                          width: `${progress}%`,
+                          backgroundColor: progress >= 100 ? theme.accent : theme.red
+                        }}
                       />
                     </div>
-                    <p className="text-[10px] text-[#19643D]/50 mt-0.5 text-right">
+                    <p className="text-[10px] mt-0.5 text-right" style={{ color: theme.textMuted }}>
                       {gb.current_quantity}/{gb.min_quantity}명
                     </p>
                   </div>
@@ -393,15 +410,16 @@ export default function GroupBuyListPage() {
 
         {/* 사장님 유도 배너 */}
         {!loading && (
-          <div className="mt-6 bg-gradient-to-r from-[#19643D] to-[#1e7a4a] rounded-xl p-4 text-white">
+          <div className="mt-6 rounded-xl p-4" style={{ backgroundColor: theme.accent }}>
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-bold text-sm mb-0.5">사장님이세요? 🏪</p>
-                <p className="text-white/70 text-xs">공동구매를 시작해보세요</p>
+                <p className="font-bold text-sm mb-0.5" style={{ color: isDark ? '#121212' : '#fff' }}>사장님이세요? 🏪</p>
+                <p className="text-xs" style={{ color: isDark ? '#121212cc' : '#ffffffcc' }}>공동구매를 시작해보세요</p>
               </div>
               <Link
                 href="/shop/register"
-                className="bg-[#F2D38D] text-[#19643D] px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-[#e8c97d] transition-colors whitespace-nowrap"
+                className="px-3 py-1.5 rounded-lg font-bold text-xs transition-colors whitespace-nowrap"
+                style={{ backgroundColor: theme.bgCard, color: theme.accent }}
               >
                 입점 신청
               </Link>
