@@ -328,8 +328,7 @@ export default function ShopGroupBuyManagePage() {
             style={{ 
               backgroundColor: theme.bgCard,
               color: theme.textPrimary,
-              ringColor: theme.accent
-            }}
+                    }}
           >
             전체
           </button>
@@ -339,7 +338,7 @@ export default function ShopGroupBuyManagePage() {
             style={{ 
               backgroundColor: `${theme.red}15`,
               color: theme.red,
-              ringColor: theme.red
+              
             }}
           >
             미입금
@@ -350,7 +349,7 @@ export default function ShopGroupBuyManagePage() {
             style={{ 
               backgroundColor: "#F59E0B15",
               color: "#F59E0B",
-              ringColor: "#F59E0B"
+              
             }}
           >
             입금확인
@@ -361,7 +360,7 @@ export default function ShopGroupBuyManagePage() {
             style={{ 
               backgroundColor: "#3B82F615",
               color: "#3B82F6",
-              ringColor: "#3B82F6"
+             
             }}
           >
             픽업완료
