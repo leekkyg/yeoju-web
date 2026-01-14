@@ -129,11 +129,11 @@ export default function ShopDashboardPage() {
 
     const totalRevenue = (allParticipants || [])
       .filter(p => p.status === "paid" || p.status === "picked")
-      .reduce((sum, p) => sum + ((p.group_buy?.sale_price || 0) * (p.quantity || 1)), 0);
+      .reduce((sum, p) => sum + (((p.group_buy as any)?.sale_price || 0) * (p.quantity || 1)), 0);
 
     const todayRevenue = todayOrders
       .filter(p => p.status === "paid" || p.status === "picked")
-      .reduce((sum, p) => sum + ((p.group_buy?.sale_price || 0) * (p.quantity || 1)), 0);
+      .reduce((sum, p) => sum + (((p.group_buy as any)?.sale_price || 0) * (p.quantity || 1)), 0);
 
     const pendingPayments = (allParticipants || [])
       .filter(p => p.status === "unpaid").length;
