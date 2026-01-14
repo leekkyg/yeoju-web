@@ -346,7 +346,7 @@ export default function HomePage() {
         }
       `}</style>
 
-      <Header user={user} profile={profile} unreadCount={unreadCount} />
+      <Header />
 
       <main className="max-w-[631px] mx-auto">
         {/* 메인 배너 */}
