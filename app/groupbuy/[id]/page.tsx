@@ -88,7 +88,7 @@ export default function GroupBuyDetailPage() {
     setShowConfirm(true);
   };
 
-  // 소셜 공유 함수
+  // 공유 기능
   const handleSocialShare = (platform: string) => {
     const url = window.location.href;
     const title = groupBuy?.title || "공동구매";
@@ -109,7 +109,7 @@ export default function GroupBuyDetailPage() {
           });
         } else {
           navigator.clipboard.writeText(url);
-          alert("링크가 복사되었습니다. 카카오톡에 붙여넣기 해주세요!");
+          alert("카카오톡 공유가 불가하여 링크가 복사되었습니다!");
         }
         setShowShareModal(false);
         return;
@@ -145,7 +145,7 @@ useEffect(() => {
   }); 
 }, [params.id]);
 
-// 셀러인지 확인
+// 판매자 본인 확인
 useEffect(() => {
   if (user && groupBuy?.shop?.user_id) {
     setIsOwner(user.id === groupBuy.shop.user_id);
@@ -199,7 +199,7 @@ const checkAlreadyJoined = async (userId: string) => {
     const month = date.getMonth() + 1; 
     const day = date.getDate(); 
     const weekdays = ["일", "월", "화", "수", "목", "금", "토"]; 
-    return `${month}월 ${day}일(${weekdays[date.getDay()]})`; 
+    return `${month}월 ${day}일 (${weekdays[date.getDay()]})`; 
   };
 
   const formatTime = (time: string) => { if (!time) return ""; return time.slice(0, 5); };
@@ -212,12 +212,12 @@ const checkAlreadyJoined = async (userId: string) => {
       const { error } = await supabase.from("group_buy_participants").insert({ group_buy_id: groupBuy?.id, user_id: user?.id || null, name: name, phone: phone, quantity: quantity, status: "unpaid", is_paid: false });
       if (error) throw error;
       await supabase.from("group_buys").update({ current_quantity: (groupBuy?.current_quantity || 0) + quantity }).eq("id", groupBuy?.id);
-      if (groupBuy?.shop?.user_id) { await supabase.from("notifications").insert({ user_id: groupBuy.shop.user_id, title: "새로운 주문이 들어왔습니다! 🎉", message: `${name}님이 [${groupBuy.title}] ${quantity}개를 주문했습니다.`, type: "general", group_buy_id: groupBuy.id, shop_id: groupBuy.shop.id, link: `/shop/groupbuy/${groupBuy.id}` }); }
+      if (groupBuy?.shop?.user_id) { await supabase.from("notifications").insert({ user_id: groupBuy.shop.user_id, title: "새 주문이 들어왔습니다!", message: `${name}님이 [${groupBuy.title}] ${quantity}개 주문했습니다.`, type: "general", group_buy_id: groupBuy.id, shop_id: groupBuy.shop.id, link: `/shop/groupbuy/${groupBuy.id}` }); }
       setSubmitting(false); setShowConfirm(false); setShowModal(false); setShowComplete(true); setAlreadyJoined(true); fetchGroupBuy();
-    } catch (error: any) { if (error.message.includes("duplicate")) { alert("이미 참여한 공구입니다"); setAlreadyJoined(true); } else { alert("참여 중 오류가 발생했습니다: " + error.message); } setSubmitting(false); }
+    } catch (error: any) { if (error.message.includes("duplicate")) { alert("이미 참여한 공구입니다"); setAlreadyJoined(true); } else { alert("신청 중 오류가 발생했습니다: " + error.message); } setSubmitting(false); }
   };
 
-  const copyAccount = () => { navigator.clipboard.writeText(`${groupBuy?.shop?.bank_name || "국민은행"} ${groupBuy?.shop?.bank_account || "123-456-789012"}`); alert("계좌번호가 복사되었습니다"); };
+  const copyAccount = () => { navigator.clipboard.writeText(`${groupBuy?.shop?.bank_name || "은행명"} ${groupBuy?.shop?.bank_account || "123-456-789012"}`); alert("계좌번호가 복사되었습니다"); };
   
   const useTimer = groupBuy?.use_timer ?? true;
   const useDiscount = groupBuy?.use_discount ?? true;
@@ -228,17 +228,17 @@ const checkAlreadyJoined = async (userId: string) => {
   const savingAmount = useDiscount && groupBuy ? groupBuy.original_price - groupBuy.sale_price : 0;
   const progress = groupBuy ? Math.min((groupBuy.current_quantity / groupBuy.min_quantity) * 100, 100) : 0;
   const totalPrice = groupBuy ? groupBuy.sale_price * quantity : 0;
-  const bankName = groupBuy?.shop?.bank_name || "국민은행";
+  const bankName = groupBuy?.shop?.bank_name || "은행명";
   const bankAccount = groupBuy?.shop?.bank_account || "123-456-789012";
-  const bankHolder = groupBuy?.shop?.bank_holder || groupBuy?.shop?.name || "여주마켓";
+  const bankHolder = groupBuy?.shop?.bank_holder || groupBuy?.shop?.name || "예금주";
 
   const getStatusText = (status: string) => {
     switch (status) {
-      case "unpaid": return "입금 대기중";
+      case "unpaid": return "입금 대기";
       case "paid": return "입금 완료";
       case "picked": return "픽업 완료";
       case "cancelled": return "취소됨";
-      default: return "확인중";
+      default: return "대기중";
     }
   };
 
@@ -271,7 +271,7 @@ const checkAlreadyJoined = async (userId: string) => {
   if (!groupBuy) { 
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: theme.bgMain }}>
-        <p style={{ color: theme.textPrimary }}>상품을 찾을 수 없습니다</p>
+        <p style={{ color: theme.textPrimary }}>공동구매를 찾을 수 없습니다</p>
       </div>
     ); 
   }
@@ -296,7 +296,7 @@ const checkAlreadyJoined = async (userId: string) => {
                 <Moon className="w-5 h-5" style={{ color: theme.accent }} strokeWidth={1.5} />
               )}
             </button>
-            {/* 홈 버튼 */}
+            {/* 홈버튼 */}
             <Link href="/" className="w-10 h-10 flex items-center justify-center">
               <Home className="w-5 h-5" style={{ color: theme.textSecondary }} strokeWidth={1.5} />
             </Link>
@@ -304,7 +304,7 @@ const checkAlreadyJoined = async (userId: string) => {
             <button onClick={() => setShowShareModal(true)} className="w-10 h-10 flex items-center justify-center">
               <Share2 className="w-5 h-5" style={{ color: theme.textSecondary }} strokeWidth={1.5} />
             </button>
-            {/* 하트 버튼 */}
+            {/* 찜 버튼 */}
             <button onClick={() => setIsFavorite(!isFavorite)} className="w-10 h-10 flex items-center justify-center">
               <svg 
                 className="w-6 h-6" 
@@ -321,7 +321,7 @@ const checkAlreadyJoined = async (userId: string) => {
       </header>
 
       <main className="pt-14 pb-28 max-w-[640px] mx-auto">
-        {/* 탑 카드 - 이미지 + 상점 + 타이틀 + 가격 묶음 */}
+        {/* 메인카드 - 이미지 + 상점 + 제품정보 + 가격정보 */}
         <div className="mx-4 mt-4 rounded-3xl overflow-hidden shadow-lg" style={{ backgroundColor: theme.bgCard }}>
           {/* 상품 이미지 */}
           <div className="aspect-[16/9] relative overflow-hidden">
@@ -329,11 +329,11 @@ const checkAlreadyJoined = async (userId: string) => {
               <img src={groupBuy.image_url} alt={groupBuy.title} className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: theme.bgInput }}>
-                <span className="text-7xl">🎉</span>
+                <span className="text-7xl">🛒</span>
               </div>
             )}
             {useDiscount && discountPercent > 0 && (
-              <div className="absolute top-4 left-4 px-3 py-1.5 rounded-full text-sm font-bold text-white" style={{ backgroundColor: theme.red }}>
+              <div className="absolute top-4 left-4 px-3 py-1.5 rounded-full text-sm font-bold text-white" style={{ backgroundColor: '#b91c1c' }}>
                 {discountPercent}% 할인
               </div>
             )}
@@ -356,42 +356,52 @@ const checkAlreadyJoined = async (userId: string) => {
             </Link>
           </div>
 
-          {/* 상품 타이틀 + 가격 */}
+          {/* 제품명 + 가격 - 이미지 참고 레이아웃 */}
           <div className="px-5 py-5">
-            <h1 className="text-2xl font-black mb-4" style={{ color: theme.textPrimary }}>{groupBuy.title}</h1>
-            
             {useDiscount && discountPercent > 0 ? (
               <>
-                <div className="mb-1">
-                  <span className="text-sm font-bold" style={{ color: '#dc2626' }}>할인 </span>
-                  <span className="text-sm font-bold" style={{ color: '#dc2626' }}>{discountPercent}%</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-baseline gap-3 pl-4">
-                    <span className="text-2xl line-through" style={{ color: theme.textMuted }}>{groupBuy.original_price.toLocaleString()}원</span>
-                    <span className="text-4xl font-black" style={{ color: theme.textPrimary }}>{groupBuy.sale_price.toLocaleString()}<span className="text-xl">원</span></span>
+                {/* 1줄: 제품명 + 원가 취소선 + 할인율 */}
+                <div className="flex items-start justify-between">
+                  <h1 className="text-2xl font-black pt-6" style={{ color: theme.textPrimary }}>{groupBuy.title}</h1>
+                  <div className="text-right">
+                    <div className="flex items-center gap-2 justify-end mb-1">
+                      <span className="text-sm line-through" style={{ color: theme.textMuted }}>
+                        {groupBuy.original_price.toLocaleString()}원
+                      </span>
+                      <span className="text-base font-bold" style={{ color: '#b91c1c' }}>{discountPercent}%</span>
+                    </div>
+                    <div>
+                      <span className="text-3xl font-black" style={{ color: theme.textPrimary }}>
+                        {groupBuy.sale_price.toLocaleString()}
+                      </span>
+                      <span className="text-xl font-bold" style={{ color: theme.textPrimary }}>원</span>
+                    </div>
                   </div>
-                  <span className="text-base font-bold" style={{ color: '#facc15' }}>{savingAmount.toLocaleString()}원 할인!</span>
                 </div>
               </>
             ) : (
-              <div className="flex items-baseline justify-center">
-                <span className="text-4xl font-black" style={{ color: theme.textPrimary }}>{groupBuy.sale_price.toLocaleString()}</span>
-                <span className="text-xl font-bold ml-1" style={{ color: theme.textPrimary }}>원</span>
-              </div>
+              <>
+                <div className="flex items-center justify-between">
+                  <h1 className="text-2xl font-black" style={{ color: theme.textPrimary }}>{groupBuy.title}</h1>
+                  <div>
+                    <span className="text-3xl font-black" style={{ color: theme.textPrimary }}>{groupBuy.sale_price.toLocaleString()}</span>
+                    <span className="text-xl font-bold" style={{ color: theme.textPrimary }}>원</span>
+                  </div>
+                </div>
+              </>
             )}
           </div>
         </div>
 
-        {/* 이미 참여한 경우 - 내 참여 현황 표시 */}
+        {/* 이미 참여한 경우 - 참여 정보 표시 */}
         {alreadyJoined && myParticipation && (
           <div className="mx-4 mt-4 rounded-2xl overflow-hidden border-2" style={{ backgroundColor: theme.bgCard, borderColor: theme.accent }}>
             <div className="px-5 py-3" style={{ backgroundColor: `${theme.accent}20` }}>
-              <p className="font-bold" style={{ color: theme.accent }}>✅ 이미 참여한 공구입니다</p>
+              <p className="font-bold" style={{ color: theme.accent }}>이미 참여한 공구입니다</p>
             </div>
             <div className="px-5 py-4 space-y-3">
               <div className="flex justify-between">
-                <span style={{ color: theme.textMuted }}>참여 수량</span>
+                <span style={{ color: theme.textMuted }}>주문 수량</span>
                 <span className="font-semibold" style={{ color: theme.textPrimary }}>{myParticipation.quantity}개</span>
               </div>
               <div className="flex justify-between">
@@ -399,7 +409,7 @@ const checkAlreadyJoined = async (userId: string) => {
                 <span className="font-semibold" style={{ color: theme.textPrimary }}>{(myParticipation.quantity * groupBuy.sale_price).toLocaleString()}원</span>
               </div>
               <div className="flex justify-between">
-                <span style={{ color: theme.textMuted }}>참여 상태</span>
+                <span style={{ color: theme.textMuted }}>주문 상태</span>
                 <span className="font-bold" style={{ color: getStatusColor(myParticipation.status) }}>
                   {getStatusText(myParticipation.status)}
                 </span>
@@ -409,16 +419,16 @@ const checkAlreadyJoined = async (userId: string) => {
                 className="block text-center py-3 rounded-xl mt-2 font-semibold"
                 style={{ backgroundColor: theme.bgInput, color: theme.textPrimary }}
               >
-                내 주문 내역 보기 →
+                마이페이지에서 주문 확인
               </Link>
             </div>
           </div>
         )}
 
-        {/* 카운트다운 타이머 */}
+        {/* 마감까지 남은 시간 - 1열 배열 */}
         {useTimer && (
           <div 
-            className="mx-5 my-4 rounded-2xl p-5 shadow-2xl border"
+            className="mx-5 my-4 rounded-2xl p-4 shadow-2xl border"
             style={{ 
               background: alreadyJoined 
                 ? theme.bgCard 
@@ -427,95 +437,90 @@ const checkAlreadyJoined = async (userId: string) => {
             }}
           >
             <p 
-              className="text-center text-xs font-medium tracking-widest uppercase mb-3"
+              className="text-center text-[10px] font-medium tracking-widest uppercase mb-2"
               style={{ color: alreadyJoined ? theme.textMuted : '#f87171' }}
             >
-              ⏰ 마감까지
+              마감까지
             </p>
-            <div className="text-center">
-              <div className="flex items-end justify-center gap-1">
-                {timeLeft.days > 0 && (
-                  <div className="flex items-end">
-                    <span 
-                      className="text-5xl font-black" 
-                      style={{ 
-                        color: alreadyJoined ? theme.textMuted : 'white',
-                        textShadow: alreadyJoined ? 'none' : '0 0 8px rgba(255,255,255,0.5)' 
-                      }}
-                    >
-                      {timeLeft.days}
-                    </span>
-                    <span 
-                      className="text-lg mb-1 ml-1 mr-3 font-bold"
-                      style={{ color: alreadyJoined ? theme.textMuted : 'white' }}
-                    >
-                      일
-                    </span>
-                  </div>
-                )}
-                <div className="flex items-end">
+            <div className="flex items-baseline justify-center">
+              {/* 일 - 약간만 줄임 */}
+              {timeLeft.days > 0 && (
+                <>
                   <span 
                     className="text-4xl font-black" 
                     style={{ 
-                      color: alreadyJoined ? theme.textMuted : '#facc15',
-                      textShadow: alreadyJoined ? 'none' : '0 0 8px rgba(250,204,21,0.5)' 
+                      color: alreadyJoined ? theme.textMuted : 'white',
+                      textShadow: alreadyJoined ? 'none' : '0 0 8px rgba(255,255,255,0.5)' 
                     }}
                   >
-                    {String(timeLeft.hours).padStart(2,'0')}
+                    {timeLeft.days}
                   </span>
                   <span 
-                    className="text-base mb-1 ml-1 mr-2 font-bold"
-                    style={{ color: alreadyJoined ? theme.textMuted : '#facc15' }}
+                    className="text-base font-bold ml-1 mr-3"
+                    style={{ color: alreadyJoined ? theme.textMuted : 'white' }}
                   >
-                    시간
+                    일
                   </span>
-                </div>
-                <div className="flex items-end">
-                  <span 
-                    className="text-4xl font-black" 
-                    style={{ 
-                      color: alreadyJoined ? theme.textMuted : '#facc15',
-                      textShadow: alreadyJoined ? 'none' : '0 0 8px rgba(250,204,21,0.5)' 
-                    }}
-                  >
-                    {String(timeLeft.minutes).padStart(2,'0')}
-                  </span>
-                  <span 
-                    className="text-base mb-1 ml-1 mr-2 font-bold"
-                    style={{ color: alreadyJoined ? theme.textMuted : '#eab308' }}
-                  >
-                    분
-                  </span>
-                </div>
-                <div className="flex items-end">
-                  <span 
-                    className="text-2xl font-black" 
-                    style={{ 
-                      color: alreadyJoined ? theme.textMuted : '#ef4444',
-                      textShadow: alreadyJoined ? 'none' : '0 0 8px rgba(250,204,21,0.5)' 
-                    }}
-                  >
-                    {String(timeLeft.seconds).padStart(2,'0')}
-                  </span>
-                  <span 
-                    className="text-sm mb-1 ml-1 mr-1 font-bold"
-                    style={{ color: alreadyJoined ? theme.textMuted : '#f87171' }}
-                  >
-                    초
-                  </span>
-                </div>
-                <div className="flex items-end">
-                  <span 
-                    className="text-2xl font-black" 
-                    style={{ 
-                      color: alreadyJoined ? theme.textMuted : '#ef4444',
-                      textShadow: alreadyJoined ? 'none' : '0 0 10px #ef4444, 0 0 20px #ef4444, 0 0 30px #ef4444' 
-                    }}
-                  >
-                    .{String(timeLeft.ms).padStart(2,'0')}
-                  </span>
-                </div>
-              </div>
+                </>
+              )}
+              {/* 시간 */}
+              <span 
+                className="text-4xl font-black" 
+                style={{ 
+                  color: alreadyJoined ? theme.textMuted : '#facc15',
+                  textShadow: alreadyJoined ? 'none' : '0 0 8px rgba(250,204,21,0.5)' 
+                }}
+              >
+                {String(timeLeft.hours).padStart(2,'0')}
+              </span>
+              <span 
+                className="text-base font-bold ml-1 mr-2"
+                style={{ color: alreadyJoined ? theme.textMuted : '#facc15' }}
+              >
+                시간
+              </span>
+              {/* 분 */}
+              <span 
+                className="text-4xl font-black" 
+                style={{ 
+                  color: alreadyJoined ? theme.textMuted : '#facc15',
+                  textShadow: alreadyJoined ? 'none' : '0 0 8px rgba(250,204,21,0.5)' 
+                }}
+              >
+                {String(timeLeft.minutes).padStart(2,'0')}
+              </span>
+              <span 
+                className="text-base font-bold ml-1 mr-2"
+                style={{ color: alreadyJoined ? theme.textMuted : '#eab308' }}
+              >
+                분
+              </span>
+              {/* 초 */}
+              <span 
+                className="text-2xl font-black" 
+                style={{ 
+                  color: alreadyJoined ? theme.textMuted : '#ef4444',
+                  textShadow: alreadyJoined ? 'none' : '0 0 8px rgba(239,68,68,0.5)' 
+                }}
+              >
+                {String(timeLeft.seconds).padStart(2,'0')}
+              </span>
+              <span 
+                className="text-sm font-bold ml-1 mr-1"
+                style={{ color: alreadyJoined ? theme.textMuted : '#f87171' }}
+              >
+                초
+              </span>
+              {/* 밀리초 */}
+              <span 
+                className="text-2xl font-black" 
+                style={{ 
+                  color: alreadyJoined ? theme.textMuted : '#ef4444',
+                  textShadow: alreadyJoined ? 'none' : '0 0 10px #ef4444, 0 0 20px #ef4444, 0 0 30px #ef4444' 
+                }}
+              >
+                .{String(timeLeft.ms).padStart(2,'0')}
+              </span>
             </div>
           </div>
         )}
@@ -527,7 +532,7 @@ const checkAlreadyJoined = async (userId: string) => {
               <span className="font-semibold" style={{ color: theme.textPrimary }}>참여 현황</span>
               <div>
                 <span className="text-2xl font-black" style={{ color: theme.red }}>{groupBuy.current_quantity}</span>
-                <span className="text-sm ml-1" style={{ color: theme.textMuted }}>/ {groupBuy.min_quantity}명</span>
+                <span className="text-sm ml-1" style={{ color: theme.textMuted }}>/ {groupBuy.min_quantity}개</span>
               </div>
             </div>
             <div className="h-3 rounded-full overflow-hidden" style={{ backgroundColor: theme.bgInput }}>
@@ -538,15 +543,15 @@ const checkAlreadyJoined = async (userId: string) => {
             </div>
             <p className="text-sm mt-3 text-center" style={{ color: theme.textMuted }}>
               {progress >= 100 
-                ? "🎉 공동구매 확정!" 
+                ? "🎉 목표 수량 달성!" 
                 : forceProceed 
-                  ? `${groupBuy.current_quantity}명 참여 중 (인원 미달해도 진행)`
-                  : `${groupBuy.min_quantity - groupBuy.current_quantity}명만 더 모이면 확정이에요`}
+                  ? `${groupBuy.current_quantity}개 참여중 (수량 상관없이 진행)`
+                  : `${groupBuy.min_quantity - groupBuy.current_quantity}개 더 필요합니다`}
             </p>
           </div>
         )}
 
-        {/* 픽업 안내 */}
+        {/* 픽업 정보 */}
         <div className="mx-5 mb-4 rounded-2xl overflow-hidden border" style={{ backgroundColor: theme.bgCard, borderColor: theme.border }}>
           <div className="px-5 py-4 border-b" style={{ borderColor: theme.border }}>
             <h3 className="font-bold" style={{ color: theme.textPrimary }}>📍 픽업 안내</h3>
@@ -554,19 +559,19 @@ const checkAlreadyJoined = async (userId: string) => {
           <div className="p-5 space-y-4">
             <div className="flex">
               <span className="w-20 text-sm" style={{ color: theme.textMuted }}>픽업일</span>
-              <span className="font-medium" style={{ color: theme.textPrimary }}>{groupBuy.pickup_date ? formatDate(groupBuy.pickup_date) : "공구 성공 후 안내"}</span>
+              <span className="font-medium" style={{ color: theme.textPrimary }}>{groupBuy.pickup_date ? formatDate(groupBuy.pickup_date) : "공구 종료 후 안내"}</span>
             </div>
             <div className="flex">
               <span className="w-20 text-sm" style={{ color: theme.textMuted }}>픽업시간</span>
               <span className="font-medium" style={{ color: theme.textPrimary }}>
                 {groupBuy.pickup_start_time && groupBuy.pickup_end_time 
                   ? `${formatTime(groupBuy.pickup_start_time)} ~ ${formatTime(groupBuy.pickup_end_time)}` 
-                  : "공구 성공 후 안내"}
+                  : "공구 종료 후 안내"}
               </span>
             </div>
             <div className="flex">
               <span className="w-20 text-sm" style={{ color: theme.textMuted }}>픽업장소</span>
-              <span className="font-medium" style={{ color: theme.textPrimary }}>{groupBuy.pickup_location || groupBuy.shop?.address || "매장 방문"}</span>
+              <span className="font-medium" style={{ color: theme.textPrimary }}>{groupBuy.pickup_location || groupBuy.shop?.address || "상점 방문"}</span>
             </div>
           </div>
         </div>
@@ -577,7 +582,7 @@ const checkAlreadyJoined = async (userId: string) => {
             <h3 className="font-bold" style={{ color: theme.textPrimary }}>📝 상품 설명</h3>
           </div>
           <div className="p-5">
-            <p className="whitespace-pre-wrap" style={{ color: theme.textSecondary }}>{groupBuy.description || "상세 설명이 없습니다."}</p>
+            <p className="whitespace-pre-wrap" style={{ color: theme.textSecondary }}>{groupBuy.description || "상품 설명이 없습니다."}</p>
           </div>
         </div>
 
@@ -586,11 +591,11 @@ const checkAlreadyJoined = async (userId: string) => {
           className="mx-5 mb-4 rounded-2xl p-5" 
           style={{ backgroundColor: alreadyJoined ? theme.bgInput : `${theme.red}10` }}
         >
-          <h3 className="font-bold mb-3" style={{ color: alreadyJoined ? theme.textMuted : theme.red }}>⚠️ 구매 전 확인</h3>
+          <h3 className="font-bold mb-3" style={{ color: alreadyJoined ? theme.textMuted : theme.red }}>⚠️ 주의 사항</h3>
           <ul className="space-y-2 text-sm" style={{ color: alreadyJoined ? theme.textMuted : `${theme.red}cc` }}>
-            <li>• 최소 인원 미달 시 공동구매가 취소될 수 있어요</li>
-            <li>• 픽업 시간 내 미수령 시 환불이 불가해요</li>
-            <li>• 결제는 계좌이체로 진행됩니다</li>
+            <li>• 입금 후 취소 시 환불이 어려울 수 있습니다</li>
+            <li>• 픽업일에 수령하지 않으면 폐기될 수 있습니다</li>
+            <li>• 문의사항은 상점에 직접 연락해주세요</li>
           </ul>
         </div>
       </main>
@@ -614,7 +619,7 @@ const checkAlreadyJoined = async (userId: string) => {
               className="flex-1 h-14 font-bold text-lg rounded-2xl flex items-center justify-center gap-2"
               style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}
             >
-              📋 참여자 관리
+              주문 관리하기
             </Link>
           ) : alreadyJoined ? (
             <button 
@@ -637,14 +642,14 @@ const checkAlreadyJoined = async (userId: string) => {
       </div>
 
 
-      {/* 주문서 모달 */}
+      {/* 주문신청 모달 */}
       {showModal && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center">
           <div className="absolute inset-0 bg-black/60" onClick={() => setShowModal(false)} />
           <div className="relative w-full max-w-[640px] rounded-t-3xl max-h-[85vh] flex flex-col" style={{ backgroundColor: theme.bgCard }}>
             <div className="px-6 py-5 border-b" style={{ borderColor: theme.border }}>
               <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold" style={{ color: theme.textPrimary }}>주문서 작성</h2>
+                <h2 className="text-xl font-bold" style={{ color: theme.textPrimary }}>주문 신청</h2>
                 <button onClick={() => setShowModal(false)} className="w-10 h-10 flex items-center justify-center" style={{ color: theme.textMuted }}>
                   <X className="w-6 h-6" />
                 </button>
@@ -677,7 +682,7 @@ const checkAlreadyJoined = async (userId: string) => {
                   type="text" 
                   value={name} 
                   onChange={(e) => setName(e.target.value)} 
-                  placeholder="입금자명과 동일하게 입력" 
+                  placeholder="픽업 시 확인용 이름" 
                   className="w-full px-4 py-3.5 rounded-xl focus:outline-none"
                   style={{ backgroundColor: theme.bgInput, color: theme.textPrimary }}
                 />
@@ -689,12 +694,12 @@ const checkAlreadyJoined = async (userId: string) => {
                   type="tel" 
                   value={phone} 
                   onChange={handlePhoneChange} 
-                  placeholder="숫자만 입력하세요" 
+                  placeholder="010-0000-0000" 
                   maxLength={13} 
                   className="w-full px-4 py-3.5 rounded-xl focus:outline-none text-lg"
                   style={{ backgroundColor: theme.bgInput, color: theme.textPrimary }}
                 />
-                <p className="text-xs mt-2" style={{ color: theme.textMuted }}>픽업 안내 문자가 발송됩니다</p>
+                <p className="text-xs mt-2" style={{ color: theme.textMuted }}>픽업 안내 알림을 받을 번호</p>
               </div>
 
               <div className="rounded-2xl p-5" style={{ backgroundColor: theme.accent }}>
@@ -703,12 +708,12 @@ const checkAlreadyJoined = async (userId: string) => {
                   <button onClick={copyAccount} className="text-xs px-3 py-1 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.2)', color: isDark ? '#121212' : '#fff' }}>복사하기</button>
                 </div>
                 <p className="text-2xl font-bold mb-1" style={{ color: isDark ? '#121212' : '#fff' }}>{bankAccount}</p>
-                <p style={{ color: isDark ? '#121212cc' : '#ffffffcc' }}>{bankName} | 예금주: {bankHolder}</p>
+                <p style={{ color: isDark ? '#121212cc' : '#ffffffcc' }}>{bankName} | 예금주 {bankHolder}</p>
               </div>
 
               <div className="rounded-2xl p-5" style={{ backgroundColor: `${theme.accent}30` }}>
                 <div className="flex items-center justify-between">
-                  <span className="font-medium" style={{ color: theme.textPrimary }}>입금하실 금액</span>
+                  <span className="font-medium" style={{ color: theme.textPrimary }}>총 결제 금액</span>
                   <span className="text-3xl font-black" style={{ color: '#facc15' }}>{totalPrice.toLocaleString()}원</span>
                 </div>
               </div>
@@ -717,11 +722,11 @@ const checkAlreadyJoined = async (userId: string) => {
                 <div className="flex gap-3">
                   <span className="text-xl">⚠️</span>
                   <div className="text-sm" style={{ color: `${theme.red}cc` }}>
-                    <p className="font-bold mb-2" style={{ color: theme.red }}>반드시 확인해주세요!</p>
+                    <p className="font-bold mb-2" style={{ color: theme.red }}>입금 전 확인하세요!</p>
                     <ul className="space-y-1">
-                      <li>• 입금 후 참여완료 버튼을 눌러주세요</li>
-                      <li>• 계좌번호와 입금액을 정확히 확인하세요</li>
-                      <li>• 입금자명과 참여자 이름이 동일해야 합니다</li>
+                      <li>• 입금자명은 신청자명과 동일해야 합니다</li>
+                      <li>• 입금 확인까지 최대 1영업일 소요됩니다</li>
+                      <li>• 입금 후 취소/환불이 어려울 수 있습니다</li>
                     </ul>
                   </div>
                 </div>
@@ -734,7 +739,7 @@ const checkAlreadyJoined = async (userId: string) => {
                 className="w-full h-14 font-bold text-lg rounded-2xl"
                 style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}
               >
-                입금 후 참여완료
+                주문 신청하기
               </button>
             </div>
           </div>
@@ -747,8 +752,8 @@ const checkAlreadyJoined = async (userId: string) => {
           <div className="absolute inset-0 bg-black/70" onClick={() => setShowConfirm(false)} />
           <div className="relative w-full max-w-[400px] rounded-3xl overflow-hidden" style={{ backgroundColor: theme.bgCard }}>
             <div className="px-6 py-5 text-center" style={{ backgroundColor: theme.accent }}>
-              <p className="text-lg font-bold" style={{ color: isDark ? '#121212' : '#fff' }}>주문 정보 확인</p>
-              <p className="text-sm mt-1" style={{ color: isDark ? '#121212cc' : '#ffffffcc' }}>입금 정보가 맞는지 확인해주세요</p>
+              <p className="text-lg font-bold" style={{ color: isDark ? '#121212' : '#fff' }}>주문 내용 확인</p>
+              <p className="text-sm mt-1" style={{ color: isDark ? '#121212cc' : '#ffffffcc' }}>아래 내용이 맞는지 확인해주세요</p>
             </div>
             <div className="p-6 space-y-4">
               <div className="flex justify-between py-3 border-b" style={{ borderColor: theme.border }}>
@@ -760,7 +765,7 @@ const checkAlreadyJoined = async (userId: string) => {
                 <span className="font-bold" style={{ color: theme.textPrimary }}>{quantity}개</span>
               </div>
               <div className="flex justify-between py-3 border-b" style={{ borderColor: theme.border }}>
-                <span style={{ color: theme.textMuted }}>참여자</span>
+                <span style={{ color: theme.textMuted }}>신청자</span>
                 <span className="font-medium" style={{ color: theme.textPrimary }}>{name}</span>
               </div>
               <div className="flex justify-between py-3 border-b" style={{ borderColor: theme.border }}>
@@ -768,7 +773,7 @@ const checkAlreadyJoined = async (userId: string) => {
                 <span className="font-medium" style={{ color: theme.textPrimary }}>{phone}</span>
               </div>
               <div className="flex justify-between py-3 rounded-xl px-4 -mx-2" style={{ backgroundColor: `${theme.accent}30` }}>
-                <span className="font-medium" style={{ color: theme.textPrimary }}>입금액</span>
+                <span className="font-medium" style={{ color: theme.textPrimary }}>결제금액</span>
                 <span className="text-xl font-black" style={{ color: theme.red }}>{totalPrice.toLocaleString()}원</span>
               </div>
             </div>
@@ -777,13 +782,13 @@ const checkAlreadyJoined = async (userId: string) => {
                 onClick={() => setShowConfirm(false)} 
                 className="flex-1 h-12 font-medium rounded-xl"
                 style={{ backgroundColor: theme.bgInput, color: theme.textSecondary }}
-              >다시 확인</button>
+              >다시 수정</button>
               <button 
                 onClick={handleFinalSubmit} 
                 disabled={submitting} 
                 className="flex-1 h-12 font-bold rounded-xl disabled:opacity-50"
                 style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}
-              >{submitting ? "처리중..." : "확인 완료"}</button>
+              >{submitting ? "처리중..." : "주문 확정"}</button>
             </div>
           </div>
         </div>
@@ -800,8 +805,9 @@ const checkAlreadyJoined = async (userId: string) => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <h3 className="text-2xl font-bold mb-2" style={{ color: theme.textPrimary }}>참여가 완료되었습니다!</h3>
-              <p style={{ color: theme.textMuted }}>입금 확인 후 픽업 안내 문자를 보내드립니다</p>
+              <h3 className="text-2xl font-bold mb-2" style={{ color: theme.textPrimary }}>신청이 완료되었습니다!</h3>
+              <p className="text-base font-medium" style={{ color: theme.accent }}>입금 확인 후 픽업 1시간 전 안내 알림을 보내드립니다</p>
+              <p className="mt-2 text-sm" style={{ color: theme.textMuted }}>별도의 문의사항은 매장으로 직접 연락주세요.</p>
             </div>
             <div className="px-6 pb-6 space-y-3 text-left" style={{ backgroundColor: theme.bgMain }}>
               <div className="rounded-xl p-4" style={{ backgroundColor: theme.bgCard }}>
@@ -811,7 +817,7 @@ const checkAlreadyJoined = async (userId: string) => {
               </div>
               <div className="rounded-xl p-4" style={{ backgroundColor: theme.bgCard }}>
                 <p className="text-sm mb-1" style={{ color: theme.textMuted }}>픽업 장소</p>
-                <p className="font-medium" style={{ color: theme.textPrimary }}>{groupBuy.pickup_location || groupBuy.shop?.address || "매장 방문"}</p>
+                <p className="font-medium" style={{ color: theme.textPrimary }}>{groupBuy.pickup_location || groupBuy.shop?.address || "상점 방문"}</p>
               </div>
             </div>
             <div className="px-6 pb-6" style={{ backgroundColor: theme.bgMain }}>
@@ -825,7 +831,7 @@ const checkAlreadyJoined = async (userId: string) => {
         </div>
       )}
 
-      {/* 소셜 공유 모달 */}
+      {/* 공유 모달 */}
       {showShareModal && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-5">
           <div className="absolute inset-0 bg-black/60" onClick={() => setShowShareModal(false)} />
