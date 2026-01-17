@@ -426,18 +426,10 @@ const handleTouchEnd = () => {
                 )}
                 
                 {images.length > 1 && (
-                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
-                    {images.map((_, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => setCurrentImageIndex(idx)}
-                        className={`w-2 h-2 rounded-full transition-all ${
-                          idx === currentImageIndex ? 'bg-white w-4' : 'bg-white/50'
-                        }`}
-                      />
-                    ))}
-                  </div>
-                )}
+  <div className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-sm">
+    <span className="text-white text-xs font-medium">{currentImageIndex + 1} / {images.length}</span>
+  </div>
+)}
               </>
             ) : (
               <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: theme.bgInput }}>
