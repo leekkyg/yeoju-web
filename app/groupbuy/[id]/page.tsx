@@ -21,7 +21,8 @@ interface GroupBuy {
   pickup_start_time: string;
   pickup_end_time: string;
   pickup_location: string;
-  image_url: string;
+  image_url: any;
+  images: any;
   status: string;
   options: any[];
   use_timer?: boolean;
@@ -50,6 +51,9 @@ export default function GroupBuyDetailPage() {
   const [loading, setLoading] = useState(true);
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0, ms: 0 });
   const [user, setUser] = useState<any>(null);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [touchStart, setTouchStart] = useState(0);
+  const [touchEnd, setTouchEnd] = useState(0);
   const [isFavorite, setIsFavorite] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -103,7 +107,7 @@ export default function GroupBuyDetailPage() {
             content: {
               title: title,
               description: groupBuy?.description || "",
-              imageUrl: groupBuy?.image_url || "",
+              imageUrl: Array.isArray(groupBuy?.images) ? groupBuy.images[0] : groupBuy?.image_url || "",
               link: { mobileWebUrl: url, webUrl: url },
             },
           });
@@ -223,7 +227,44 @@ const checkAlreadyJoined = async (userId: string) => {
   const useDiscount = groupBuy?.use_discount ?? true;
   const useMinQuantity = groupBuy?.use_min_quantity ?? true;
   const forceProceed = groupBuy?.force_proceed ?? false;
-  
+
+  // 이미지 배열 파싱 - images 컬럼 우선, 없으면 image_url 사용
+  const images: string[] = (() => {
+    // 1. images 컬럼 확인 (배열)
+    if (groupBuy?.images && Array.isArray(groupBuy.images) && groupBuy.images.length > 0) {
+      return groupBuy.images;
+    }
+    
+    // 2. image_url 확인
+    if (!groupBuy?.image_url) return [];
+    
+    // 2-1. 이미 배열이면 그대로 반환
+    if (Array.isArray(groupBuy.image_url)) {
+      return groupBuy.image_url;
+    }
+    
+    // 2-2. 문자열이면 파싱 시도
+    if (typeof groupBuy.image_url === 'string') {
+      const trimmed = groupBuy.image_url.trim();
+      if (trimmed.startsWith('[')) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          return Array.isArray(parsed) ? parsed : [groupBuy.image_url];
+        } catch {
+          return [groupBuy.image_url];
+        }
+      }
+      return [groupBuy.image_url];
+    }
+    
+    return [];
+  })();
+
+  console.log('Raw image_url:', groupBuy?.image_url);
+  console.log('Raw images:', groupBuy?.images);
+  console.log('Parsed images:', images);
+  console.log('images.length:', images.length);
+
   const discountPercent = useDiscount && groupBuy ? Math.round((1 - groupBuy.sale_price / groupBuy.original_price) * 100) : 0;
   const savingAmount = useDiscount && groupBuy ? groupBuy.original_price - groupBuy.sale_price : 0;
   const progress = groupBuy ? Math.min((groupBuy.current_quantity / groupBuy.min_quantity) * 100, 100) : 0;
@@ -231,7 +272,29 @@ const checkAlreadyJoined = async (userId: string) => {
   const bankName = groupBuy?.shop?.bank_name || "은행명";
   const bankAccount = groupBuy?.shop?.bank_account || "123-456-789012";
   const bankHolder = groupBuy?.shop?.bank_holder || groupBuy?.shop?.name || "예금주";
+  // 터치 스와이프 핸들러
+const handleTouchStart = (e: React.TouchEvent) => {
+  setTouchStart(e.targetTouches[0].clientX);
+};
 
+const handleTouchMove = (e: React.TouchEvent) => {
+  setTouchEnd(e.targetTouches[0].clientX);
+};
+
+const handleTouchEnd = () => {
+  if (!touchStart || !touchEnd) return;
+  const distance = touchStart - touchEnd;
+  const minSwipeDistance = 50;
+  
+  if (distance > minSwipeDistance) {
+    setCurrentImageIndex(prev => prev < images.length - 1 ? prev + 1 : 0);
+  } else if (distance < -minSwipeDistance) {
+    setCurrentImageIndex(prev => prev > 0 ? prev - 1 : images.length - 1);
+  }
+  
+  setTouchStart(0);
+  setTouchEnd(0);
+};
   const getStatusText = (status: string) => {
     switch (status) {
       case "unpaid": return "입금 대기";
@@ -288,7 +351,6 @@ const checkAlreadyJoined = async (userId: string) => {
           </button>
           <span className="font-medium" style={{ color: theme.textPrimary }}>공동구매</span>
           <div className="flex items-center gap-1">
-            {/* 다크모드 토글 */}
             <button onClick={toggleTheme} className="w-10 h-10 flex items-center justify-center">
               {isDark ? (
                 <Sun className="w-5 h-5" style={{ color: theme.accent }} strokeWidth={1.5} />
@@ -296,15 +358,12 @@ const checkAlreadyJoined = async (userId: string) => {
                 <Moon className="w-5 h-5" style={{ color: theme.accent }} strokeWidth={1.5} />
               )}
             </button>
-            {/* 홈버튼 */}
             <Link href="/" className="w-10 h-10 flex items-center justify-center">
               <Home className="w-5 h-5" style={{ color: theme.textSecondary }} strokeWidth={1.5} />
             </Link>
-            {/* 공유 버튼 */}
             <button onClick={() => setShowShareModal(true)} className="w-10 h-10 flex items-center justify-center">
               <Share2 className="w-5 h-5" style={{ color: theme.textSecondary }} strokeWidth={1.5} />
             </button>
-            {/* 찜 버튼 */}
             <button onClick={() => setIsFavorite(!isFavorite)} className="w-10 h-10 flex items-center justify-center">
               <svg 
                 className="w-6 h-6" 
@@ -321,12 +380,65 @@ const checkAlreadyJoined = async (userId: string) => {
       </header>
 
       <main className="pt-14 pb-28 max-w-[640px] mx-auto">
-        {/* 메인카드 - 이미지 + 상점 + 제품정보 + 가격정보 */}
         <div className="mx-4 mt-4 rounded-3xl overflow-hidden shadow-lg" style={{ backgroundColor: theme.bgCard }}>
-          {/* 상품 이미지 */}
+         
+          {/* 상품 이미지 슬라이드 */}
           <div className="aspect-[16/9] relative overflow-hidden">
-            {groupBuy.image_url ? (
-              <img src={groupBuy.image_url} alt={groupBuy.title} className="w-full h-full object-cover" />
+            {images.length > 0 ? (
+              <>
+                <div 
+  className="flex h-full transition-transform duration-300 ease-out"
+  style={{ transform: `translateX(-${currentImageIndex * 100}%)` }}
+  onTouchStart={handleTouchStart}
+  onTouchMove={handleTouchMove}
+  onTouchEnd={handleTouchEnd}
+>
+                  {images.map((url, idx) => (
+                    <img 
+                      key={idx}
+                      src={url} 
+                      alt={`${groupBuy.title} ${idx + 1}`} 
+                      className="w-full h-full object-cover flex-shrink-0"
+                      style={{ minWidth: '100%' }}
+                    />
+                  ))}
+                </div>
+                
+                {images.length > 1 && (
+                  <>
+                    <button
+                      onClick={() => setCurrentImageIndex(prev => prev > 0 ? prev - 1 : images.length - 1)}
+                      className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/30 flex items-center justify-center text-white backdrop-blur-sm"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => setCurrentImageIndex(prev => prev < images.length - 1 ? prev + 1 : 0)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/30 flex items-center justify-center text-white backdrop-blur-sm"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </>
+                )}
+                
+                {images.length > 1 && (
+                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+                    {images.map((_, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setCurrentImageIndex(idx)}
+                        className={`w-2 h-2 rounded-full transition-all ${
+                          idx === currentImageIndex ? 'bg-white w-4' : 'bg-white/50'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
             ) : (
               <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: theme.bgInput }}>
                 <span className="text-7xl">🛒</span>
@@ -356,44 +468,39 @@ const checkAlreadyJoined = async (userId: string) => {
             </Link>
           </div>
 
-          {/* 제품명 + 가격 - 이미지 참고 레이아웃 */}
+          {/* 제품명 + 가격 */}
           <div className="px-5 py-5">
             {useDiscount && discountPercent > 0 ? (
-              <>
-                {/* 1줄: 제품명 + 원가 취소선 + 할인율 */}
-                <div className="flex items-start justify-between">
-                  <h1 className="text-2xl font-black pt-6" style={{ color: theme.textPrimary }}>{groupBuy.title}</h1>
-                  <div className="text-right">
-                    <div className="flex items-center gap-2 justify-end mb-1">
-                      <span className="text-sm line-through" style={{ color: theme.textMuted }}>
-                        {groupBuy.original_price.toLocaleString()}원
-                      </span>
-                      <span className="text-base font-bold" style={{ color: '#b91c1c' }}>{discountPercent}%</span>
-                    </div>
-                    <div>
-                      <span className="text-3xl font-black" style={{ color: theme.textPrimary }}>
-                        {groupBuy.sale_price.toLocaleString()}
-                      </span>
-                      <span className="text-xl font-bold" style={{ color: theme.textPrimary }}>원</span>
-                    </div>
+              <div className="flex items-start justify-between">
+                <h1 className="text-2xl font-black pt-6" style={{ color: theme.textPrimary }}>{groupBuy.title}</h1>
+                <div className="text-right">
+                  <div className="flex items-center gap-2 justify-end mb-1">
+                    <span className="text-lg line-through" style={{ color: theme.textMuted }}>
+                      {groupBuy.original_price.toLocaleString()}원
+                    </span>
+                    <span className="text-base font-bold" style={{ color: '#b91c1c' }}>{discountPercent}%</span>
                   </div>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center justify-between">
-                  <h1 className="text-2xl font-black" style={{ color: theme.textPrimary }}>{groupBuy.title}</h1>
                   <div>
-                    <span className="text-3xl font-black" style={{ color: theme.textPrimary }}>{groupBuy.sale_price.toLocaleString()}</span>
+                    <span className="text-3xl font-black" style={{ color: theme.textPrimary }}>
+                      {groupBuy.sale_price.toLocaleString()}
+                    </span>
                     <span className="text-xl font-bold" style={{ color: theme.textPrimary }}>원</span>
                   </div>
                 </div>
-              </>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <h1 className="text-2xl font-black" style={{ color: theme.textPrimary }}>{groupBuy.title}</h1>
+                <div>
+                  <span className="text-3xl font-black" style={{ color: theme.textPrimary }}>{groupBuy.sale_price.toLocaleString()}</span>
+                  <span className="text-xl font-bold" style={{ color: theme.textPrimary }}>원</span>
+                </div>
+              </div>
             )}
           </div>
         </div>
 
-        {/* 이미 참여한 경우 - 참여 정보 표시 */}
+        {/* 이미 참여한 경우 */}
         {alreadyJoined && myParticipation && (
           <div className="mx-4 mt-4 rounded-2xl overflow-hidden border-2" style={{ backgroundColor: theme.bgCard, borderColor: theme.accent }}>
             <div className="px-5 py-3" style={{ backgroundColor: `${theme.accent}20` }}>
@@ -425,7 +532,7 @@ const checkAlreadyJoined = async (userId: string) => {
           </div>
         )}
 
-        {/* 마감까지 남은 시간 - 1열 배열 */}
+        {/* 마감까지 남은 시간 */}
         {useTimer && (
           <div 
             className="mx-5 my-4 rounded-2xl p-4 shadow-2xl border"
@@ -443,84 +550,19 @@ const checkAlreadyJoined = async (userId: string) => {
               마감까지
             </p>
             <div className="flex items-baseline justify-center">
-              {/* 일 - 약간만 줄임 */}
               {timeLeft.days > 0 && (
                 <>
-                  <span 
-                    className="text-4xl font-black" 
-                    style={{ 
-                      color: alreadyJoined ? theme.textMuted : 'white',
-                      textShadow: alreadyJoined ? 'none' : '0 0 8px rgba(255,255,255,0.5)' 
-                    }}
-                  >
-                    {timeLeft.days}
-                  </span>
-                  <span 
-                    className="text-base font-bold ml-1 mr-3"
-                    style={{ color: alreadyJoined ? theme.textMuted : 'white' }}
-                  >
-                    일
-                  </span>
+                  <span className="text-4xl font-black" style={{ color: alreadyJoined ? theme.textMuted : 'white', textShadow: alreadyJoined ? 'none' : '0 0 8px rgba(255,255,255,0.5)' }}>{timeLeft.days}</span>
+                  <span className="text-base font-bold ml-1 mr-3" style={{ color: alreadyJoined ? theme.textMuted : 'white' }}>일</span>
                 </>
               )}
-              {/* 시간 */}
-              <span 
-                className="text-4xl font-black" 
-                style={{ 
-                  color: alreadyJoined ? theme.textMuted : '#facc15',
-                  textShadow: alreadyJoined ? 'none' : '0 0 8px rgba(250,204,21,0.5)' 
-                }}
-              >
-                {String(timeLeft.hours).padStart(2,'0')}
-              </span>
-              <span 
-                className="text-base font-bold ml-1 mr-2"
-                style={{ color: alreadyJoined ? theme.textMuted : '#facc15' }}
-              >
-                시간
-              </span>
-              {/* 분 */}
-              <span 
-                className="text-4xl font-black" 
-                style={{ 
-                  color: alreadyJoined ? theme.textMuted : '#facc15',
-                  textShadow: alreadyJoined ? 'none' : '0 0 8px rgba(250,204,21,0.5)' 
-                }}
-              >
-                {String(timeLeft.minutes).padStart(2,'0')}
-              </span>
-              <span 
-                className="text-base font-bold ml-1 mr-2"
-                style={{ color: alreadyJoined ? theme.textMuted : '#eab308' }}
-              >
-                분
-              </span>
-              {/* 초 */}
-              <span 
-                className="text-2xl font-black" 
-                style={{ 
-                  color: alreadyJoined ? theme.textMuted : '#ef4444',
-                  textShadow: alreadyJoined ? 'none' : '0 0 8px rgba(239,68,68,0.5)' 
-                }}
-              >
-                {String(timeLeft.seconds).padStart(2,'0')}
-              </span>
-              <span 
-                className="text-sm font-bold ml-1 mr-1"
-                style={{ color: alreadyJoined ? theme.textMuted : '#f87171' }}
-              >
-                초
-              </span>
-              {/* 밀리초 */}
-              <span 
-                className="text-2xl font-black" 
-                style={{ 
-                  color: alreadyJoined ? theme.textMuted : '#ef4444',
-                  textShadow: alreadyJoined ? 'none' : '0 0 10px #ef4444, 0 0 20px #ef4444, 0 0 30px #ef4444' 
-                }}
-              >
-                .{String(timeLeft.ms).padStart(2,'0')}
-              </span>
+              <span className="text-4xl font-black" style={{ color: alreadyJoined ? theme.textMuted : '#facc15', textShadow: alreadyJoined ? 'none' : '0 0 8px rgba(250,204,21,0.5)' }}>{String(timeLeft.hours).padStart(2,'0')}</span>
+              <span className="text-base font-bold ml-1 mr-2" style={{ color: alreadyJoined ? theme.textMuted : '#facc15' }}>시간</span>
+              <span className="text-4xl font-black" style={{ color: alreadyJoined ? theme.textMuted : '#facc15', textShadow: alreadyJoined ? 'none' : '0 0 8px rgba(250,204,21,0.5)' }}>{String(timeLeft.minutes).padStart(2,'0')}</span>
+              <span className="text-base font-bold ml-1 mr-2" style={{ color: alreadyJoined ? theme.textMuted : '#eab308' }}>분</span>
+              <span className="text-2xl font-black" style={{ color: alreadyJoined ? theme.textMuted : '#ef4444', textShadow: alreadyJoined ? 'none' : '0 0 8px rgba(239,68,68,0.5)' }}>{String(timeLeft.seconds).padStart(2,'0')}</span>
+              <span className="text-sm font-bold ml-1 mr-1" style={{ color: alreadyJoined ? theme.textMuted : '#f87171' }}>초</span>
+              <span className="text-2xl font-black" style={{ color: alreadyJoined ? theme.textMuted : '#ef4444', textShadow: alreadyJoined ? 'none' : '0 0 10px #ef4444, 0 0 20px #ef4444, 0 0 30px #ef4444' }}>.{String(timeLeft.ms).padStart(2,'0')}</span>
             </div>
           </div>
         )}
@@ -536,17 +578,10 @@ const checkAlreadyJoined = async (userId: string) => {
               </div>
             </div>
             <div className="h-3 rounded-full overflow-hidden" style={{ backgroundColor: theme.bgInput }}>
-              <div 
-                className="h-full rounded-full transition-all" 
-                style={{ width: `${progress}%`, backgroundColor: theme.accent }}
-              />
+              <div className="h-full rounded-full transition-all" style={{ width: `${progress}%`, backgroundColor: theme.accent }} />
             </div>
             <p className="text-sm mt-3 text-center" style={{ color: theme.textMuted }}>
-              {progress >= 100 
-                ? "🎉 목표 수량 달성!" 
-                : forceProceed 
-                  ? `${groupBuy.current_quantity}개 참여중 (수량 상관없이 진행)`
-                  : `${groupBuy.min_quantity - groupBuy.current_quantity}개 더 필요합니다`}
+              {progress >= 100 ? "🎉 목표 수량 달성!" : forceProceed ? `${groupBuy.current_quantity}개 참여중 (수량 상관없이 진행)` : `${groupBuy.min_quantity - groupBuy.current_quantity}개 더 필요합니다`}
             </p>
           </div>
         )}
@@ -564,9 +599,7 @@ const checkAlreadyJoined = async (userId: string) => {
             <div className="flex">
               <span className="w-20 text-sm" style={{ color: theme.textMuted }}>픽업시간</span>
               <span className="font-medium" style={{ color: theme.textPrimary }}>
-                {groupBuy.pickup_start_time && groupBuy.pickup_end_time 
-                  ? `${formatTime(groupBuy.pickup_start_time)} ~ ${formatTime(groupBuy.pickup_end_time)}` 
-                  : "공구 종료 후 안내"}
+                {groupBuy.pickup_start_time && groupBuy.pickup_end_time ? `${formatTime(groupBuy.pickup_start_time)} ~ ${formatTime(groupBuy.pickup_end_time)}` : "공구 종료 후 안내"}
               </span>
             </div>
             <div className="flex">
@@ -587,10 +620,7 @@ const checkAlreadyJoined = async (userId: string) => {
         </div>
 
         {/* 주의사항 */}
-        <div 
-          className="mx-5 mb-4 rounded-2xl p-5" 
-          style={{ backgroundColor: alreadyJoined ? theme.bgInput : `${theme.red}10` }}
-        >
+        <div className="mx-5 mb-4 rounded-2xl p-5" style={{ backgroundColor: alreadyJoined ? theme.bgInput : `${theme.red}10` }}>
           <h3 className="font-bold mb-3" style={{ color: alreadyJoined ? theme.textMuted : theme.red }}>⚠️ 주의 사항</h3>
           <ul className="space-y-2 text-sm" style={{ color: alreadyJoined ? theme.textMuted : `${theme.red}cc` }}>
             <li>• 입금 후 취소 시 환불이 어려울 수 있습니다</li>
@@ -603,44 +633,27 @@ const checkAlreadyJoined = async (userId: string) => {
       {/* 하단 고정 버튼 */}
       <div className="fixed bottom-0 left-0 right-0 backdrop-blur-sm border-t" style={{ backgroundColor: `${theme.bgCard}ee`, borderColor: theme.border }}>
         <div className="max-w-[640px] mx-auto px-5 py-4 flex items-center gap-3">
-          <a 
-            href={`tel:${groupBuy.shop?.phone}`} 
-            className="w-14 h-14 border-2 rounded-2xl flex items-center justify-center"
-            style={{ backgroundColor: theme.bgCard, borderColor: theme.border, color: theme.textPrimary }}
-          >
+          <a href={`tel:${groupBuy.shop?.phone}`} className="w-14 h-14 border-2 rounded-2xl flex items-center justify-center" style={{ backgroundColor: theme.bgCard, borderColor: theme.border, color: theme.textPrimary }}>
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
             </svg>
           </a>
           
           {isOwner ? (
-            <Link 
-              href={`/shop/groupbuy/${groupBuy.id}`}
-              className="flex-1 h-14 font-bold text-lg rounded-2xl flex items-center justify-center gap-2"
-              style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}
-            >
+            <Link href={`/shop/groupbuy/${groupBuy.id}`} className="flex-1 h-14 font-bold text-lg rounded-2xl flex items-center justify-center gap-2" style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}>
               주문 관리하기
             </Link>
           ) : alreadyJoined ? (
-            <button 
-              disabled
-              className="flex-1 h-14 font-bold text-lg rounded-2xl"
-              style={{ backgroundColor: theme.bgInput, color: theme.textMuted }}
-            >
+            <button disabled className="flex-1 h-14 font-bold text-lg rounded-2xl" style={{ backgroundColor: theme.bgInput, color: theme.textMuted }}>
               이미 참여한 공구입니다
             </button>
           ) : (
-            <button 
-              onClick={() => setShowModal(true)} 
-              className="flex-1 h-14 font-bold text-lg rounded-2xl"
-              style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}
-            >
+            <button onClick={() => setShowModal(true)} className="flex-1 h-14 font-bold text-lg rounded-2xl" style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}>
               참여하기
             </button>
           )}
         </div>
       </div>
-
 
       {/* 주문신청 모달 */}
       {showModal && (
@@ -661,44 +674,21 @@ const checkAlreadyJoined = async (userId: string) => {
               <div>
                 <label className="block text-sm font-semibold mb-3" style={{ color: theme.textPrimary }}>주문 수량</label>
                 <div className="flex items-center gap-4">
-                  <button 
-                    onClick={() => setQuantity(Math.max(1, quantity - 1))} 
-                    className="w-12 h-12 rounded-xl border-2 flex items-center justify-center text-xl font-bold"
-                    style={{ borderColor: theme.border, color: theme.textPrimary }}
-                  >−</button>
+                  <button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="w-12 h-12 rounded-xl border-2 flex items-center justify-center text-xl font-bold" style={{ borderColor: theme.border, color: theme.textPrimary }}>−</button>
                   <span className="text-2xl font-bold w-12 text-center" style={{ color: theme.textPrimary }}>{quantity}</span>
-                  <button 
-                    onClick={() => setQuantity(quantity + 1)} 
-                    className="w-12 h-12 rounded-xl border-2 flex items-center justify-center text-xl font-bold"
-                    style={{ borderColor: theme.border, color: theme.textPrimary }}
-                  >+</button>
+                  <button onClick={() => setQuantity(quantity + 1)} className="w-12 h-12 rounded-xl border-2 flex items-center justify-center text-xl font-bold" style={{ borderColor: theme.border, color: theme.textPrimary }}>+</button>
                   <span className="text-sm ml-2" style={{ color: theme.textMuted }}>({groupBuy.sale_price.toLocaleString()}원 × {quantity}개)</span>
                 </div>
               </div>
 
               <div>
                 <label className="block text-sm font-semibold mb-3" style={{ color: theme.textPrimary }}>이름</label>
-                <input 
-                  type="text" 
-                  value={name} 
-                  onChange={(e) => setName(e.target.value)} 
-                  placeholder="픽업 시 확인용 이름" 
-                  className="w-full px-4 py-3.5 rounded-xl focus:outline-none"
-                  style={{ backgroundColor: theme.bgInput, color: theme.textPrimary }}
-                />
+                <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="픽업 시 확인용 이름" className="w-full px-4 py-3.5 rounded-xl focus:outline-none" style={{ backgroundColor: theme.bgInput, color: theme.textPrimary }} />
               </div>
 
               <div>
                 <label className="block text-sm font-semibold mb-3" style={{ color: theme.textPrimary }}>연락처</label>
-                <input 
-                  type="tel" 
-                  value={phone} 
-                  onChange={handlePhoneChange} 
-                  placeholder="010-0000-0000" 
-                  maxLength={13} 
-                  className="w-full px-4 py-3.5 rounded-xl focus:outline-none text-lg"
-                  style={{ backgroundColor: theme.bgInput, color: theme.textPrimary }}
-                />
+                <input type="tel" value={phone} onChange={handlePhoneChange} placeholder="010-0000-0000" maxLength={13} className="w-full px-4 py-3.5 rounded-xl focus:outline-none text-lg" style={{ backgroundColor: theme.bgInput, color: theme.textPrimary }} />
                 <p className="text-xs mt-2" style={{ color: theme.textMuted }}>픽업 안내 알림을 받을 번호</p>
               </div>
 
@@ -734,11 +724,7 @@ const checkAlreadyJoined = async (userId: string) => {
             </div>
 
             <div className="px-6 py-5 border-t" style={{ borderColor: theme.border, backgroundColor: theme.bgCard }}>
-              <button 
-                onClick={handleSubmitClick} 
-                className="w-full h-14 font-bold text-lg rounded-2xl"
-                style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}
-              >
+              <button onClick={handleSubmitClick} className="w-full h-14 font-bold text-lg rounded-2xl" style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}>
                 주문 신청하기
               </button>
             </div>
@@ -778,17 +764,8 @@ const checkAlreadyJoined = async (userId: string) => {
               </div>
             </div>
             <div className="px-6 pb-6 flex gap-3">
-              <button 
-                onClick={() => setShowConfirm(false)} 
-                className="flex-1 h-12 font-medium rounded-xl"
-                style={{ backgroundColor: theme.bgInput, color: theme.textSecondary }}
-              >다시 수정</button>
-              <button 
-                onClick={handleFinalSubmit} 
-                disabled={submitting} 
-                className="flex-1 h-12 font-bold rounded-xl disabled:opacity-50"
-                style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}
-              >{submitting ? "처리중..." : "주문 확정"}</button>
+              <button onClick={() => setShowConfirm(false)} className="flex-1 h-12 font-medium rounded-xl" style={{ backgroundColor: theme.bgInput, color: theme.textSecondary }}>다시 수정</button>
+              <button onClick={handleFinalSubmit} disabled={submitting} className="flex-1 h-12 font-bold rounded-xl disabled:opacity-50" style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}>{submitting ? "처리중..." : "주문 확정"}</button>
             </div>
           </div>
         </div>
@@ -821,11 +798,7 @@ const checkAlreadyJoined = async (userId: string) => {
               </div>
             </div>
             <div className="px-6 pb-6" style={{ backgroundColor: theme.bgMain }}>
-              <button 
-                onClick={() => { setShowComplete(false); setName(""); setPhone(""); setQuantity(1); }} 
-                className="w-full h-14 font-bold text-lg rounded-2xl"
-                style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}
-              >확인</button>
+              <button onClick={() => { setShowComplete(false); setName(""); setPhone(""); setQuantity(1); }} className="w-full h-14 font-bold text-lg rounded-2xl" style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}>확인</button>
             </div>
           </div>
         </div>
@@ -843,7 +816,6 @@ const checkAlreadyJoined = async (userId: string) => {
               </button>
             </div>
             <div className="p-5 grid grid-cols-4 gap-4">
-              {/* 카카오톡 */}
               <button onClick={() => handleSocialShare("kakao")} className="flex flex-col items-center gap-2">
                 <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ backgroundColor: "#FEE500" }}>
                   <svg className="w-7 h-7" viewBox="0 0 24 24" fill="#000000">
@@ -853,7 +825,6 @@ const checkAlreadyJoined = async (userId: string) => {
                 <span className="text-xs" style={{ color: theme.textSecondary }}>카카오톡</span>
               </button>
               
-              {/* 페이스북 */}
               <button onClick={() => handleSocialShare("facebook")} className="flex flex-col items-center gap-2">
                 <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ backgroundColor: "#1877F2" }}>
                   <svg className="w-7 h-7" viewBox="0 0 24 24" fill="#FFFFFF">
@@ -863,7 +834,6 @@ const checkAlreadyJoined = async (userId: string) => {
                 <span className="text-xs" style={{ color: theme.textSecondary }}>페이스북</span>
               </button>
               
-              {/* 밴드 */}
               <button onClick={() => handleSocialShare("band")} className="flex flex-col items-center gap-2">
                 <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ backgroundColor: "#06C755" }}>
                   <svg className="w-7 h-7" viewBox="0 0 24 24" fill="#FFFFFF">
@@ -873,7 +843,6 @@ const checkAlreadyJoined = async (userId: string) => {
                 <span className="text-xs" style={{ color: theme.textSecondary }}>밴드</span>
               </button>
               
-              {/* 링크 복사 */}
               <button onClick={() => handleSocialShare("copy")} className="flex flex-col items-center gap-2">
                 <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ backgroundColor: theme.bgInput }}>
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: theme.textPrimary }}>

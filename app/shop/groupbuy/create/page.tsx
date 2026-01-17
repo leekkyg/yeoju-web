@@ -297,8 +297,7 @@ export default function GroupBuyCreatePage() {
         pickup_location: pickupLocation,
         
         // 이미지 - DB 컬럼: thumbnail_url, images, image_url, image_urls
-        thumbnail_url: thumbnailUrl || null,
-        image_url: thumbnailUrl || null,
+        image_url: JSON.stringify(imageUrls),
         images: imageUrls,
         image_urls: imageUrls,
         
