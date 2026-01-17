@@ -5,7 +5,13 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useTheme } from "@/contexts/ThemeContext";
-import { Sun, Moon, Home, Share2, X } from "lucide-react";
+import { Sun, Moon, Home, Share2, X, ChevronDown, CreditCard, Banknote } from "lucide-react";
+
+declare global {
+  interface Window {
+    TossPayments?: any;
+  }
+}
 
 interface GroupBuy {
   id: number;
@@ -29,6 +35,9 @@ interface GroupBuy {
   use_discount?: boolean;
   use_min_quantity?: boolean;
   force_proceed?: boolean;
+  payment_methods?: string[];
+  delivery_methods?: string[];
+  delivery_fee?: number;
   shop: {
     id: number;
     name: string;
@@ -66,6 +75,23 @@ export default function GroupBuyDetailPage() {
   const [myParticipation, setMyParticipation] = useState<any>(null);
   const [isOwner, setIsOwner] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showFullDescription, setShowFullDescription] = useState(false);
+  
+  // 결제 관련 상태
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card">("cash");
+  const [tossLoaded, setTossLoaded] = useState(false);
+
+  // 토스 SDK 로드
+  useEffect(() => {
+    const script = document.createElement("script");
+    script.src = "https://js.tosspayments.com/v1/payment";
+    script.async = true;
+    script.onload = () => setTossLoaded(true);
+    document.body.appendChild(script);
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, []);
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.replace(/[^0-9]/g, '');
@@ -136,33 +162,33 @@ export default function GroupBuyDetailPage() {
     setShowShareModal(false);
   };
 
-useEffect(() => { 
-  fetchGroupBuy(); 
-}, [params.id]);
+  useEffect(() => { 
+    fetchGroupBuy(); 
+  }, [params.id]);
 
-useEffect(() => { 
-  supabase.auth.getUser().then(({ data }) => { 
-    setUser(data.user); 
-    if (data.user) {
-      checkAlreadyJoined(data.user.id);
+  useEffect(() => { 
+    supabase.auth.getUser().then(({ data }) => { 
+      setUser(data.user); 
+      if (data.user) {
+        checkAlreadyJoined(data.user.id);
+      }
+    }); 
+  }, [params.id]);
+
+  // 판매자 본인 확인
+  useEffect(() => {
+    if (user && groupBuy?.shop?.user_id) {
+      setIsOwner(user.id === groupBuy.shop.user_id);
     }
-  }); 
-}, [params.id]);
+  }, [user, groupBuy]);
 
-// 판매자 본인 확인
-useEffect(() => {
-  if (user && groupBuy?.shop?.user_id) {
-    setIsOwner(user.id === groupBuy.shop.user_id);
-  }
-}, [user, groupBuy]);
-
-const checkAlreadyJoined = async (userId: string) => {
-  const { data } = await supabase
-    .from("group_buy_participants")
-    .select("*")
-    .eq("group_buy_id", params.id)
-    .eq("user_id", userId)
-    .single();
+  const checkAlreadyJoined = async (userId: string) => {
+    const { data } = await supabase
+      .from("group_buy_participants")
+      .select("*")
+      .eq("group_buy_id", params.id)
+      .eq("user_id", userId)
+      .single();
     if (data) {
       setAlreadyJoined(true);
       setMyParticipation(data);
@@ -208,42 +234,128 @@ const checkAlreadyJoined = async (userId: string) => {
 
   const formatTime = (time: string) => { if (!time) return ""; return time.slice(0, 5); };
 
+  // 카드 결제 처리
+  const handleCardPayment = async (participantId: number) => {
+    if (!tossLoaded || !window.TossPayments) {
+      alert("결제 모듈을 불러오는 중입니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+
+    const tossPayments = window.TossPayments(process.env.NEXT_PUBLIC_TOSS_CLIENT_KEY);
+    const orderId = `ORDER_${participantId}_${Date.now()}`;
+
+    try {
+      await tossPayments.requestPayment("카드", {
+        amount: totalPrice,
+        orderId: orderId,
+        orderName: groupBuy?.title || "공동구매 상품",
+        customerName: name,
+        successUrl: `${window.location.origin}/payment/success?participantId=${participantId}`,
+        failUrl: `${window.location.origin}/payment/fail?participantId=${participantId}`,
+      });
+    } catch (error: any) {
+      if (error.code === "USER_CANCEL") {
+        alert("결제가 취소되었습니다.");
+      } else {
+        alert("결제 중 오류가 발생했습니다: " + error.message);
+      }
+    }
+  };
+
   const handleFinalSubmit = async () => {
     if (!user) { alert("로그인이 필요합니다"); router.push("/login"); return; }
     setSubmitting(true);
+    
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      const { error } = await supabase.from("group_buy_participants").insert({ group_buy_id: groupBuy?.id, user_id: user?.id || null, name: name, phone: phone, quantity: quantity, status: "unpaid", is_paid: false });
+      
+      // 주문 정보 저장
+      const { data: participant, error } = await supabase
+        .from("group_buy_participants")
+        .insert({ 
+          group_buy_id: groupBuy?.id, 
+          user_id: user?.id || null, 
+          name: name, 
+          phone: phone, 
+          quantity: quantity, 
+          status: paymentMethod === "card" ? "pending" : "unpaid",
+          is_paid: false,
+          payment_method: paymentMethod,
+          total_price: totalPrice,
+        })
+        .select()
+        .single();
+      
       if (error) throw error;
-      await supabase.from("group_buys").update({ current_quantity: (groupBuy?.current_quantity || 0) + quantity }).eq("id", groupBuy?.id);
-      if (groupBuy?.shop?.user_id) { await supabase.from("notifications").insert({ user_id: groupBuy.shop.user_id, title: "새 주문이 들어왔습니다!", message: `${name}님이 [${groupBuy.title}] ${quantity}개 주문했습니다.`, type: "general", group_buy_id: groupBuy.id, shop_id: groupBuy.shop.id, link: `/shop/groupbuy/${groupBuy.id}` }); }
-      setSubmitting(false); setShowConfirm(false); setShowModal(false); setShowComplete(true); setAlreadyJoined(true); fetchGroupBuy();
-    } catch (error: any) { if (error.message.includes("duplicate")) { alert("이미 참여한 공구입니다"); setAlreadyJoined(true); } else { alert("신청 중 오류가 발생했습니다: " + error.message); } setSubmitting(false); }
+
+      // 수량 업데이트
+      await supabase.from("group_buys").update({ 
+        current_quantity: (groupBuy?.current_quantity || 0) + quantity 
+      }).eq("id", groupBuy?.id);
+
+      // 알림 발송
+      if (groupBuy?.shop?.user_id) { 
+        await supabase.from("notifications").insert({ 
+          user_id: groupBuy.shop.user_id, 
+          title: "새 주문이 들어왔습니다!", 
+          message: `${name}님이 [${groupBuy.title}] ${quantity}개 주문했습니다.`, 
+          type: "general", 
+          group_buy_id: groupBuy.id, 
+          shop_id: groupBuy.shop.id, 
+          link: `/shop/groupbuy/${groupBuy.id}` 
+        }); 
+      }
+
+      // 카드 결제인 경우 토스 결제창 호출
+      if (paymentMethod === "card") {
+        setSubmitting(false);
+        setShowConfirm(false);
+        setShowModal(false);
+        await handleCardPayment(participant.id);
+      } else {
+        // 현금 결제인 경우 완료 처리
+        setSubmitting(false); 
+        setShowConfirm(false); 
+        setShowModal(false); 
+        setShowComplete(true); 
+        setAlreadyJoined(true); 
+        fetchGroupBuy();
+      }
+    } catch (error: any) { 
+      if (error.message.includes("duplicate")) { 
+        alert("이미 참여한 공구입니다"); 
+        setAlreadyJoined(true); 
+      } else { 
+        alert("신청 중 오류가 발생했습니다: " + error.message); 
+      } 
+      setSubmitting(false); 
+    }
   };
 
-  const copyAccount = () => { navigator.clipboard.writeText(`${groupBuy?.shop?.bank_name || "은행명"} ${groupBuy?.shop?.bank_account || "123-456-789012"}`); alert("계좌번호가 복사되었습니다"); };
+  const copyAccount = () => { 
+    navigator.clipboard.writeText(`${groupBuy?.shop?.bank_name || "은행명"} ${groupBuy?.shop?.bank_account || "123-456-789012"}`); 
+    alert("계좌번호가 복사되었습니다"); 
+  };
   
   const useTimer = groupBuy?.use_timer ?? true;
   const useDiscount = groupBuy?.use_discount ?? true;
   const useMinQuantity = groupBuy?.use_min_quantity ?? true;
   const forceProceed = groupBuy?.force_proceed ?? false;
 
-  // 이미지 배열 파싱 - images 컬럼 우선, 없으면 image_url 사용
+  // 결제 방식 확인
+  const availablePaymentMethods = groupBuy?.payment_methods || ["cash"];
+  const canPayByCash = availablePaymentMethods.includes("cash");
+  const canPayByCard = availablePaymentMethods.includes("card");
+
+  // 이미지 배열 파싱
   const images: string[] = (() => {
-    // 1. images 컬럼 확인 (배열)
     if (groupBuy?.images && Array.isArray(groupBuy.images) && groupBuy.images.length > 0) {
       return groupBuy.images;
     }
-    
-    // 2. image_url 확인
     if (!groupBuy?.image_url) return [];
-    
-    // 2-1. 이미 배열이면 그대로 반환
     if (Array.isArray(groupBuy.image_url)) {
       return groupBuy.image_url;
     }
-    
-    // 2-2. 문자열이면 파싱 시도
     if (typeof groupBuy.image_url === 'string') {
       const trimmed = groupBuy.image_url.trim();
       if (trimmed.startsWith('[')) {
@@ -256,14 +368,8 @@ const checkAlreadyJoined = async (userId: string) => {
       }
       return [groupBuy.image_url];
     }
-    
     return [];
   })();
-
-  console.log('Raw image_url:', groupBuy?.image_url);
-  console.log('Raw images:', groupBuy?.images);
-  console.log('Parsed images:', images);
-  console.log('images.length:', images.length);
 
   const discountPercent = useDiscount && groupBuy ? Math.round((1 - groupBuy.sale_price / groupBuy.original_price) * 100) : 0;
   const savingAmount = useDiscount && groupBuy ? groupBuy.original_price - groupBuy.sale_price : 0;
@@ -272,33 +378,35 @@ const checkAlreadyJoined = async (userId: string) => {
   const bankName = groupBuy?.shop?.bank_name || "은행명";
   const bankAccount = groupBuy?.shop?.bank_account || "123-456-789012";
   const bankHolder = groupBuy?.shop?.bank_holder || groupBuy?.shop?.name || "예금주";
-  // 터치 스와이프 핸들러
-const handleTouchStart = (e: React.TouchEvent) => {
-  setTouchStart(e.targetTouches[0].clientX);
-};
 
-const handleTouchMove = (e: React.TouchEvent) => {
-  setTouchEnd(e.targetTouches[0].clientX);
-};
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStart(e.targetTouches[0].clientX);
+  };
 
-const handleTouchEnd = () => {
-  if (!touchStart || !touchEnd) return;
-  const distance = touchStart - touchEnd;
-  const minSwipeDistance = 50;
-  
-  if (distance > minSwipeDistance) {
-    setCurrentImageIndex(prev => prev < images.length - 1 ? prev + 1 : 0);
-  } else if (distance < -minSwipeDistance) {
-    setCurrentImageIndex(prev => prev > 0 ? prev - 1 : images.length - 1);
-  }
-  
-  setTouchStart(0);
-  setTouchEnd(0);
-};
+  const handleTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    const distance = touchStart - touchEnd;
+    const minSwipeDistance = 50;
+    
+    if (distance > minSwipeDistance) {
+      setCurrentImageIndex(prev => prev < images.length - 1 ? prev + 1 : 0);
+    } else if (distance < -minSwipeDistance) {
+      setCurrentImageIndex(prev => prev > 0 ? prev - 1 : images.length - 1);
+    }
+    
+    setTouchStart(0);
+    setTouchEnd(0);
+  };
+
   const getStatusText = (status: string) => {
     switch (status) {
       case "unpaid": return "입금 대기";
-      case "paid": return "입금 완료";
+      case "pending": return "결제 대기";
+      case "paid": return "결제 완료";
       case "picked": return "픽업 완료";
       case "cancelled": return "취소됨";
       default: return "대기중";
@@ -308,12 +416,20 @@ const handleTouchEnd = () => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case "unpaid": return theme.red;
-      case "paid": return "#D97706";
+      case "pending": return "#F59E0B";
+      case "paid": return "#10B981";
       case "picked": return "#2563EB";
       case "cancelled": return theme.textMuted;
       default: return theme.textMuted;
     }
   };
+
+  const descriptionPreview = groupBuy?.description 
+    ? groupBuy.description.length > 60 
+      ? groupBuy.description.slice(0, 60) + "..." 
+      : groupBuy.description
+    : "";
+  const hasLongDescription = (groupBuy?.description?.length || 0) > 60;
 
   if (!mounted) {
     return (
@@ -387,12 +503,12 @@ const handleTouchEnd = () => {
             {images.length > 0 ? (
               <>
                 <div 
-  className="flex h-full transition-transform duration-300 ease-out"
-  style={{ transform: `translateX(-${currentImageIndex * 100}%)` }}
-  onTouchStart={handleTouchStart}
-  onTouchMove={handleTouchMove}
-  onTouchEnd={handleTouchEnd}
->
+                  className="flex h-full transition-transform duration-300 ease-out"
+                  style={{ transform: `translateX(-${currentImageIndex * 100}%)` }}
+                  onTouchStart={handleTouchStart}
+                  onTouchMove={handleTouchMove}
+                  onTouchEnd={handleTouchEnd}
+                >
                   {images.map((url, idx) => (
                     <img 
                       key={idx}
@@ -426,10 +542,10 @@ const handleTouchEnd = () => {
                 )}
                 
                 {images.length > 1 && (
-  <div className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-sm">
-    <span className="text-white text-xs font-medium">{currentImageIndex + 1} / {images.length}</span>
-  </div>
-)}
+                  <div className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-sm">
+                    <span className="text-white text-xs font-medium">{currentImageIndex + 1} / {images.length}</span>
+                  </div>
+                )}
               </>
             ) : (
               <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: theme.bgInput }}>
@@ -460,7 +576,7 @@ const handleTouchEnd = () => {
             </Link>
           </div>
 
-          {/* 제품명 + 가격 */}
+          {/* 제품명 + 가격 + 간단 설명 */}
           <div className="px-5 py-5">
             {useDiscount && discountPercent > 0 ? (
               <div className="flex items-start justify-between">
@@ -489,6 +605,26 @@ const handleTouchEnd = () => {
                 </div>
               </div>
             )}
+            
+            {groupBuy.description && (
+              <div className="mt-3">
+                <p className="text-sm leading-relaxed" style={{ color: theme.textSecondary }}>
+                  {showFullDescription ? groupBuy.description : descriptionPreview}
+                </p>
+                {hasLongDescription && (
+                  <button 
+                    onClick={() => setShowFullDescription(!showFullDescription)}
+                    className="mt-2 text-sm font-medium flex items-center gap-1"
+                    style={{ color: theme.accent }}
+                  >
+                    {showFullDescription ? "접기" : "상세내용 보기"}
+                    <ChevronDown 
+                      className={`w-4 h-4 transition-transform ${showFullDescription ? "rotate-180" : ""}`} 
+                    />
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -506,6 +642,12 @@ const handleTouchEnd = () => {
               <div className="flex justify-between">
                 <span style={{ color: theme.textMuted }}>결제 금액</span>
                 <span className="font-semibold" style={{ color: theme.textPrimary }}>{(myParticipation.quantity * groupBuy.sale_price).toLocaleString()}원</span>
+              </div>
+              <div className="flex justify-between">
+                <span style={{ color: theme.textMuted }}>결제 방식</span>
+                <span className="font-semibold" style={{ color: theme.textPrimary }}>
+                  {myParticipation.payment_method === "card" ? "카드 결제" : "계좌이체"}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span style={{ color: theme.textMuted }}>주문 상태</span>
@@ -573,7 +715,7 @@ const handleTouchEnd = () => {
               <div className="h-full rounded-full transition-all" style={{ width: `${progress}%`, backgroundColor: theme.accent }} />
             </div>
             <p className="text-sm mt-3 text-center" style={{ color: theme.textMuted }}>
-              {progress >= 100 ? "🎉 목표 수량 달성!" : forceProceed ? `${groupBuy.current_quantity}개 참여중 (수량 상관없이 진행)` : `${groupBuy.min_quantity - groupBuy.current_quantity}개 더 필요합니다`}
+              {progress >= 100 ? "🎉 목표 수량 달성!" : `${groupBuy.current_quantity}개 참여중`}
             </p>
           </div>
         )}
@@ -601,21 +743,11 @@ const handleTouchEnd = () => {
           </div>
         </div>
 
-        {/* 상품 설명 */}
-        <div className="mx-5 mb-4 rounded-2xl overflow-hidden border" style={{ backgroundColor: theme.bgCard, borderColor: theme.border }}>
-          <div className="px-5 py-4 border-b" style={{ borderColor: theme.border }}>
-            <h3 className="font-bold" style={{ color: theme.textPrimary }}>📝 상품 설명</h3>
-          </div>
-          <div className="p-5">
-            <p className="whitespace-pre-wrap" style={{ color: theme.textSecondary }}>{groupBuy.description || "상품 설명이 없습니다."}</p>
-          </div>
-        </div>
-
         {/* 주의사항 */}
         <div className="mx-5 mb-4 rounded-2xl p-5" style={{ backgroundColor: alreadyJoined ? theme.bgInput : `${theme.red}10` }}>
           <h3 className="font-bold mb-3" style={{ color: alreadyJoined ? theme.textMuted : theme.red }}>⚠️ 주의 사항</h3>
           <ul className="space-y-2 text-sm" style={{ color: alreadyJoined ? theme.textMuted : `${theme.red}cc` }}>
-            <li>• 입금 후 취소 시 환불이 어려울 수 있습니다</li>
+            <li>• 결제 후 취소 시 환불이 어려울 수 있습니다</li>
             <li>• 픽업일에 수령하지 않으면 폐기될 수 있습니다</li>
             <li>• 문의사항은 상점에 직접 연락해주세요</li>
           </ul>
@@ -684,14 +816,59 @@ const handleTouchEnd = () => {
                 <p className="text-xs mt-2" style={{ color: theme.textMuted }}>픽업 안내 알림을 받을 번호</p>
               </div>
 
-              <div className="rounded-2xl p-5" style={{ backgroundColor: theme.accent }}>
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-medium" style={{ color: isDark ? '#121212' : '#fff' }}>입금 계좌</span>
-                  <button onClick={copyAccount} className="text-xs px-3 py-1 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.2)', color: isDark ? '#121212' : '#fff' }}>복사하기</button>
+              {/* 결제 방식 선택 */}
+              <div>
+                <label className="block text-sm font-semibold mb-3" style={{ color: theme.textPrimary }}>결제 방식</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setPaymentMethod("cash")}
+                    className={`p-4 rounded-xl border-2 flex flex-col items-center gap-2 transition-all ${paymentMethod === "cash" ? "border-current" : ""}`}
+                    style={{ 
+                      borderColor: paymentMethod === "cash" ? theme.accent : theme.border,
+                      backgroundColor: paymentMethod === "cash" ? `${theme.accent}20` : theme.bgInput 
+                    }}
+                  >
+                    <Banknote className="w-6 h-6" style={{ color: paymentMethod === "cash" ? theme.accent : theme.textMuted }} />
+                    <span className="font-medium" style={{ color: paymentMethod === "cash" ? theme.accent : theme.textPrimary }}>계좌이체</span>
+                  </button>
+                  <button
+                    onClick={() => setPaymentMethod("card")}
+                    className={`p-4 rounded-xl border-2 flex flex-col items-center gap-2 transition-all ${paymentMethod === "card" ? "border-current" : ""}`}
+                    style={{ 
+                      borderColor: paymentMethod === "card" ? theme.accent : theme.border,
+                      backgroundColor: paymentMethod === "card" ? `${theme.accent}20` : theme.bgInput 
+                    }}
+                  >
+                    <CreditCard className="w-6 h-6" style={{ color: paymentMethod === "card" ? theme.accent : theme.textMuted }} />
+                    <span className="font-medium" style={{ color: paymentMethod === "card" ? theme.accent : theme.textPrimary }}>카드 결제</span>
+                  </button>
                 </div>
-                <p className="text-2xl font-bold mb-1" style={{ color: isDark ? '#121212' : '#fff' }}>{bankAccount}</p>
-                <p style={{ color: isDark ? '#121212cc' : '#ffffffcc' }}>{bankName} | 예금주 {bankHolder}</p>
               </div>
+
+              {/* 계좌이체 선택 시 계좌 정보 표시 */}
+              {paymentMethod === "cash" && (
+                <div className="rounded-2xl p-5" style={{ backgroundColor: theme.accent }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-medium" style={{ color: isDark ? '#121212' : '#fff' }}>입금 계좌</span>
+                    <button onClick={copyAccount} className="text-xs px-3 py-1 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.2)', color: isDark ? '#121212' : '#fff' }}>복사하기</button>
+                  </div>
+                  <p className="text-2xl font-bold mb-1" style={{ color: isDark ? '#121212' : '#fff' }}>{bankAccount}</p>
+                  <p style={{ color: isDark ? '#121212cc' : '#ffffffcc' }}>{bankName} | 예금주 {bankHolder}</p>
+                </div>
+              )}
+
+              {/* 카드 결제 선택 시 안내 */}
+              {paymentMethod === "card" && (
+                <div className="rounded-2xl p-5" style={{ backgroundColor: `${theme.accent}20` }}>
+                  <div className="flex items-center gap-3">
+                    <CreditCard className="w-8 h-8" style={{ color: theme.accent }} />
+                    <div>
+                      <p className="font-semibold" style={{ color: theme.textPrimary }}>카드 결제</p>
+                      <p className="text-sm" style={{ color: theme.textMuted }}>주문 확정 후 토스페이먼츠 결제창으로 이동합니다</p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="rounded-2xl p-5" style={{ backgroundColor: `${theme.accent}30` }}>
                 <div className="flex items-center justify-between">
@@ -704,11 +881,22 @@ const handleTouchEnd = () => {
                 <div className="flex gap-3">
                   <span className="text-xl">⚠️</span>
                   <div className="text-sm" style={{ color: `${theme.red}cc` }}>
-                    <p className="font-bold mb-2" style={{ color: theme.red }}>입금 전 확인하세요!</p>
+                    <p className="font-bold mb-2" style={{ color: theme.red }}>
+                      {paymentMethod === "cash" ? "입금 전 확인하세요!" : "결제 전 확인하세요!"}
+                    </p>
                     <ul className="space-y-1">
-                      <li>• 입금자명은 신청자명과 동일해야 합니다</li>
-                      <li>• 입금 확인까지 최대 1영업일 소요됩니다</li>
-                      <li>• 입금 후 취소/환불이 어려울 수 있습니다</li>
+                      {paymentMethod === "cash" ? (
+                        <>
+                          <li>• 입금자명은 신청자명과 동일해야 합니다</li>
+                          <li>• 입금 확인까지 최대 1영업일 소요됩니다</li>
+                          <li>• 입금 후 취소/환불이 어려울 수 있습니다</li>
+                        </>
+                      ) : (
+                        <>
+                          <li>• 결제 완료 후 취소/환불이 어려울 수 있습니다</li>
+                          <li>• 결제 정보는 안전하게 처리됩니다</li>
+                        </>
+                      )}
                     </ul>
                   </div>
                 </div>
@@ -750,6 +938,12 @@ const handleTouchEnd = () => {
                 <span style={{ color: theme.textMuted }}>연락처</span>
                 <span className="font-medium" style={{ color: theme.textPrimary }}>{phone}</span>
               </div>
+              <div className="flex justify-between py-3 border-b" style={{ borderColor: theme.border }}>
+                <span style={{ color: theme.textMuted }}>결제 방식</span>
+                <span className="font-medium" style={{ color: theme.textPrimary }}>
+                  {paymentMethod === "card" ? "카드 결제" : "계좌이체"}
+                </span>
+              </div>
               <div className="flex justify-between py-3 rounded-xl px-4 -mx-2" style={{ backgroundColor: `${theme.accent}30` }}>
                 <span className="font-medium" style={{ color: theme.textPrimary }}>결제금액</span>
                 <span className="text-xl font-black" style={{ color: theme.red }}>{totalPrice.toLocaleString()}원</span>
@@ -757,7 +951,9 @@ const handleTouchEnd = () => {
             </div>
             <div className="px-6 pb-6 flex gap-3">
               <button onClick={() => setShowConfirm(false)} className="flex-1 h-12 font-medium rounded-xl" style={{ backgroundColor: theme.bgInput, color: theme.textSecondary }}>다시 수정</button>
-              <button onClick={handleFinalSubmit} disabled={submitting} className="flex-1 h-12 font-bold rounded-xl disabled:opacity-50" style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}>{submitting ? "처리중..." : "주문 확정"}</button>
+              <button onClick={handleFinalSubmit} disabled={submitting} className="flex-1 h-12 font-bold rounded-xl disabled:opacity-50" style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}>
+                {submitting ? "처리중..." : paymentMethod === "card" ? "결제하기" : "주문 확정"}
+              </button>
             </div>
           </div>
         </div>
