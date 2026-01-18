@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import "./globals.css";
 import Providers from "@/components/Providers";
+import Footer from "@/components/Footer";
 
 export const metadata: Metadata = {
   title: "여주마켓",
@@ -31,7 +32,10 @@ export default function RootLayout({
     <html lang="ko" suppressHydrationWarning>
       <head />
       <body suppressHydrationWarning>
-        <Providers>{children}</Providers>
+        <Providers>
+          {children}
+          <Footer />
+        </Providers>
         <Script 
           src="https://t1.kakaocdn.net/kakao_js_sdk/2.5.0/kakao.min.js"
           strategy="lazyOnload"

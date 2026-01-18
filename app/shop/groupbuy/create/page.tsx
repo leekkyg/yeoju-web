@@ -77,7 +77,10 @@ export default function GroupBuyCreatePage() {
   const [bankCode, setBankCode] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [accountHolder, setAccountHolder] = useState("");
-
+  // 수령/결제 방식
+  const [deliveryMethods, setDeliveryMethods] = useState<string[]>(["pickup"]);
+  const [paymentMethods, setPaymentMethods] = useState<string[]>(["cash"]);
+  const [deliveryFee, setDeliveryFee] = useState("");
   // 이미지
   const [images, setImages] = useState<{ file: File; preview: string }[]>([]);
 
@@ -204,9 +207,13 @@ export default function GroupBuyCreatePage() {
     if (currentStep === 2) {
       if (!salePrice) return "판매가를 입력해주세요";
       if (!minQuantity) return "최소 인원을 입력해주세요";
-      if (!bankCode) return "입금 은행을 선택해주세요";
-      if (!accountNumber) return "계좌번호를 입력해주세요";
-      if (!accountHolder) return "예금주를 입력해주세요";
+      if (deliveryMethods.length === 0) return "수령 방식을 1개 이상 선택해주세요";
+      if (paymentMethods.length === 0) return "결제 방식을 1개 이상 선택해주세요";
+      if (paymentMethods.includes("cash")) {
+        if (!bankCode) return "입금 은행을 선택해주세요";
+        if (!accountNumber) return "계좌번호를 입력해주세요";
+        if (!accountHolder) return "예금주를 입력해주세요";
+      }
     }
     if (currentStep === 3) {
       if (!endDate) return "마감일을 선택해주세요";
@@ -239,26 +246,27 @@ export default function GroupBuyCreatePage() {
     setSubmitting(true);
 
     try {
-      // 이미지 업로드
+     // 이미지 업로드 (R2)
       let thumbnailUrl = "";
       const imageUrls: string[] = [];
 
       for (let i = 0; i < images.length; i++) {
         const file = images[i].file;
-        const fileExt = file.name.split(".").pop() || "jpg";
-        const fileName = `${shop.id}/${Date.now()}_${i}.${fileExt}`;
         
-        const { error: uploadError } = await supabase.storage
-          .from("group-buy-images")
-          .upload(fileName, file);
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('folder', `groupbuy/${shop.id}`);
 
-        if (!uploadError) {
-          const { data: urlData } = supabase.storage
-            .from("group-buy-images")
-            .getPublicUrl(fileName);
-          
-          if (i === 0) thumbnailUrl = urlData.publicUrl;
-          imageUrls.push(urlData.publicUrl);
+        const uploadRes = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        });
+
+        const uploadData = await uploadRes.json();
+
+        if (uploadData.success) {
+          if (i === 0) thumbnailUrl = uploadData.url;
+          imageUrls.push(uploadData.url);
         }
       }
 
@@ -297,7 +305,7 @@ export default function GroupBuyCreatePage() {
         pickup_location: pickupLocation,
         
         // 이미지 - DB 컬럼: thumbnail_url, images, image_url, image_urls
-        image_url: JSON.stringify(imageUrls),
+        image_url: imageUrls[0] || "",
         images: imageUrls,
         image_urls: imageUrls,
         
@@ -306,6 +314,11 @@ export default function GroupBuyCreatePage() {
         
         // 상태
         status: "active",
+        
+        // 수령/결제 방식
+        delivery_methods: deliveryMethods,
+        payment_methods: paymentMethods,
+        delivery_fee: deliveryFee ? Number(parsePrice(deliveryFee)) : 0,
         
         // 기타 기본값
         use_goal: true,
@@ -660,6 +673,198 @@ export default function GroupBuyCreatePage() {
                 <Info className="w-3 h-3 inline mr-1" />
                 최소 인원 미달 시 공동구매가 자동 취소됩니다
               </p>
+            </div>
+
+{/* 수령 방식 */}
+            <div 
+              className="rounded-2xl p-5"
+              style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}
+            >
+              <div className="flex items-center gap-2 mb-4">
+                <Package className="w-5 h-5" style={{ color: theme.accent }} strokeWidth={1.5} />
+                <span className="font-semibold" style={{ color: theme.textPrimary }}>수령 방식</span>
+              </div>
+
+              <div className="space-y-3">
+                <label 
+                  className="flex items-center gap-3 p-4 rounded-xl cursor-pointer transition-all"
+                  style={{ 
+                    backgroundColor: deliveryMethods.includes("pickup") ? `${theme.accent}20` : theme.bgInput,
+                    border: `2px solid ${deliveryMethods.includes("pickup") ? theme.accent : theme.border}`
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={deliveryMethods.includes("pickup")}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setDeliveryMethods([...deliveryMethods, "pickup"]);
+                      } else {
+                        setDeliveryMethods(deliveryMethods.filter(m => m !== "pickup"));
+                      }
+                    }}
+                    className="hidden"
+                  />
+                  <div 
+                    className="w-6 h-6 rounded-md flex items-center justify-center"
+                    style={{ 
+                      backgroundColor: deliveryMethods.includes("pickup") ? theme.accent : theme.bgInput,
+                      border: `2px solid ${deliveryMethods.includes("pickup") ? theme.accent : theme.border}`
+                    }}
+                  >
+                    {deliveryMethods.includes("pickup") && <Check className="w-4 h-4" style={{ color: isDark ? '#121212' : '#fff' }} />}
+                  </div>
+                  <div>
+                    <p className="font-medium" style={{ color: theme.textPrimary }}>매장 픽업</p>
+                    <p className="text-xs" style={{ color: theme.textMuted }}>고객이 직접 매장에서 수령</p>
+                  </div>
+                </label>
+
+                <label 
+                  className="flex items-center gap-3 p-4 rounded-xl cursor-pointer transition-all"
+                  style={{ 
+                    backgroundColor: deliveryMethods.includes("delivery") ? `${theme.accent}20` : theme.bgInput,
+                    border: `2px solid ${deliveryMethods.includes("delivery") ? theme.accent : theme.border}`
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={deliveryMethods.includes("delivery")}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setDeliveryMethods([...deliveryMethods, "delivery"]);
+                      } else {
+                        setDeliveryMethods(deliveryMethods.filter(m => m !== "delivery"));
+                      }
+                    }}
+                    className="hidden"
+                  />
+                  <div 
+                    className="w-6 h-6 rounded-md flex items-center justify-center"
+                    style={{ 
+                      backgroundColor: deliveryMethods.includes("delivery") ? theme.accent : theme.bgInput,
+                      border: `2px solid ${deliveryMethods.includes("delivery") ? theme.accent : theme.border}`
+                    }}
+                  >
+                    {deliveryMethods.includes("delivery") && <Check className="w-4 h-4" style={{ color: isDark ? '#121212' : '#fff' }} />}
+                  </div>
+                  <div>
+                    <p className="font-medium" style={{ color: theme.textPrimary }}>택배 배송</p>
+                    <p className="text-xs" style={{ color: theme.textMuted }}>고객 주소로 택배 발송</p>
+                  </div>
+                </label>
+
+                {deliveryMethods.includes("delivery") && (
+                  <div className="mt-3">
+                    <label className="block text-sm mb-2" style={{ color: theme.textSecondary }}>
+                      배송비
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={deliveryFee}
+                        onChange={(e) => setDeliveryFee(formatPrice(e.target.value))}
+                        placeholder="0 (무료배송)"
+                        className="w-full px-4 py-3 pr-12 rounded-xl text-[15px] outline-none transition-all"
+                        style={{ 
+                          backgroundColor: theme.bgInput, 
+                          border: `1px solid ${theme.border}`,
+                          color: theme.textPrimary,
+                        }}
+                      />
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm" style={{ color: theme.textMuted }}>원</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 결제 방식 */}
+            <div 
+              className="rounded-2xl p-5"
+              style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}
+            >
+              <div className="flex items-center gap-2 mb-4">
+                <Wallet className="w-5 h-5" style={{ color: theme.accent }} strokeWidth={1.5} />
+                <span className="font-semibold" style={{ color: theme.textPrimary }}>결제 방식</span>
+              </div>
+
+              <div className="space-y-3">
+                <label 
+                  className="flex items-center gap-3 p-4 rounded-xl cursor-pointer transition-all"
+                  style={{ 
+                    backgroundColor: paymentMethods.includes("cash") ? `${theme.accent}20` : theme.bgInput,
+                    border: `2px solid ${paymentMethods.includes("cash") ? theme.accent : theme.border}`
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={paymentMethods.includes("cash")}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setPaymentMethods([...paymentMethods, "cash"]);
+                      } else {
+                        setPaymentMethods(paymentMethods.filter(m => m !== "cash"));
+                      }
+                    }}
+                    className="hidden"
+                  />
+                  <div 
+                    className="w-6 h-6 rounded-md flex items-center justify-center"
+                    style={{ 
+                      backgroundColor: paymentMethods.includes("cash") ? theme.accent : theme.bgInput,
+                      border: `2px solid ${paymentMethods.includes("cash") ? theme.accent : theme.border}`
+                    }}
+                  >
+                    {paymentMethods.includes("cash") && <Check className="w-4 h-4" style={{ color: isDark ? '#121212' : '#fff' }} />}
+                  </div>
+                  <div>
+                    <p className="font-medium" style={{ color: theme.textPrimary }}>계좌이체 (현금)</p>
+                    <p className="text-xs" style={{ color: theme.textMuted }}>고객이 직접 계좌로 입금</p>
+                  </div>
+                </label>
+
+                <label 
+                  className="flex items-center gap-3 p-4 rounded-xl cursor-pointer transition-all"
+                  style={{ 
+                    backgroundColor: paymentMethods.includes("card") ? `${theme.accent}20` : theme.bgInput,
+                    border: `2px solid ${paymentMethods.includes("card") ? theme.accent : theme.border}`
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={paymentMethods.includes("card")}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setPaymentMethods([...paymentMethods, "card"]);
+                      } else {
+                        setPaymentMethods(paymentMethods.filter(m => m !== "card"));
+                      }
+                    }}
+                    className="hidden"
+                  />
+                  <div 
+                    className="w-6 h-6 rounded-md flex items-center justify-center"
+                    style={{ 
+                      backgroundColor: paymentMethods.includes("card") ? theme.accent : theme.bgInput,
+                      border: `2px solid ${paymentMethods.includes("card") ? theme.accent : theme.border}`
+                    }}
+                  >
+                    {paymentMethods.includes("card") && <Check className="w-4 h-4" style={{ color: isDark ? '#121212' : '#fff' }} />}
+                  </div>
+                  <div>
+                    <p className="font-medium" style={{ color: theme.textPrimary }}>카드 결제</p>
+                    <p className="text-xs" style={{ color: theme.textMuted }}>카드/카카오페이/네이버페이</p>
+                  </div>
+                </label>
+              </div>
+
+              {paymentMethods.length === 0 && (
+                <p className="text-xs mt-3" style={{ color: theme.red }}>
+                  <AlertCircle className="w-3 h-3 inline mr-1" />
+                  최소 1개 이상의 결제 방식을 선택해주세요
+                </p>
+              )}
             </div>
 
             {/* 입금 계좌 */}

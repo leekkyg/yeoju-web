@@ -24,6 +24,7 @@ import {
   XCircle,
   PenSquare,
   X,
+   CreditCard,
 } from "lucide-react";
 
 export default function MyPage() {
@@ -146,8 +147,9 @@ export default function MyPage() {
   }
 
   const menuItems = [
-    { href: "/mypage/edit", icon: User, label: "프로필 수정", color: theme.accent },
-    { href: "/messages", icon: MessageCircle, label: "쪽지함", color: "#0EA5E9" },
+  { href: "/mypage/edit", icon: User, label: "프로필 수정", color: theme.accent },
+  { href: "/mypage/cards", icon: CreditCard, label: "결제 카드 관리", color: "#10B981" },
+  { href: "/messages", icon: MessageCircle, label: "쪽지함", color: "#0EA5E9" },
     { href: "/favorites", icon: Heart, label: "관심 업체", color: theme.red },
     { href: "/mypage/groupbuys", icon: Package, label: "공동구매 참여내역", color: "#F59E0B" },
     { href: "/mypage/bookmarks", icon: Bookmark, label: "저장한 글", color: "#3B82F6" },
