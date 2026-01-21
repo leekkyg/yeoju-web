@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { supabase } from "@/lib/supabase";
 import { useTheme } from "@/contexts/ThemeContext";
 import Header from "@/components/Header";
@@ -59,7 +60,12 @@ export default function HomePage() {
   // 공동구매 썸네일 인덱스 (3초마다 변경)
   const [gbThumbnailIndex, setGbThumbnailIndex] = useState(0);
 
+  // 중복 호출 방지
+  const fetchedRef = useRef(false);
+
   useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
     fetchData();
   }, []);
 
@@ -84,140 +90,93 @@ export default function HomePage() {
     const { data: { user } } = await supabase.auth.getUser();
     setUser(user);
 
-    if (user) {
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("nickname, avatar_url")
-        .eq("id", user.id)
-        .single();
-      setProfile(profileData);
+    // 모든 API 병렬 호출
+    const [
+      profileResult,
+      unreadResult,
+      mainBannerResult,
+      subBannerResult,
+      gbResult,
+      postResult,
+      noticeResult,
+      newsResult,
+      videoResult,
+    ] = await Promise.all([
+      // 프로필
+      user ? supabase.from("profiles").select("nickname, avatar_url").eq("id", user.id).single() : Promise.resolve({ data: null }),
+      // 알림 개수
+      user ? supabase.from("notifications").select("*", { count: "exact", head: true }).eq("user_id", user.id).eq("is_read", false) : Promise.resolve({ count: 0 }),
+      // 메인 배너
+      supabase.from("ads").select("*").eq("position", "home_banner").eq("is_active", true).order("created_at", { ascending: false }),
+      // 서브 배너
+      supabase.from("sub_banners").select("*").eq("is_active", true).order("sort_order", { ascending: true }),
+      // 공동구매
+      supabase.from("group_buys").select("*").eq("status", "active").order("created_at", { ascending: false }).limit(6),
+      // 게시물
+      supabase.from("posts").select("*").order("created_at", { ascending: false }).limit(3),
+      // 공지사항
+      supabase.from("notices").select("*").order("created_at", { ascending: false }).limit(3),
+      // 뉴스
+      supabase.from("news").select("*").order("created_at", { ascending: false }).limit(3),
+      // 영상
+      supabase.from("videos").select("*").order("created_at", { ascending: false }).limit(4),
+    ]);
 
-      const { count } = await supabase
-        .from("notifications")
-        .select("*", { count: "exact", head: true })
-        .eq("user_id", user.id)
-        .eq("is_read", false);
-      setUnreadCount(count || 0);
-    }
+    // 프로필 설정
+    if (profileResult.data) setProfile(profileResult.data);
+    setUnreadCount((unreadResult as any).count || 0);
 
-    // 메인 배너
-    const { data: mainBannerData } = await supabase
-      .from("ads")
-      .select("*")
-      .eq("position", "home_banner")
-      .eq("is_active", true)
-      .order("created_at", { ascending: false });
-    
+    // 배너 필터링
     const now = new Date();
-    const filteredMainBanners = (mainBannerData || []).filter(b => {
+    const filteredMainBanners = (mainBannerResult.data || []).filter((b: any) => {
       if (b.start_date && new Date(b.start_date) > now) return false;
       if (b.end_date && new Date(b.end_date) < now) return false;
       return true;
     });
     setMainBanners(filteredMainBanners);
 
-    // 서브 배너
-    const { data: subBannerData } = await supabase
-      .from("sub_banners")
-      .select("*")
-      .eq("is_active", true)
-      .order("sort_order", { ascending: true });
-    
-    const filteredSubBanners = (subBannerData || []).filter(b => {
+    const filteredSubBanners = (subBannerResult.data || []).filter((b: any) => {
       if (b.start_date && new Date(b.start_date) > now) return false;
       if (b.end_date && new Date(b.end_date) < now) return false;
       return true;
     });
     setSubBanners(filteredSubBanners);
 
-    // 공동구매 (최대 6개)
-    const { data: gbData } = await supabase
-      .from("group_buys")
-      .select("*")
-      .eq("status", "active")
-      .order("created_at", { ascending: false })
-      .limit(6);
-    
-    if (gbData && gbData.length > 0) {
-      const shopIds = gbData.map(gb => gb.shop_id).filter(Boolean);
+    // 공동구매 + 상점 정보
+    const gbData = gbResult.data || [];
+    if (gbData.length > 0) {
+      const shopIds = gbData.map((gb: any) => gb.shop_id).filter(Boolean);
       if (shopIds.length > 0) {
-        const { data: shopsData } = await supabase
-          .from("shops")
-          .select("id, name, logo_url")
-          .in("id", shopIds);
-        
+        const { data: shopsData } = await supabase.from("shops").select("id, name, logo_url").in("id", shopIds);
         const shopsMap = (shopsData || []).reduce((acc: any, shop: any) => {
           acc[shop.id] = shop;
           return acc;
         }, {});
-        
-        setGroupBuys(gbData.map(gb => ({ ...gb, shops: shopsMap[gb.shop_id] || null })));
+        setGroupBuys(gbData.map((gb: any) => ({ ...gb, shops: shopsMap[gb.shop_id] || null })));
       } else {
         setGroupBuys(gbData);
       }
-    } else {
-      setGroupBuys([]);
     }
 
-    // 최신 게시물
-    const { data: postData, error: postError } = await supabase
-      .from("posts")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(3);
-    
-    if (postError) {
-      const { data: communityPostData } = await supabase
-        .from("community_posts")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(3);
-      setPosts(communityPostData || []);
-    } else if (postData && postData.length > 0) {
-      const userIds = postData.map(p => p.user_id).filter(Boolean);
+    // 게시물 + 프로필 정보
+    const postData = postResult.data || [];
+    if (postData.length > 0) {
+      const userIds = postData.map((p: any) => p.user_id).filter(Boolean);
       if (userIds.length > 0) {
-        const { data: profilesData } = await supabase
-          .from("profiles")
-          .select("id, nickname, avatar_url")
-          .in("id", userIds);
-        
+        const { data: profilesData } = await supabase.from("profiles").select("id, nickname, avatar_url").in("id", userIds);
         const profilesMap = (profilesData || []).reduce((acc: any, profile: any) => {
           acc[profile.id] = profile;
           return acc;
         }, {});
-        
-        setPosts(postData.map(post => ({ ...post, profiles: profilesMap[post.user_id] || null })));
+        setPosts(postData.map((post: any) => ({ ...post, profiles: profilesMap[post.user_id] || null })));
       } else {
         setPosts(postData);
       }
-    } else {
-      setPosts([]);
     }
 
-    // 공지사항
-    const { data: noticeData } = await supabase
-      .from("notices")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(3);
-    setNotices(noticeData || []);
-
-    // 최신 뉴스
-    const { data: newsData } = await supabase
-      .from("news")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(3);
-    setNews(newsData || []);
-
-    // 영상
-    const { data: videoData } = await supabase
-      .from("videos")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(4);
-    setVideos(videoData || []);
-
+    setNotices(noticeResult.data || []);
+    setNews(newsResult.data || []);
+    setVideos(videoResult.data || []);
     setLoading(false);
   };
 
@@ -367,7 +326,14 @@ export default function HomePage() {
                 }`}
               >
                 {banner.image_url ? (
-                  <img src={banner.image_url} alt={banner.title || ""} className="w-full h-full object-cover" />
+                  <Image 
+                    src={banner.image_url} 
+                    alt={banner.title || ""} 
+                    fill
+                    sizes="(max-width: 640px) 100vw, 640px"
+                    className="object-cover"
+                    priority={index === 0}
+                  />
                 ) : (
                   <div 
                     className="w-full h-full flex items-center relative overflow-hidden"
@@ -510,7 +476,7 @@ export default function HomePage() {
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-2">
-              {groupBuys.slice(0, 6).map((gb) => {
+              {groupBuys.slice(0, 6).map((gb, index) => {
                 const progress = Math.min(((gb.current_participants || 0) / (gb.target_participants || 1)) * 100, 100);
                 const thumbnail = getGbThumbnail(gb);
                 
@@ -518,7 +484,14 @@ export default function HomePage() {
                   <Link key={gb.id} href={`/groupbuy/${gb.id}`} className="rounded-xl overflow-hidden transition-colors duration-300" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}>
                     <div className="aspect-square relative overflow-hidden" style={{ backgroundColor: theme.bgInput }}>
                       {thumbnail ? (
-                        <img src={thumbnail} alt={gb.title || ""} className="w-full h-full object-cover transition-opacity duration-500" />
+                        <Image 
+                          src={thumbnail} 
+                          alt={gb.title || ""} 
+                          fill
+                          sizes="(max-width: 640px) 33vw, 200px"
+                          className="object-cover"
+                          loading={index < 3 ? "eager" : "lazy"}
+                        />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
                           <ShoppingCart className="w-8 h-8" style={{ color: theme.textMuted }} strokeWidth={1} />
@@ -546,9 +519,16 @@ export default function HomePage() {
         {/* 서브 배너 1 */}
         {subBanners.length > 0 && (
           <section className="px-4 mt-6">
-            <Link href={subBanners[0]?.link_url || "#"} className="block rounded-2xl overflow-hidden transition-colors duration-300" style={{ aspectRatio: '5/1', border: `1px solid ${theme.borderLight}` }}>
+            <Link href={subBanners[0]?.link_url || "#"} className="block rounded-2xl overflow-hidden transition-colors duration-300 relative" style={{ aspectRatio: '5/1', border: `1px solid ${theme.borderLight}` }}>
               {subBanners[0]?.image_url ? (
-                <img src={subBanners[0].image_url} alt={subBanners[0].title || ""} className="w-full h-full object-cover" />
+                <Image 
+                  src={subBanners[0].image_url} 
+                  alt={subBanners[0].title || ""} 
+                  fill
+                  sizes="(max-width: 640px) 100vw, 640px"
+                  className="object-cover"
+                  loading="lazy"
+                />
               ) : (
                 <div className="w-full h-full flex items-center justify-center gap-3 px-4" style={{ background: `linear-gradient(135deg, ${theme.bgInput}, ${theme.bgCard})` }}>
                   {subBanners[0]?.icon && <span className="text-2xl">{subBanners[0].icon}</span>}
@@ -673,9 +653,16 @@ export default function HomePage() {
         {/* 서브 배너 2 */}
         {subBanners.length > 1 && (
           <section className="px-4 mt-6">
-            <Link href={subBanners[1]?.link_url || "#"} className="block rounded-2xl overflow-hidden transition-colors duration-300" style={{ aspectRatio: '5/1', border: `1px solid ${theme.borderLight}` }}>
+            <Link href={subBanners[1]?.link_url || "#"} className="block rounded-2xl overflow-hidden transition-colors duration-300 relative" style={{ aspectRatio: '5/1', border: `1px solid ${theme.borderLight}` }}>
               {subBanners[1]?.image_url ? (
-                <img src={subBanners[1].image_url} alt={subBanners[1].title || ""} className="w-full h-full object-cover" />
+                <Image 
+                  src={subBanners[1].image_url} 
+                  alt={subBanners[1].title || ""} 
+                  fill
+                  sizes="(max-width: 640px) 100vw, 640px"
+                  className="object-cover"
+                  loading="lazy"
+                />
               ) : (
                 <div className="w-full h-full flex items-center justify-center gap-3 px-4" style={{ background: `linear-gradient(135deg, ${theme.bgInput}, ${theme.bgCard})` }}>
                   {subBanners[1]?.icon && <span className="text-2xl">{subBanners[1].icon}</span>}
@@ -710,7 +697,7 @@ export default function HomePage() {
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3">
-              {videos.slice(0, 4).map((video) => (
+              {videos.slice(0, 4).map((video, index) => (
                 <Link
                   key={video.id}
                   href={`/videos/${video.id}`}
@@ -719,7 +706,14 @@ export default function HomePage() {
                 >
                   <div className="aspect-video relative bg-black">
                     {video.thumbnail_url ? (
-                      <img src={video.thumbnail_url} alt={video.title} className="w-full h-full object-cover" />
+                      <Image 
+                        src={video.thumbnail_url} 
+                        alt={video.title} 
+                        fill
+                        sizes="(max-width: 640px) 50vw, 300px"
+                        className="object-cover"
+                        loading="lazy"
+                      />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <Video className="w-10 h-10" style={{ color: '#666' }} strokeWidth={1} />
