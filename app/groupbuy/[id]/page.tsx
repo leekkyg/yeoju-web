@@ -3,9 +3,16 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import Script from "next/script";
 import { supabase } from "@/lib/supabase";
 import { useTheme } from "@/contexts/ThemeContext";
-import { ArrowLeft, Home, Package, MapPin, ChevronLeft, ChevronRight, Minus, Plus, Check, ChevronDown, ChevronUp, Store, Copy } from "lucide-react";
+import { ArrowLeft, Home, Package, MapPin, ChevronLeft, ChevronRight, Minus, Plus, Check, ChevronDown, ChevronUp, Store, Copy, Search } from "lucide-react";
+
+declare global {
+  interface Window {
+    daum: any;
+  }
+}
 
 interface GroupBuy {
   id: number;
@@ -43,6 +50,13 @@ interface GroupBuy {
     bank_account?: string;
     bank_holder?: string;
   };
+}
+
+interface SavedAddress {
+  id: string;
+  address: string;
+  address_detail: string;
+  zonecode: string;
 }
 
 // 이미지 슬라이더
@@ -157,8 +171,26 @@ export default function GroupBuyDetailPage() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [deliveryMethod, setDeliveryMethod] = useState<"pickup" | "delivery">("pickup");
+  
+  // 주소 관련 state
   const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [deliveryAddressDetail, setDeliveryAddressDetail] = useState("");
+  const [deliveryZonecode, setDeliveryZonecode] = useState("");
+  const [saveAddress, setSaveAddress] = useState(true);
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
+  const [showSavedAddresses, setShowSavedAddresses] = useState(false);
+  
   const [submitting, setSubmitting] = useState(false);
+  const [daumLoaded, setDaumLoaded] = useState(false);
+
+// 다음 우편번호 스크립트 동적 로드
+useEffect(() => {
+  const script = document.createElement('script');
+  script.src = '//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js';
+  script.async = true;
+  script.onload = () => setDaumLoaded(true);
+  document.head.appendChild(script);
+}, []);
 
   useEffect(() => { checkAuth(); }, []);
   useEffect(() => { fetchGroupBuy(); }, [params.id, user]);
@@ -168,19 +200,42 @@ export default function GroupBuyDetailPage() {
     setUser(user);
     
     if (user) {
-      // 이전 공구 참여 기록에서 이름/연락처/배달주소 가져오기
-      const { data: lastParticipation } = await supabase
-        .from("group_buy_participants")
-        .select("name, phone, delivery_address")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
+      // 프로필에서 저장된 주소 가져오기
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("saved_addresses, default_name, default_phone")
+        .eq("id", user.id)
         .single();
       
-      if (lastParticipation) {
-        if (lastParticipation.name) setName(lastParticipation.name);
-        if (lastParticipation.phone) setPhone(lastParticipation.phone);
-        if (lastParticipation.delivery_address) setDeliveryAddress(lastParticipation.delivery_address);
+      if (profile) {
+        if (profile.default_name) setName(profile.default_name);
+        if (profile.default_phone) setPhone(profile.default_phone);
+        if (profile.saved_addresses && Array.isArray(profile.saved_addresses)) {
+          setSavedAddresses(profile.saved_addresses);
+          // 저장된 주소가 있으면 첫 번째 주소 자동 선택
+          if (profile.saved_addresses.length > 0) {
+            const firstAddr = profile.saved_addresses[0];
+            setDeliveryAddress(firstAddr.address);
+            setDeliveryAddressDetail(firstAddr.address_detail || "");
+            setDeliveryZonecode(firstAddr.zonecode || "");
+          }
+        }
+      }
+      
+      // 이전 공구 참여 기록에서 이름/연락처 가져오기 (프로필에 없을 경우)
+      if (!profile?.default_name || !profile?.default_phone) {
+        const { data: lastParticipation } = await supabase
+          .from("group_buy_participants")
+          .select("name, phone")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+        
+        if (lastParticipation) {
+          if (!name && lastParticipation.name) setName(lastParticipation.name);
+          if (!phone && lastParticipation.phone) setPhone(lastParticipation.phone);
+        }
       }
     }
   };
@@ -215,6 +270,65 @@ export default function GroupBuyDetailPage() {
       }
     }
     setLoading(false);
+  };
+
+  // 다음 주소 검색 열기
+  const openAddressSearch = () => {
+    if (!daumLoaded || !window.daum) {
+      alert("주소 검색을 불러오는 중입니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+
+    new window.daum.Postcode({
+      oncomplete: function(data: any) {
+        // 도로명 주소 우선, 없으면 지번 주소
+        const address = data.roadAddress || data.jibunAddress;
+        setDeliveryAddress(address);
+        setDeliveryZonecode(data.zonecode);
+        setDeliveryAddressDetail(""); // 상세주소 초기화
+        setShowSavedAddresses(false);
+      }
+    }).open();
+  };
+
+  // 저장된 주소 선택
+  const selectSavedAddress = (addr: SavedAddress) => {
+    setDeliveryAddress(addr.address);
+    setDeliveryAddressDetail(addr.address_detail || "");
+    setDeliveryZonecode(addr.zonecode || "");
+    setShowSavedAddresses(false);
+  };
+
+  // 주소 저장
+  const saveAddressToProfile = async () => {
+    if (!user || !deliveryAddress) return;
+
+    const newAddress: SavedAddress = {
+      id: Date.now().toString(),
+      address: deliveryAddress,
+      address_detail: deliveryAddressDetail,
+      zonecode: deliveryZonecode,
+    };
+
+    // 중복 체크
+    const isDuplicate = savedAddresses.some(
+      addr => addr.address === newAddress.address && addr.address_detail === newAddress.address_detail
+    );
+
+    if (!isDuplicate) {
+      const updatedAddresses = [newAddress, ...savedAddresses].slice(0, 5); // 최대 5개
+
+      await supabase
+        .from("profiles")
+        .update({ 
+          saved_addresses: updatedAddresses,
+          default_name: name,
+          default_phone: phone,
+        })
+        .eq("id", user.id);
+
+      setSavedAddresses(updatedAddresses);
+    }
   };
 
   const getDiscountPercent = (original: number, sale: number) => Math.round((1 - sale / original) * 100);
@@ -259,6 +373,15 @@ export default function GroupBuyDetailPage() {
     if (!name.trim() || !phone.trim()) { alert("이름과 연락처를 입력해주세요"); return; }
     if (deliveryMethod === "delivery" && !deliveryAddress.trim()) { alert("배달 주소를 입력해주세요"); return; }
     setSubmitting(true);
+
+    // 주소 저장 체크되어 있으면 저장
+    if (deliveryMethod === "delivery" && saveAddress && deliveryAddress) {
+      await saveAddressToProfile();
+    }
+
+    const fullDeliveryAddress = deliveryMethod === "delivery" 
+      ? `${deliveryAddress}${deliveryAddressDetail ? ` ${deliveryAddressDetail}` : ""}`
+      : null;
     
     // 참여 신청
     const { error } = await supabase.from("group_buy_participants").insert({
@@ -269,12 +392,13 @@ export default function GroupBuyDetailPage() {
       quantity, 
       status: "unpaid",
       delivery_method: deliveryMethod,
-      delivery_address: deliveryMethod === "delivery" ? deliveryAddress.trim() : null,
+      delivery_address: fullDeliveryAddress,
+      delivery_zonecode: deliveryMethod === "delivery" ? deliveryZonecode : null,
     });
     if (error) { alert("참여 신청 실패"); setSubmitting(false); return; }
     
     await supabase.from("group_buys").update({ current_quantity: (groupBuy?.current_quantity || 0) + quantity }).eq("id", groupBuy?.id);
-    alert("참여 신청 완료!");
+    alert("참여 신청 완료!\n입금 확인 후 픽업 1시간 전 안내 알림을 보내드립니다.");
     setShowJoinModal(false);
     setAlreadyJoined(true);
     fetchGroupBuy();
@@ -302,6 +426,12 @@ export default function GroupBuyDetailPage() {
 
   return (
     <div className="min-h-screen pb-24" style={{ backgroundColor: theme.bgMain }}>
+      {/* 다음 우편번호 스크립트 */}
+      <Script 
+        src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"
+        onLoad={() => setDaumLoaded(true)}
+      />
+
       {/* 헤더 */}
       <header className="fixed top-0 left-0 right-0 z-50" style={{ backgroundColor: theme.bgCard }}>
         <div className="max-w-[640px] mx-auto px-4 h-14 flex items-center justify-between border-b" style={{ borderColor: theme.border }}>
@@ -412,9 +542,18 @@ export default function GroupBuyDetailPage() {
         {/* 내 참여 현황 */}
         {alreadyJoined && myParticipation && (
           <div className="mt-4 p-4 rounded-2xl" style={{ backgroundColor: theme.bgCard }}>
-            <div className="flex items-center gap-2 mb-3">
-              <Check className="w-5 h-5" style={{ color: theme.accent }} />
-              <h3 className="font-bold" style={{ color: theme.textPrimary }}>참여 완료</h3>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Check className="w-5 h-5" style={{ color: theme.accent }} />
+                <h3 className="font-bold" style={{ color: theme.textPrimary }}>참여 완료</h3>
+              </div>
+              <Link 
+                href="/mypage/groupbuys" 
+                className="text-sm font-medium px-3 py-1.5 rounded-lg"
+                style={{ backgroundColor: theme.bgInput, color: theme.accent }}
+              >
+                주문현황
+              </Link>
             </div>
             <div className="p-3 rounded-xl space-y-2" style={{ backgroundColor: theme.bgInput }}>
               <div className="flex justify-between">
@@ -429,35 +568,14 @@ export default function GroupBuyDetailPage() {
                 <span className="text-sm" style={{ color: theme.textMuted }}>금액</span>
                 <span className="text-sm font-medium" style={{ color: theme.textPrimary }}>{(groupBuy.sale_price * myParticipation.quantity).toLocaleString()}원</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-sm" style={{ color: theme.textMuted }}>주문 일시</span>
-                <span className="text-sm font-medium" style={{ color: theme.textPrimary }}>
-                  {new Date(myParticipation.created_at).toLocaleString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                </span>
-              </div>
-              {groupBuy.end_date && (
-                <div className="flex justify-between">
-                  <span className="text-sm" style={{ color: theme.textMuted }}>마감일</span>
-                  <span className="text-sm font-medium" style={{ color: "#EF4444" }}>
-                    {new Date(groupBuy.end_date).toLocaleString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                </div>
-              )}
-              {groupBuy.pickup_date && (
-                <div className="flex justify-between">
-                  <span className="text-sm" style={{ color: theme.textMuted }}>픽업 날짜</span>
-                  <span className="text-sm font-medium" style={{ color: theme.accent }}>
-                    {new Date(groupBuy.pickup_date).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })}
-                    {groupBuy.pickup_start_time && ` ${groupBuy.pickup_start_time}`}
-                    {groupBuy.pickup_end_time && ` ~ ${groupBuy.pickup_end_time}`}
-                  </span>
-                </div>
-              )}
               <div className="flex justify-between pt-2 border-t" style={{ borderColor: theme.border }}>
                 <span className="text-sm" style={{ color: theme.textMuted }}>상태</span>
                 <span className="text-sm font-bold" style={{ color: getStatusColor(myParticipation.status) }}>{getStatusText(myParticipation.status)}</span>
               </div>
             </div>
+            <p className="text-xs mt-3 text-center" style={{ color: theme.accent }}>
+              입금 확인 후 픽업 1시간 전 안내 알림을 보내드립니다
+            </p>
           </div>
         )}
 
@@ -479,6 +597,9 @@ export default function GroupBuyDetailPage() {
                 <div className="flex gap-3"><span className="text-sm w-20 shrink-0" style={{ color: theme.textMuted }}>소재지</span><span className="text-sm" style={{ color: theme.textPrimary }}>{groupBuy.shop?.business_address || "-"}</span></div>
                 <div className="flex gap-3"><span className="text-sm w-20 shrink-0" style={{ color: theme.textMuted }}>연락처</span><span className="text-sm" style={{ color: theme.textPrimary }}>{groupBuy.shop?.contact || "-"}</span></div>
               </div>
+              <p className="text-xs mt-3 text-center" style={{ color: theme.textMuted }}>
+                별도의 문의사항은 매장으로 직접 연락주세요.
+              </p>
             </div>
           )}
         </div>
@@ -494,7 +615,18 @@ export default function GroupBuyDetailPage() {
               참여현황 관리
             </Link>
           ) : alreadyJoined ? (
-            <button disabled className="w-full py-4 rounded-xl font-bold" style={{ backgroundColor: theme.bgInput, color: theme.textMuted }}>이미 참여한 공구입니다</button>
+  <div className="flex gap-2">
+    <button disabled className="flex-1 py-4 rounded-xl font-bold text-sm" style={{ backgroundColor: theme.bgInput, color: theme.textMuted }}>
+      이미 참여한 공구예요
+    </button>
+    <Link 
+      href="/mypage/groupbuys" 
+      className="px-4 py-4 rounded-xl font-bold text-sm whitespace-nowrap"
+      style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}
+    >
+      주문현황
+    </Link>
+  </div>
           ) : remainingStock <= 0 ? (
             <button disabled className="w-full py-4 rounded-xl font-bold" style={{ backgroundColor: theme.bgInput, color: theme.textMuted }}>품절되었습니다</button>
           ) : (
@@ -507,7 +639,7 @@ export default function GroupBuyDetailPage() {
       {showJoinModal && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center">
           <div className="absolute inset-0 bg-black/50" onClick={() => setShowJoinModal(false)} />
-          <div className="relative w-full max-w-[640px] rounded-t-2xl p-5 pb-8" style={{ backgroundColor: theme.bgCard }}>
+          <div className="relative w-full max-w-[640px] rounded-t-2xl p-5 pb-8 max-h-[90vh] overflow-y-auto" style={{ backgroundColor: theme.bgCard }}>
             <div className="w-10 h-1 rounded-full mx-auto mb-4" style={{ backgroundColor: theme.border }} />
             <h3 className="text-lg font-bold mb-4" style={{ color: theme.textPrimary }}>참여 신청</h3>
 
@@ -599,14 +731,85 @@ export default function GroupBuyDetailPage() {
             {deliveryMethod === "delivery" && (
               <div className="mb-4">
                 <label className="block text-sm font-medium mb-2" style={{ color: theme.textSecondary }}>배달 주소</label>
-                <input 
-                  type="text" 
-                  value={deliveryAddress} 
-                  onChange={(e) => setDeliveryAddress(e.target.value)} 
-                  placeholder="배달받을 주소를 입력하세요" 
-                  className="w-full px-4 py-3 rounded-xl" 
-                  style={{ backgroundColor: theme.bgInput, color: theme.textPrimary, border: `1px solid ${theme.border}` }} 
-                />
+                
+                {/* 저장된 주소 선택 */}
+                {savedAddresses.length > 0 && (
+                  <div className="mb-2">
+                    <button
+                      onClick={() => setShowSavedAddresses(!showSavedAddresses)}
+                      className="w-full px-4 py-3 rounded-xl text-left flex items-center justify-between"
+                      style={{ backgroundColor: theme.bgInput, border: `1px solid ${theme.border}` }}
+                    >
+                      <span className="text-sm" style={{ color: theme.textSecondary }}>저장된 주소에서 선택</span>
+                      {showSavedAddresses ? <ChevronUp className="w-4 h-4" style={{ color: theme.textMuted }} /> : <ChevronDown className="w-4 h-4" style={{ color: theme.textMuted }} />}
+                    </button>
+                    {showSavedAddresses && (
+                      <div className="mt-2 rounded-xl overflow-hidden" style={{ border: `1px solid ${theme.border}` }}>
+                        {savedAddresses.map((addr, idx) => (
+                          <button
+                            key={addr.id}
+                            onClick={() => selectSavedAddress(addr)}
+                            className="w-full px-4 py-3 text-left"
+                            style={{ 
+                              backgroundColor: theme.bgInput,
+                              borderBottom: idx < savedAddresses.length - 1 ? `1px solid ${theme.border}` : 'none'
+                            }}
+                          >
+                            <p className="text-sm font-medium" style={{ color: theme.textPrimary }}>{addr.address}</p>
+                            {addr.address_detail && (
+                              <p className="text-xs" style={{ color: theme.textMuted }}>{addr.address_detail}</p>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 주소 검색 */}
+                <div className="flex gap-2 mb-2">
+                  <input 
+                    type="text" 
+                    value={deliveryAddress} 
+                    readOnly
+                    placeholder="주소를 검색하세요" 
+                    className="flex-1 px-4 py-3 rounded-xl" 
+                    style={{ backgroundColor: theme.bgInput, color: theme.textPrimary, border: `1px solid ${theme.border}` }} 
+                  />
+                  <button
+                    onClick={openAddressSearch}
+                    className="px-4 py-3 rounded-xl font-medium flex items-center gap-1"
+                    style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}
+                  >
+                    <Search className="w-4 h-4" />
+                    검색
+                  </button>
+                </div>
+
+                {/* 상세 주소 */}
+                {deliveryAddress && (
+                  <input 
+                    type="text" 
+                    value={deliveryAddressDetail} 
+                    onChange={(e) => setDeliveryAddressDetail(e.target.value)} 
+                    placeholder="상세주소 (동/호수)" 
+                    className="w-full px-4 py-3 rounded-xl mb-2" 
+                    style={{ backgroundColor: theme.bgInput, color: theme.textPrimary, border: `1px solid ${theme.border}` }} 
+                  />
+                )}
+
+                {/* 주소 저장 체크박스 */}
+                {deliveryAddress && (
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={saveAddress}
+                      onChange={(e) => setSaveAddress(e.target.checked)}
+                      className="w-4 h-4 rounded"
+                    />
+                    <span className="text-sm" style={{ color: theme.textSecondary }}>이 주소 저장하기</span>
+                  </label>
+                )}
               </div>
             )}
 
