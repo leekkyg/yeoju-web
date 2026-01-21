@@ -5,7 +5,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 // 테마 컬러 시스템
 export const themes = {
   dark: {
-    bgMain: '#121212',
+    bgMain: '#252529',
     bgCard: '#1E1E1E',
     bgCardHover: '#252525',
     bgElevated: '#2A2A2A',
@@ -28,11 +28,11 @@ export const themes = {
     btnSecondaryText: '#D0D0D0',
   },
   light: {
-    bgMain: '#F5F5F5',
+    bgMain: '#F5F0EB',
     bgCard: '#FFFFFF',
     bgCardHover: '#FAFAFA',
     bgElevated: '#FFFFFF',
-    bgInput: '#F0F0F0',
+    bgInput: '#F7F7F7',
     textPrimary: '#2D2D2D',
     textSecondary: '#666666',
     textMuted: '#999999',

@@ -1,5 +1,6 @@
 import { Metadata } from "next";
 import { createClient } from "@supabase/supabase-js";
+import { use } from "react";
 import CommunityDetailClient from "./CommunityDetailClient";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -40,8 +41,8 @@ function getYoutubeThumbnail(url: string): string | null {
 }
 
 // 동적 메타데이터 생성
-export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
-  const postId = params.id;
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id: postId } = await params;
   
   // 게시물 조회
   const { data: post } = await supabase
@@ -64,19 +65,23 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
   const description = post.content?.slice(0, 150)?.replace(/\n/g, ' ') || "여주시민들의 소통 공간";
 
   // 섬네일 결정 (우선순위)
-  let thumbnail = DEFAULT_OG_IMAGE;
+let thumbnail = DEFAULT_OG_IMAGE;
 
-  // 1. 게시물에 첨부된 이미지가 있으면 첫 번째 이미지 사용
-  if (post.images && post.images.length > 0) {
-    const images = typeof post.images === 'string' ? JSON.parse(post.images) : post.images;
-    if (images.length > 0) {
-      // 비디오가 아닌 첫 번째 이미지 찾기
-      const firstImage = images.find((url: string) => !/\.(mp4|mov|webm|avi)/i.test(url));
-      if (firstImage) {
-        thumbnail = firstImage;
-      }
+// 1. 영상 썸네일이 있으면 사용
+if (post.thumbnail_url) {
+  thumbnail = post.thumbnail_url;
+}
+// 2. 게시물에 첨부된 이미지가 있으면 첫 번째 이미지 사용
+else if (post.images && post.images.length > 0) {
+  const images = typeof post.images === 'string' ? JSON.parse(post.images) : post.images;
+  if (images.length > 0) {
+    // 비디오가 아닌 첫 번째 이미지 찾기
+    const firstImage = images.find((url: string) => !/\.(mp4|mov|webm|avi)/i.test(url));
+    if (firstImage) {
+      thumbnail = firstImage;
     }
   }
+}
   
   // 2. 이미지가 없고 본문에 링크가 있으면 링크 프리뷰 이미지 사용
   if (thumbnail === DEFAULT_OG_IMAGE && post.content) {
@@ -135,7 +140,8 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
   };
 }
 
-// 페이지 컴포넌트
-export default function CommunityDetailPage({ params }: { params: { id: string } }) {
-  return <CommunityDetailClient postId={params.id} />;
+// 페이지 컴포넌트 - use()로 params 언래핑
+export default function CommunityDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
+  return <CommunityDetailClient postId={id} />;
 }

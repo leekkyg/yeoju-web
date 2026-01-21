@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { supabase } from "@/lib/supabase";
 import { useTheme } from "@/contexts/ThemeContext";
 
@@ -317,7 +318,7 @@ export default function GroupBuyListPage() {
 
         {/* 상품 목록 - 3열 그리드 */}
         <div className="grid grid-cols-3 gap-2">
-          {filteredGroupBuys.map(gb => {
+          {filteredGroupBuys.map((gb, index) => {
             const discountPercent = getDiscountPercent(gb.original_price, gb.sale_price);
             const progress = getProgress(gb.current_quantity, gb.min_quantity);
             const timeLeft = getTimeLeft(gb.end_at);
@@ -330,13 +331,18 @@ export default function GroupBuyListPage() {
                 className="block rounded-xl overflow-hidden border shadow-sm hover:shadow-md transition-all group"
                 style={{ backgroundColor: theme.bgCard, borderColor: theme.border }}
               >
-                {/* 이미지 */}
+                {/* 이미지 - Next.js Image 사용 */}
                 <div className="aspect-square relative overflow-hidden" style={{ backgroundColor: theme.bgInput }}>
                   {gb.image_url ? (
-                    <img 
+                    <Image 
                       src={gb.image_url} 
                       alt={gb.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      fill
+                      sizes="(max-width: 640px) 33vw, 200px"
+                      className="object-cover group-hover:scale-105 transition-transform duration-500"
+                      loading={index < 6 ? "eager" : "lazy"}
+                      placeholder="blur"
+                      blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAn/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCwAB//2Q=="
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
@@ -399,7 +405,7 @@ export default function GroupBuyListPage() {
                       />
                     </div>
                     <p className="text-[10px] mt-0.5 text-right" style={{ color: theme.textMuted }}>
-                      {gb.current_quantity}/{gb.min_quantity}명
+                      남은재고 {Math.max(0, (gb.min_quantity || 0) - (gb.current_quantity || 0))}개
                     </p>
                   </div>
                 </div>

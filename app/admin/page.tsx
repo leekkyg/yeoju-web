@@ -19,6 +19,8 @@ import {
   PenSquare,
   MessageSquare,
   ShoppingBag,
+  Crown,
+  UserCheck,
 } from "lucide-react";
 
 export default function AdminDashboard() {
@@ -39,6 +41,7 @@ export default function AdminDashboard() {
     totalNotices: 0,
     todayUsers: 0,
     todayPosts: 0,
+    pendingSellerApps: 0,
   });
 
   useEffect(() => {
@@ -82,6 +85,7 @@ export default function AdminDashboard() {
     const { count: totalNotices } = await supabase.from("notices").select("*", { count: "exact", head: true });
     const { count: todayUsers } = await supabase.from("profiles").select("*", { count: "exact", head: true }).gte("created_at", todayISO);
     const { count: todayPosts } = await supabase.from("posts").select("*", { count: "exact", head: true }).gte("created_at", todayISO);
+    const { count: pendingSellerApps } = await supabase.from("seller_applications").select("*", { count: "exact", head: true }).eq("status", "pending");
 
     setStats({
       totalUsers: totalUsers || 0,
@@ -94,6 +98,7 @@ export default function AdminDashboard() {
       totalNotices: totalNotices || 0,
       todayUsers: todayUsers || 0,
       todayPosts: todayPosts || 0,
+      pendingSellerApps: pendingSellerApps || 0,
     });
   };
 
@@ -110,6 +115,8 @@ export default function AdminDashboard() {
     { href: "/admin/posts", icon: FileText, label: "게시물 관리", count: stats.totalPosts, color: theme.accent },
     { href: "/admin/reports", icon: AlertTriangle, label: "신고 관리", count: stats.pendingReports, badge: true, color: theme.red },
     { href: "/admin/shops", icon: Store, label: "상점 관리", count: stats.pendingShops, badge: true, color: theme.accent },
+    { href: "/admin/seller-applications", icon: UserCheck, label: "셀러 신청 관리", count: stats.pendingSellerApps, badge: true, color: theme.accent },
+    { href: "/admin/seller-plans", icon: Crown, label: "셀러 요금제 관리", count: 0, color: "#FBBF24" },
     { href: "/admin/messages", icon: Mail, label: "쪽지 관리", count: 0, color: theme.accent },
     { href: "/notices", icon: Megaphone, label: "공지사항", count: stats.totalNotices, color: theme.accent },
   ];

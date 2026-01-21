@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, Suspense, useCallback } from "react";
+import { useEffect, useState, useRef, Suspense, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -72,6 +72,10 @@ function CommunityPageContent() {
   
   const [listAds, setListAds] = useState<any[]>([]);
   const [detailAd, setDetailAd] = useState<any>(null);
+  
+  // 좋아요/댓글 작성자 목록 모달
+  const [likersModal, setLikersModal] = useState<{ postId: number; users: any[] } | null>(null);
+  const [commentersModal, setCommentersModal] = useState<{ postId: number; users: any[] } | null>(null);
   
   const [editProfileModal, setEditProfileModal] = useState(false);
   const [editNickname, setEditNickname] = useState("");
@@ -172,6 +176,45 @@ function CommunityPageContent() {
         });
       }
     });
+  }, [posts]);
+
+  // 스크롤 감지용 ref (리렌더링 방지)
+  const expandedPostsRef = useRef(expandedPosts);
+  const playingVideoRef = useRef(playingVideo);
+  useEffect(() => { expandedPostsRef.current = expandedPosts; }, [expandedPosts]);
+  useEffect(() => { playingVideoRef.current = playingVideo; }, [playingVideo]);
+
+  // 스크롤 시 펼쳐진 글 자동 접기 + 영상 정지
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const postId = Number(entry.target.getAttribute('data-post-id'));
+          if (!entry.isIntersecting && postId) {
+            // 펼쳐진 글 접기
+            if (expandedPostsRef.current.has(postId)) {
+              setExpandedPosts(prev => {
+                const n = new Set(prev);
+                n.delete(postId);
+                return n;
+              });
+            }
+            // 재생 중인 영상 정지
+            if (playingVideoRef.current === postId) {
+              setPlayingVideo(null);
+            }
+          }
+        });
+      },
+      { threshold: 0.1 }
+    );
+
+    postRefs.current.forEach((el, postId) => {
+      el.setAttribute('data-post-id', String(postId));
+      observer.observe(el);
+    });
+
+    return () => observer.disconnect();
   }, [posts]);
 
   useEffect(() => {
@@ -321,15 +364,40 @@ useEffect(() => {
   const togglePost = (postId: number) => setExpandedPosts(prev => { const n = new Set(prev); if (n.has(postId)) n.delete(postId); else n.add(postId); return n; });
 
   const openDetailModal = async (post: any, scrollToComments: boolean = false, photoMode: boolean = false) => {
-    setDetailModal(post); setPhotoModeOpen(photoMode); setLoadingComments(true); setReplyingTo(null); setNewComment(""); setCommentImages([]); setCommentImagePreviews([]);
-    const { data } = await supabase.from("comments").select("*").eq("post_id", post.id).order("created_at", { ascending: true });
+    setPlayingVideo(null);
+    setDetailModal(post);
+    setPhotoModeOpen(photoMode);
+    setLoadingComments(true);
+    setReplyingTo(null);
+    setNewComment("");
+    setCommentImages([]);
+    setCommentImagePreviews([]);
+
+    const { data, error } = await supabase
+      .from("comments")
+      .select("*")
+      .eq("post_id", post.id)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("댓글 에러:", error);
+      setComments([]);
+      setLoadingComments(false);
+      return;
+    }
+
     if (data && user) {
-      const { data: likedComments } = await supabase.from("comment_likes").select("comment_id").eq("user_id", user.id);
+      const { data: likedComments } = await supabase
+        .from("comment_likes")
+        .select("comment_id")
+        .eq("user_id", user.id);
       const likedIds = new Set(likedComments?.map(l => l.comment_id) || []);
       setComments(data.map(c => ({ ...c, liked: likedIds.has(c.id) })));
-    } else setComments(data || []);
+    } else {
+      setComments(data || []);
+    }
+    
     setLoadingComments(false);
-    if (scrollToComments) setTimeout(() => commentInputRef.current?.focus(), 400);
   };
 
   const closeDetailModal = () => { 
@@ -353,7 +421,39 @@ useEffect(() => {
   };
 
   const removeMedia = (index: number) => { setMediaFiles(mediaFiles.filter((_, i) => i !== index)); setMediaPreviews(mediaPreviews.filter((_, i) => i !== index)); };
-
+// 영상 첫 프레임 캡처
+const captureVideoThumbnail = (file: File): Promise<string | null> => {
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    const canvas = document.createElement('canvas');
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
+    
+    video.onloadeddata = () => {
+      video.currentTime = 1; // 1초 지점 캡처
+    };
+    
+    video.onseeked = () => {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx?.drawImage(video, 0, 0);
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const thumbnailFile = new File([blob], 'thumbnail.jpg', { type: 'image/jpeg' });
+          uploadSmallFile(thumbnailFile).then(url => resolve(url)).catch(() => resolve(null));
+        } else {
+          resolve(null);
+        }
+        URL.revokeObjectURL(video.src);
+      }, 'image/jpeg', 0.8);
+    };
+    
+    video.onerror = () => resolve(null);
+    video.src = URL.createObjectURL(file);
+  });
+};
   const compressImage = async (file: File): Promise<File> => {
     if (!file.type.startsWith('image/') || file.size < 1024 * 1024) return file;
     return new Promise((resolve) => {
@@ -421,7 +521,24 @@ useEffect(() => {
       for (let i = 0; i < mediaFiles.length; i++) uploadedUrls.push(await uploadFile(mediaFiles[i], i, mediaFiles.length));
       const ipAddress = await getClientIP();
       const nickname = userProfile?.nickname || user.email?.split('@')[0] || '사용자';
-      const { data: newPost, error } = await supabase.from("posts").insert({ title: content.slice(0, 50), content, images: uploadedUrls, is_anonymous: isAnonymous, author_nickname: nickname, ip_address: ipAddress, user_id: user.id }).select().single();
+      // 영상이 있으면 썸네일 생성
+let thumbnailUrl = null;
+const videoFile = mediaFiles.find(f => f.type.startsWith('video/'));
+if (videoFile) {
+  thumbnailUrl = await captureVideoThumbnail(videoFile);
+}
+
+const { data: newPost, error } = await supabase.from("posts").insert({ 
+  title: content.slice(0, 50), 
+  content, 
+  images: uploadedUrls, 
+  is_anonymous: isAnonymous, 
+  author_nickname: nickname, 
+  ip_address: ipAddress, 
+  user_id: user.id,
+  thumbnail_url: thumbnailUrl
+}).select().single();
+
       if (error) throw error;
       if (!isAnonymous && newPost) await notifyFollowers(newPost.id);
       setContent(""); setMediaFiles([]); setMediaPreviews([]); setIsAnonymous(false); setUploadProgress(0); setWritingLinkPreview(null); setIsWriting(false);
@@ -512,6 +629,38 @@ useEffect(() => {
     } catch (error: any) { alert("댓글 작성 실패: " + error.message); }
   };
 
+  // 좋아요 누른 사람 목록 가져오기
+  const fetchLikers = async (postId: number) => {
+    const { data } = await supabase
+      .from("likes")
+      .select("user_id, profiles!inner(nickname, avatar_url)")
+      .eq("post_id", postId);
+    if (data) {
+      const users = data.map((d: any) => ({
+        nickname: d.profiles?.nickname || '사용자',
+        avatar_url: d.profiles?.avatar_url
+      }));
+      setLikersModal({ postId, users });
+    }
+  };
+
+  // 댓글 작성자 목록 가져오기
+  const fetchCommenters = async (postId: number) => {
+    const { data } = await supabase
+      .from("comments")
+      .select("author_nickname, is_anonymous, user_id")
+      .eq("post_id", postId);
+    if (data) {
+      // 중복 제거 (같은 작성자가 여러 댓글 달았을 수 있음)
+      const uniqueUsers = Array.from(new Map(data.map(d => [d.user_id, d])).values());
+      const users = uniqueUsers.map((d: any) => ({
+        nickname: d.is_anonymous ? '익명' : (d.author_nickname || '사용자'),
+        is_anonymous: d.is_anonymous
+      }));
+      setCommentersModal({ postId, users });
+    }
+  };
+
   const handleShare = async (post: any) => { const shareUrl = `${window.location.origin}/community/${post.id}`; try { await navigator.clipboard.writeText(shareUrl); alert('링크가 복사되었습니다'); } catch { const textArea = document.createElement('textarea'); textArea.value = shareUrl; document.body.appendChild(textArea); textArea.select(); document.execCommand('copy'); document.body.removeChild(textArea); alert('링크가 복사되었습니다'); } };
 
   const extractLinks = (text: string): string[] => text?.match(/(https?:\/\/[^\s]+)/g) || [];
@@ -588,7 +737,7 @@ useEffect(() => {
     const fileRef = useRef<HTMLInputElement>(null);
     
     useEffect(() => {
-      setTimeout(() => inputRef.current?.focus(), 100);
+      // 자동 포커스 제거 - 모바일 키보드 방지
     }, []);
     
     const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -735,7 +884,7 @@ useEffect(() => {
 
   // 댓글 컴포넌트
   const CommentItem = ({ comment, depth = 0, parentId = null }: { comment: any, depth?: number, parentId?: number | null }) => {
-    const replies = comments.filter(c => c.parent_id === comment.id);
+    const replies = comments.filter(c => Number(c.parent_id) === Number(comment.id));
     const isExpanded = expandedComments.has(comment.id);
     const showReplies = expandedReplies.has(comment.id);
     const isLong = comment.content?.length > 150;
@@ -881,7 +1030,8 @@ useEffect(() => {
   const renderPost = (post: any) => {
     const isExpanded = expandedPosts.has(post.id);
     const mediaItems = getMediaItems(post);
-    const isLongText = post.content?.length > 100;
+    const hasNewline = (post.content || '').includes('\n');
+    const isLongText = (post.content?.length > 80) || hasNewline;
     const links = extractLinks(post.content || '');
     const firstLink = links[0];
     const youtubeId = firstLink ? getYoutubeId(firstLink) : null;
@@ -920,11 +1070,19 @@ useEffect(() => {
           </div>
         </div>
 
-        {/* 본문 */}
+        {/* 본문 - 2줄 기준 */}
         <div className="px-4 py-3">
           {isLongText && !isExpanded ? (
-            <p className="text-[15px] whitespace-pre-wrap" style={{ color: theme.textPrimary }}>{post.content.slice(0, 100)}...<button onClick={() => togglePost(post.id)} className="text-sm ml-1 font-medium" style={{ color: theme.accent }}>더 보기</button></p>
-          ) : (<><p className="text-[15px] whitespace-pre-wrap" style={{ color: theme.textPrimary }}>{post.content}</p>{isLongText && isExpanded && <button onClick={() => togglePost(post.id)} className="text-sm font-medium mt-1" style={{ color: theme.accent }}>접기</button>}</>)}
+            <div>
+              <p className="text-[15px] whitespace-pre-wrap line-clamp-2" style={{ color: theme.textPrimary }}>{post.content}</p>
+              <button onClick={() => togglePost(post.id)} className="text-sm font-medium mt-1" style={{ color: theme.accent }}>더보기</button>
+            </div>
+          ) : (
+            <div>
+              <p className="text-[15px] whitespace-pre-wrap" style={{ color: theme.textPrimary }}>{post.content}</p>
+              {isLongText && isExpanded && <button onClick={() => togglePost(post.id)} className="text-sm font-medium mt-1" style={{ color: theme.accent }}>접기</button>}
+            </div>
+          )}
         </div>
 
         {/* 유튜브 */}
@@ -933,17 +1091,32 @@ useEffect(() => {
         {/* 링크 프리뷰 */}
         {!youtubeId && linkPreview && (<div className="cursor-pointer" onClick={() => openLink(firstLink)}>{linkPreview.image && <img src={linkPreview.image} alt="" className="w-full h-82 object-cover" />}<div className="px-4 py-3" style={{ backgroundColor: theme.bgInput, borderTop: `1px solid ${theme.borderLight}` }}><p className="text-xs uppercase" style={{ color: theme.textMuted }}>{linkPreview.domain}</p><p className="font-semibold mt-1 line-clamp-2" style={{ color: theme.textPrimary }}>{linkPreview.title}</p>{linkPreview.description && <p className="text-sm mt-1 line-clamp-2" style={{ color: theme.textSecondary }}>{linkPreview.description}</p>}</div></div>)}
 
-        {/* 미디어 */}
-        {mediaItems.length > 0 && (
-          <div className={`cursor-pointer ${mediaItems.length === 1 ? '' : 'grid grid-cols-2 gap-[2px]'}`} onClick={() => mediaItems.length === 1 ? openLightbox(mediaItems, 0) : openDetailModal(post, false, true)}>
-            {mediaItems.slice(0, 4).map((item, idx) => (
-              <div key={idx} className={`relative overflow-hidden ${mediaItems.length === 3 && idx === 0 ? 'row-span-2' : ''}`}>
-                {item.type === 'video' ? (<div className="relative"><video src={item.url} className={`w-full object-cover ${mediaItems.length === 1 ? 'max-h-[500px]' : 'h-48'}`} /><div className="absolute inset-0 flex items-center justify-center bg-black/20"><div className="w-12 h-12 bg-white/90 rounded-full flex items-center justify-center"><Play className="w-6 h-6 ml-1" style={{ color: theme.textPrimary }} fill="currentColor" /></div></div></div>) : (<img src={item.url} alt="" className={`w-full object-cover ${mediaItems.length === 1 ? 'max-h-[500px]' : 'h-48'}`} />)}
-                {idx === 3 && mediaItems.length > 4 && <div className="absolute inset-0 bg-black/50 flex items-center justify-center"><span className="text-white text-2xl font-bold">+{mediaItems.length - 4}</span></div>}
+       {/* 미디어 */}
+{mediaItems.length > 0 && (
+  <div className={`cursor-pointer ${mediaItems.length === 1 ? '' : 'grid grid-cols-2 gap-[2px]'}`}>
+    {mediaItems.slice(0, 4).map((item, idx) => (
+      <div key={idx} className={`relative overflow-hidden rounded-xl ${mediaItems.length === 3 && idx === 0 ? 'row-span-2' : ''}`}>
+        {item.type === 'video' ? (
+          isPlaying && idx === 0 ? (
+            <video src={item.url} controls autoPlay className={`w-full object-cover rounded-xl ${mediaItems.length === 1 ? 'max-h-[500px]' : 'h-48'}`} />
+          ) : (
+            <div className="relative cursor-pointer" onClick={(e) => { e.stopPropagation(); setPlayingVideo(post.id); }}>
+              <video src={item.url} className={`w-full object-cover rounded-xl ${mediaItems.length === 1 ? 'max-h-[500px]' : 'h-48'}`} />
+              <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-xl">
+                <div className="w-12 h-12 bg-white/90 rounded-full flex items-center justify-center">
+                  <Play className="w-6 h-6 ml-1" style={{ color: theme.textPrimary }} fill="currentColor" />
+                </div>
               </div>
-            ))}
-          </div>
+            </div>
+          )
+        ) : (
+          <img src={item.url} alt="" className={`w-full object-cover rounded-xl cursor-pointer ${mediaItems.length === 1 ? 'max-h-[500px]' : 'h-48'}`} onClick={() => openLightbox(mediaItems, idx)} />
         )}
+        {idx === 3 && mediaItems.length > 4 && <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-xl"><span className="text-white text-2xl font-bold">+{mediaItems.length - 4}</span></div>}
+      </div>
+    ))}
+  </div>
+)}
 
         {/* 액션 버튼 */}
         <div className="flex items-center px-4 py-3" style={{ borderTop: `1px solid ${theme.borderLight}` }}>
@@ -1009,20 +1182,67 @@ useEffect(() => {
                 <div><div className="flex items-center gap-2"><span className="font-bold" style={{ color: theme.textPrimary }}>{getAuthorName(detailModal)}</span>{detailModal.is_anonymous && <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: theme.bgInput, color: theme.textMuted }}>익명</span>}</div><span className="text-sm" style={{ color: theme.textMuted }}>{formatDate(detailModal.created_at)}</span></div>
               </div>
               <div className="px-4 pb-3">
-                {detailModal.content?.length > 100 && !expandedPosts.has(detailModal.id) ? (
-                  <p className="text-[15px] whitespace-pre-wrap" style={{ color: theme.textPrimary }}>
-                    {detailModal.content.slice(0, 100)}...
-                    <button onClick={() => togglePost(detailModal.id)} className="text-sm ml-1 font-medium" style={{ color: theme.accent }}>더 보기</button>
-                  </p>
+                {((detailModal.content?.length > 80) || detailModal.content?.includes('\n')) && !expandedPosts.has(detailModal.id) ? (
+                  <div>
+                    <p className="text-[15px] whitespace-pre-wrap line-clamp-2" style={{ color: theme.textPrimary }}>{detailModal.content}</p>
+                    <button onClick={() => togglePost(detailModal.id)} className="text-sm font-medium mt-1" style={{ color: theme.accent }}>더보기</button>
+                  </div>
                 ) : (
-                  <>
+                  <div>
                     <p className="text-[15px] whitespace-pre-wrap" style={{ color: theme.textPrimary }}>{detailModal.content}</p>
-                    {detailModal.content?.length > 100 && (
+                    {((detailModal.content?.length > 80) || detailModal.content?.includes('\n')) && (
                       <button onClick={() => togglePost(detailModal.id)} className="text-sm font-medium mt-1" style={{ color: theme.accent }}>접기</button>
                     )}
-                  </>
+                  </div>
                 )}
               </div>
+              {/* 유튜브 */}
+{(() => {
+  const links = extractLinks(detailModal.content || '');
+  const firstLink = links[0];
+  const youtubeId = firstLink ? getYoutubeId(firstLink) : null;
+  const youtubeThumbnail = firstLink ? getYoutubeThumbnail(firstLink) : null;
+  const linkPreview = postLinkPreviews.get(detailModal.id);
+  const isPlaying = playingVideo === detailModal.id;
+  
+  return (
+    <>
+      {youtubeId && (
+        <div className="w-full mb-3">
+          {isPlaying ? (
+            <div className="relative w-full aspect-video bg-black">
+              <iframe 
+                src={`https://www.youtube.com/embed/${youtubeId}?autoplay=1&rel=0`} 
+                className="w-full h-full" 
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen" 
+                allowFullScreen 
+              />
+            </div>
+          ) : (
+            <div className="relative w-full cursor-pointer" onClick={() => setPlayingVideo(detailModal.id)}>
+              <img src={youtubeThumbnail!} alt="" className="w-full aspect-video object-cover" />
+              <div className="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/30 transition-colors">
+                <YoutubeLogo />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      
+      {/* 링크 프리뷰 */}
+      {!youtubeId && linkPreview && (
+        <div className="mx-4 mb-3 rounded-xl overflow-hidden cursor-pointer" style={{ border: `1px solid ${theme.border}` }} onClick={() => openLink(firstLink)}>
+          {linkPreview.image && <img src={linkPreview.image} alt="" className="w-full h-40 object-cover" />}
+          <div className="px-4 py-3" style={{ backgroundColor: theme.bgInput }}>
+            <p className="text-xs uppercase" style={{ color: theme.textMuted }}>{linkPreview.domain}</p>
+            <p className="font-semibold mt-1 line-clamp-2" style={{ color: theme.textPrimary }}>{linkPreview.title}</p>
+            {linkPreview.description && <p className="text-sm mt-1 line-clamp-2" style={{ color: theme.textSecondary }}>{linkPreview.description}</p>}
+          </div>
+        </div>
+      )}
+    </>
+  );
+})()}
               {detailAd && <div className="px-4 pb-3"><AdBanner ad={detailAd} type="detail" /></div>}
               {getMediaItems(detailModal).length > 0 && (
                 <div className={`cursor-pointer ${getMediaItems(detailModal).length === 1 ? '' : 'grid grid-cols-2 gap-[2px]'}`}>
@@ -1034,7 +1254,7 @@ useEffect(() => {
                   ))}
                 </div>
               )}
-              <div className="px-4 py-3 flex items-center gap-4 text-sm" style={{ color: theme.textMuted, borderBottom: `1px solid ${theme.borderLight}` }}>{(detailModal.like_count || 0) > 0 && <span>좋아요 {detailModal.like_count}개</span>}<span>댓글 {detailModal.comment_count || 0}개</span></div>
+              <div className="px-4 py-3 flex items-center gap-4 text-sm" style={{ color: theme.textMuted, borderBottom: `1px solid ${theme.borderLight}` }}>{(detailModal.like_count || 0) > 0 && <button onClick={() => fetchLikers(detailModal.id)} className="hover:underline">좋아요 {detailModal.like_count}개</button>}<button onClick={() => fetchCommenters(detailModal.id)} className="hover:underline">댓글 {detailModal.comment_count || 0}개</button></div>
               <div className="flex items-center" style={{ borderBottom: `1px solid ${theme.borderLight}` }}>
                 <button onClick={() => handleLike(detailModal, true)} className="flex-1 flex items-center justify-center gap-2 py-3" style={{ color: detailModal.liked ? '#3B82F6' : theme.textSecondary }}><ThumbsUp className="w-5 h-5" fill={detailModal.liked ? 'currentColor' : 'none'} /><span className="font-medium text-sm">좋아요</span></button>
                 <button className="flex-1 flex items-center justify-center gap-2 py-3" style={{ color: theme.textSecondary }}><MessageCircle className="w-5 h-5" /><span className="font-medium text-sm">댓글</span></button>
@@ -1070,6 +1290,58 @@ useEffect(() => {
         </div>
       )}
 
+      {/* 좋아요 누른 사람 목록 모달 */}
+      {likersModal && (
+        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => setLikersModal(null)}>
+          <div className="rounded-2xl w-full max-w-sm max-h-[60vh] overflow-hidden" style={{ backgroundColor: theme.bgCard }} onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 flex items-center justify-between" style={{ borderBottom: `1px solid ${theme.border}` }}>
+              <h3 className="font-bold" style={{ color: theme.textPrimary }}>좋아요 {likersModal.users.length}명</h3>
+              <button onClick={() => setLikersModal(null)} style={{ color: theme.textMuted }}><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-2 overflow-y-auto max-h-[50vh]">
+              {likersModal.users.length === 0 ? (
+                <p className="text-center py-4 text-sm" style={{ color: theme.textMuted }}>좋아요가 없습니다</p>
+              ) : (
+                likersModal.users.map((user, idx) => (
+                  <div key={idx} className="flex items-center gap-3 p-2 rounded-lg">
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center overflow-hidden" style={{ backgroundColor: theme.accent }}>
+                      {user.avatar_url ? <img src={user.avatar_url} alt="" className="w-full h-full object-cover" /> : <span className="text-sm font-bold" style={{ color: isDark ? '#121212' : '#fff' }}>{user.nickname?.[0]?.toUpperCase() || 'U'}</span>}
+                    </div>
+                    <span className="font-medium" style={{ color: theme.textPrimary }}>{user.nickname}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 댓글 작성자 목록 모달 */}
+      {commentersModal && (
+        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => setCommentersModal(null)}>
+          <div className="rounded-2xl w-full max-w-sm max-h-[60vh] overflow-hidden" style={{ backgroundColor: theme.bgCard }} onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 flex items-center justify-between" style={{ borderBottom: `1px solid ${theme.border}` }}>
+              <h3 className="font-bold" style={{ color: theme.textPrimary }}>댓글 작성자 {commentersModal.users.length}명</h3>
+              <button onClick={() => setCommentersModal(null)} style={{ color: theme.textMuted }}><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-2 overflow-y-auto max-h-[50vh]">
+              {commentersModal.users.length === 0 ? (
+                <p className="text-center py-4 text-sm" style={{ color: theme.textMuted }}>댓글이 없습니다</p>
+              ) : (
+                commentersModal.users.map((user, idx) => (
+                  <div key={idx} className="flex items-center gap-3 p-2 rounded-lg">
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: user.is_anonymous ? theme.bgInput : theme.accent }}>
+                      <span className="text-sm font-bold" style={{ color: user.is_anonymous ? theme.textMuted : (isDark ? '#121212' : '#fff') }}>{user.is_anonymous ? '?' : (user.nickname?.[0]?.toUpperCase() || 'U')}</span>
+                    </div>
+                    <span className="font-medium" style={{ color: theme.textPrimary }}>{user.nickname}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 확인 모달들 */}
       {confirmPostModal && (<div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => setConfirmPostModal(false)}><div className="rounded-2xl p-6 w-full max-w-sm" style={{ backgroundColor: theme.bgCard }} onClick={(e) => e.stopPropagation()}><p className="text-center font-medium mb-6" style={{ color: theme.textPrimary }}>{isAnonymous ? '익명으로 게시물을 등록하시겠습니까?' : '게시물을 등록하시겠습니까?'}</p><div className="flex gap-3"><button onClick={() => setConfirmPostModal(false)} className="flex-1 py-3 font-bold rounded-xl" style={{ backgroundColor: theme.bgInput, color: theme.textPrimary }}>취소</button><button onClick={handlePost} className="flex-1 py-3 font-bold rounded-xl" style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}>확인</button></div></div></div>)}
       {reportModal && (<div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => { setReportModal(null); setReportReason(""); }}><div className="rounded-2xl p-6 w-full max-w-sm" style={{ backgroundColor: theme.bgCard }} onClick={(e) => e.stopPropagation()}><h3 className="text-lg font-bold mb-4" style={{ color: theme.textPrimary }}>🚨 신고하기</h3>{reportModal.isAnonymous && <p className="text-sm mb-3" style={{ color: theme.textMuted }}>익명 사용자를 신고합니다</p>}<textarea value={reportReason} onChange={(e) => setReportReason(e.target.value)} placeholder="신고 사유를 입력하세요" className="w-full h-24 p-3 rounded-xl resize-none focus:outline-none focus:ring-2 mb-4" style={{ backgroundColor: theme.bgInput, color: theme.textPrimary, border: `1px solid ${theme.border}` }} /><div className="flex gap-3"><button onClick={() => { setReportModal(null); setReportReason(""); }} className="flex-1 py-3 font-bold rounded-xl" style={{ backgroundColor: theme.bgInput, color: theme.textPrimary }}>취소</button><button onClick={handleReport} className="flex-1 py-3 font-bold rounded-xl" style={{ backgroundColor: theme.red, color: '#fff' }}>신고</button></div></div></div>)}
@@ -1094,9 +1366,9 @@ useEffect(() => {
             ) : (
               <div className="p-4">
                 <div className="flex gap-3">
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden" style={{ backgroundColor: theme.accent }}>{userProfile?.avatar_url ? <img src={userProfile.avatar_url} alt="" className="w-full h-full object-cover" /> : <span className="font-bold text-sm" style={{ color: isDark ? '#121212' : '#fff' }}>{userProfile?.nickname?.[0]?.toUpperCase() || "U"}</span>}</div>
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden" style={{ backgroundColor: theme.accent }}>{userProfile?.avatar_url ? <img src={userProfile.avatar_url} alt="" className="w-full h-full object-cover" /> : <span className="font-bold text-sm" style={{ color: isDark ? '#121212' : '#fff' }}>{userProfile?.nickname?.[0]?.toUpperCase() || user.email?.split('@')[0]?.[0]?.toUpperCase() || "U"}</span>}</div>
                   <div className="flex-1">
-                    <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="무슨 생각을 하고 계신가요?" rows={3} className="w-full resize-none border-0 focus:outline-none focus:ring-0" style={{ backgroundColor: 'transparent', color: theme.textPrimary }} autoFocus disabled={posting} />
+                    <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="무슨 생각을 하고 계신가요?" rows={3} className="w-full resize-none border-0 focus:outline-none focus:ring-0" style={{ backgroundColor: 'transparent', color: theme.textPrimary }} disabled={posting} />
                     {writingLinkPreview && (<div className="mt-2 rounded-xl overflow-hidden relative" style={{ border: `1px solid ${theme.border}` }}>{writingLinkPreview.image && <img src={writingLinkPreview.image} alt="" className="w-full h-40 object-cover" />}<div className="p-3" style={{ backgroundColor: theme.bgInput }}><p className="font-medium text-sm line-clamp-2" style={{ color: theme.textPrimary }}>{writingLinkPreview.title}</p>{writingLinkPreview.description && <p className="text-xs line-clamp-2 mt-1" style={{ color: theme.textMuted }}>{writingLinkPreview.description}</p>}<p className="text-xs mt-1" style={{ color: theme.textMuted }}>{writingLinkPreview.domain}</p></div><button onClick={() => setWritingLinkPreview(null)} className="absolute top-2 right-2 w-6 h-6 bg-black/50 text-white rounded-full text-sm flex items-center justify-center"><X className="w-4 h-4" /></button></div>)}
                     {loadingLinkPreview && <div className="mt-2 p-3 rounded-xl flex items-center gap-2" style={{ backgroundColor: theme.bgInput }}><div className="w-4 h-4 border-2 rounded-full animate-spin" style={{ borderColor: theme.border, borderTopColor: theme.accent }} /><span className="text-sm" style={{ color: theme.textMuted }}>링크 미리보기 로딩 중...</span></div>}
                     {mediaPreviews.length > 0 && <div className="flex gap-2 mt-2 flex-wrap">{mediaPreviews.map((preview, index) => (<div key={index} className="relative">{preview.type === 'video' ? (<div className="w-20 h-20 rounded-lg relative overflow-hidden" style={{ backgroundColor: theme.bgElevated }}><video src={preview.url} className="w-full h-full object-cover" /><div className="absolute inset-0 flex items-center justify-center bg-black/30"><Play className="w-6 h-6 text-white" fill="currentColor" /></div></div>) : (<img src={preview.url} alt="" className="w-20 h-20 object-cover rounded-lg" />)}<button onClick={() => removeMedia(index)} disabled={posting} className="absolute -top-1 -right-1 w-5 h-5 rounded-full text-xs flex items-center justify-center" style={{ backgroundColor: theme.red, color: '#fff' }}><X className="w-3 h-3" /></button></div>))}</div>}
@@ -1114,7 +1386,7 @@ useEffect(() => {
         {!user && <div className="rounded-xl p-4 mb-4 text-center" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}><span style={{ color: theme.textMuted }}>로그인하고 글을 작성하세요</span><Link href="/login" className="font-bold ml-2" style={{ color: theme.accent }}>로그인</Link></div>}
 
         {/* 게시글 목록 */}
-        {loading ? <div className="flex justify-center py-20"><div className="w-8 h-8 border-4 rounded-full animate-spin" style={{ borderColor: theme.border, borderTopColor: theme.accent }}></div></div> : posts.length === 0 ? <div className="text-center py-20 rounded-xl" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}><p style={{ color: theme.textMuted }}>게시글이 없습니다</p></div> : <div className="space-y-4">{renderPostsWithAds()}</div>}
+        {loading ? <div className="flex justify-center py-20"><div className="w-8 h-8 border-4 rounded-full animate-spin" style={{ borderColor: theme.border, borderTopColor: theme.accent }}></div></div> : posts.length === 0 ? <div className="text-center py-20 rounded-xl" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}><p style={{ color: theme.textMuted }}>게시글이 없습니다</p></div> : <div className="space-y-6">{renderPostsWithAds()}</div>}
       </main>
 
       <BottomNav />

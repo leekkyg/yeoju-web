@@ -261,7 +261,13 @@ export default function MyPage() {
             </div>
           </div>
         ) : myShop.approval_status === "rejected" ? (
-          <Link href="/shop/register" className="block rounded-2xl p-5 mb-4" style={{ backgroundColor: '#FEE2E2', border: '1px solid #FECACA' }}>
+          <button 
+            onClick={() => {
+              alert(`거절 사유: ${myShop.approval_note || "사유 없음"}\n\n문의사항은 고객센터로 연락해주세요.`);
+            }}
+            className="block w-full rounded-2xl p-5 mb-4 text-left" 
+            style={{ backgroundColor: '#FEE2E2', border: '1px solid #FECACA' }}
+          >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#FECACA' }}>
@@ -269,12 +275,11 @@ export default function MyPage() {
                 </div>
                 <div>
                   <p className="font-bold" style={{ color: '#991B1B' }}>상점 등록 거절</p>
-                  <p className="text-sm" style={{ color: '#B91C1C' }}>{myShop.approval_note || "다시 신청해주세요"}</p>
+                  <p className="text-sm" style={{ color: '#B91C1C' }}>탭하여 거절 사유 확인</p>
                 </div>
               </div>
-              <ChevronRight className="w-5 h-5" style={{ color: '#DC2626' }} />
             </div>
-          </Link>
+          </button>
         ) : (
           <Link href="/shop/dashboard" className="block rounded-2xl p-5 mb-4" style={{ background: `linear-gradient(135deg, ${theme.accent}, ${theme.accentDark})` }}>
             <div className="flex items-center justify-between">

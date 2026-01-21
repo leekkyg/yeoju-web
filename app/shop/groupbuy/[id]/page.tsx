@@ -548,7 +548,7 @@ export default function ShopGroupBuyManagePage() {
   const handleStatusChange = async (participant: Participant) => {
     let updateData: any = {};
 
-    if (participant.status === "unpaid") {
+    if (participant.status === "unpaid" || participant.status === "pending") {
       updateData = { status: "paid", paid_at: new Date().toISOString() };
     } else if (participant.status === "paid") {
       updateData = { status: "picked", picked_at: new Date().toISOString() };
@@ -621,9 +621,11 @@ export default function ShopGroupBuyManagePage() {
 
   const filteredParticipants = filter === "all"
     ? participants
-    : participants.filter(p => p.status === filter);
+    : filter === "unpaid" 
+      ? participants.filter(p => p.status === "unpaid" || p.status === "pending")
+      : participants.filter(p => p.status === filter);
 
-  const unpaidCount = participants.filter(p => p.status === "unpaid").length;
+  const unpaidCount = participants.filter(p => p.status === "unpaid" || p.status === "pending").length;
   const paidCount = participants.filter(p => p.status === "paid").length;
   const pickedCount = participants.filter(p => p.status === "picked").length;
   const cancelledCount = participants.filter(p => p.status === "cancelled").length;
@@ -634,6 +636,7 @@ export default function ShopGroupBuyManagePage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "unpaid":
+      case "pending":
         return { text: "미입금", bg: theme.red, color: "#fff" };
       case "paid":
         return { text: "입금확인", bg: "#F59E0B", color: "#fff" };
@@ -813,9 +816,12 @@ export default function ShopGroupBuyManagePage() {
                   </div>
                   <div className="flex-1 min-w-0 flex items-center gap-2">
                     <p className="font-bold text-base" style={{ color: theme.textPrimary }}>{p.name}</p>
-                    <p className="text-xs" style={{ color: theme.textMuted }}>
-                      {p.quantity}개 · {(p.quantity * (groupBuy?.sale_price || 0)).toLocaleString()}원
-                    </p>
+                    <span className="px-2 py-0.5 rounded-md text-sm font-bold" style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}>
+                      {p.quantity}개
+                    </span>
+                    <span className="text-sm font-bold" style={{ color: theme.accent }}>
+                      {(p.quantity * (groupBuy?.sale_price || 0)).toLocaleString()}원
+                    </span>
                   </div>
                   {!isCancelled ? (
                     <div className="flex items-center flex-shrink-0">
@@ -828,7 +834,7 @@ export default function ShopGroupBuyManagePage() {
                           <RotateCcw className="w-4 h-4" style={{ color: theme.textMuted }} />
                         </button>
                       )}
-                      {p.status === "unpaid" && (
+                      {(p.status === "unpaid" || p.status === "pending") && (
                         <button
                           onClick={() => handleCancel(p)}
                           className="w-8 h-8 rounded-lg flex items-center justify-center mr-3"
@@ -837,7 +843,7 @@ export default function ShopGroupBuyManagePage() {
                           ✕
                         </button>
                       )}
-                      {p.status === "unpaid" && (
+                      {(p.status === "unpaid" || p.status === "pending") && (
                         <button
                           onClick={() => handleStatusChange(p)}
                           className="px-4 py-2 rounded-xl text-sm font-bold"

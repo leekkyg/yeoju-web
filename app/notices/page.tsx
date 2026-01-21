@@ -78,9 +78,12 @@ function NoticesPageContent() {
   useEffect(() => {
     if (!loading && !initialLoadDone) {
       const noticeId = searchParams.get('id');
-      if (noticeId) {
-        openNotice(parseInt(noticeId));
-      }
+if (noticeId) {
+  const id = parseInt(noticeId);
+  if (!isNaN(id)) {  // ← NaN 체크 추가
+    openNotice(id);
+  }
+}
       setInitialLoadDone(true);
     }
   }, [loading, searchParams, initialLoadDone]);
@@ -468,21 +471,21 @@ function NoticesPageContent() {
           </div>
         ) : (
           <div className="mx-4 space-y-4">
-            {/* 고정 공지 */}
-            {pinnedNotices.length > 0 && (
-              <div className="rounded-2xl overflow-hidden border-2" style={{ borderColor: theme.accent, backgroundColor: theme.bgCard }}>
-                <div className="px-4 py-2 flex items-center gap-2" style={{ backgroundColor: theme.accent }}>
-                  <svg className="w-4 h-4" style={{ color: isDark ? '#121212' : '#fff' }} fill="currentColor" viewBox="0 0 24 24">
+              {/* 고정 공지 */}
+               {pinnedNotices.length > 0 && (
+                <div className="rounded-2xl overflow-hidden border" style={{ borderColor: theme.accent, backgroundColor: theme.bgCard }}>
+                <div className="px-4 py-2 flex items-center gap-2 border-b" style={{ borderColor: theme.border }}>
+                <svg className="w-4 h-4" style={{ color: theme.accent }} fill="currentColor" viewBox="0 0 24 24">
                     <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z" />
                   </svg>
-                  <span className="text-sm font-bold" style={{ color: isDark ? '#121212' : '#fff' }}>중요 공지</span>
+                  <span className="text-sm font-bold" style={{ color: theme.accent }}>중요 공지</span>
                 </div>
                 {pinnedNotices.map((notice, index) => (
                   <button
                     key={notice.id}
                     onClick={() => openNotice(notice.id)}
                     className="flex items-start px-4 py-4 w-full text-left transition-colors"
-                    style={{ borderTop: index > 0 ? `1px solid ${theme.border}` : 'none', backgroundColor: isDark ? 'rgba(212,175,55,0.1)' : 'rgba(212,175,55,0.08)' }}
+                    style={{ borderTop: index > 0 ? `1px solid ${theme.border}` : 'none' }}
                   >
                     <div className="w-10 flex-shrink-0">
                       <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: theme.accent }}>

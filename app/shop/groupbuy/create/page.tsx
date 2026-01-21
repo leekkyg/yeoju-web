@@ -749,22 +749,22 @@ export default function GroupBuyCreatePage() {
                     {deliveryMethods.includes("delivery") && <Check className="w-4 h-4" style={{ color: isDark ? '#121212' : '#fff' }} />}
                   </div>
                   <div>
-                    <p className="font-medium" style={{ color: theme.textPrimary }}>택배 배송</p>
-                    <p className="text-xs" style={{ color: theme.textMuted }}>고객 주소로 택배 발송</p>
+                    <p className="font-medium" style={{ color: theme.textPrimary }}>배달</p>
+                    <p className="text-xs" style={{ color: theme.textMuted }}>고객 주소로 직접 배달</p>
                   </div>
                 </label>
 
                 {deliveryMethods.includes("delivery") && (
                   <div className="mt-3">
                     <label className="block text-sm mb-2" style={{ color: theme.textSecondary }}>
-                      배송비
+                      배달비
                     </label>
                     <div className="relative">
                       <input
                         type="text"
                         value={deliveryFee}
                         onChange={(e) => setDeliveryFee(formatPrice(e.target.value))}
-                        placeholder="0 (무료배송)"
+                        placeholder="0 (무료배달)"
                         className="w-full px-4 py-3 pr-12 rounded-xl text-[15px] outline-none transition-all"
                         style={{ 
                           backgroundColor: theme.bgInput, 
@@ -824,6 +824,8 @@ export default function GroupBuyCreatePage() {
                   </div>
                 </label>
 
+                {/* 프리미엄 등급만 카드 결제 가능 */}
+                {shop?.tier !== 'basic' && (
                 <label 
                   className="flex items-center gap-3 p-4 rounded-xl cursor-pointer transition-all"
                   style={{ 
@@ -857,6 +859,7 @@ export default function GroupBuyCreatePage() {
                     <p className="text-xs" style={{ color: theme.textMuted }}>카드/카카오페이/네이버페이</p>
                   </div>
                 </label>
+                )}
               </div>
 
               {paymentMethods.length === 0 && (

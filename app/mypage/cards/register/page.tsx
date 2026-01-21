@@ -6,12 +6,6 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { ArrowLeft } from 'lucide-react';
 
-declare global {
-  interface Window {
-    TossPayments?: any;
-  }
-}
-
 function RegisterCardContent() {
   const router = useRouter();
   const { theme, isDark } = useTheme();
