@@ -325,7 +325,7 @@ function WinnerSection({ auction, bids, currentUserId }: { auction: Auction; bid
       <div className="flex items-center gap-2 mb-3">
         <Crown className="w-6 h-6" style={{ color: '#FBBF24' }} />
         <h3 className="font-bold text-lg" style={{ color: '#FBBF24' }}>
-          {auction.status === 'completed' ? '🎉 낙찰 완료' : '경매 종료'}
+          {auction.status === 'sold' ? '🎉 낙찰 완료' : '경매 종료'}
         </h3>
       </div>
       
