@@ -87,10 +87,27 @@ export default function ShopDashboardPage() {
       .single();
 
     if (!shopData) {
-      router.push("/shop/register");
-      return;
-    }
-    setShop(shopData);
+  router.push("/shop/register");
+  return;
+}
+
+// 차단된 상점이면 접근 막기
+if (shopData.is_active === false || shopData.approval_status === "blocked") {
+  alert("차단된 상점입니다. 관리자에게 문의하세요.");
+  router.push("/");
+  return;
+}
+
+setShop(shopData);
+
+// 차단된 상점이면 접근 막기
+if (shopData.status === "blocked" || shopData.is_blocked) {
+  alert("차단된 상점입니다. 관리자에게 문의하세요.");
+  router.push("/");
+  return;
+}
+
+setShop(shopData);
 
     // 공동구매 목록 (image_url 포함)
     const { data: gbData } = await supabase
@@ -648,7 +665,7 @@ export default function ShopDashboardPage() {
                 return (
                   <Link
                     key={order.id}
-                    href="/shop/orders"
+                    href={`/shop/groupbuy/${order.group_buy_id}/participants`}
                     className="flex items-center gap-3 p-4 transition-colors"
                     style={{ borderBottom: index < Math.min(recentOrders.length, 5) - 1 ? `1px solid ${theme.border}` : 'none' }}
                   >

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
+import OptimizedImage from "@/components/common/OptimizedImage";
 import { supabase } from "@/lib/supabase";
 import { useTheme } from "@/contexts/ThemeContext";
 
@@ -333,16 +333,13 @@ export default function GroupBuyListPage() {
               >
                 {/* 이미지 - Next.js Image 사용 */}
                 <div className="aspect-square relative overflow-hidden" style={{ backgroundColor: theme.bgInput }}>
-                  {gb.image_url ? (
-                    <Image 
+                  {gb.image_url && gb.image_url.startsWith('http') ? (
+                    <OptimizedImage 
                       src={gb.image_url} 
-                      alt={gb.title}
+                      alt={gb.title || '공동구매'}
                       fill
                       sizes="(max-width: 640px) 33vw, 200px"
                       className="object-cover group-hover:scale-105 transition-transform duration-500"
-                      loading={index < 6 ? "eager" : "lazy"}
-                      placeholder="blur"
-                      blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAn/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCwAB//2Q=="
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">

@@ -7,6 +7,7 @@ import Script from "next/script";
 import { supabase } from "@/lib/supabase";
 import { useTheme } from "@/contexts/ThemeContext";
 import { ArrowLeft, Home, Package, MapPin, ChevronLeft, ChevronRight, Minus, Plus, Check, ChevronDown, ChevronUp, Store, Copy, Search } from "lucide-react";
+import OptimizedImage from "@/components/common/OptimizedImage";
 
 declare global {
   interface Window {
@@ -76,8 +77,8 @@ function ImageSlider({ images }: { images: string[] }) {
 
   return (
     <div className="relative w-full aspect-[3/2] overflow-hidden rounded-2xl bg-gray-100">
-      <div className="w-full h-full" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
-        <img src={images[currentIndex]} alt="" className="w-full h-full object-cover" />
+      <div className="w-full h-full relative" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
+        <OptimizedImage src={images[currentIndex]} alt="" fill className="object-cover" />
       </div>
       {images.length > 1 && (
         <>
