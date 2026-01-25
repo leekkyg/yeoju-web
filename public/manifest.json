@@ -1,0 +1,21 @@
+{
+  "name": "여주모아",
+  "short_name": "여주모아",
+  "description": "여주시민을 위한 지역 커뮤니티 플랫폼",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#121212",
+  "theme_color": "#121212",
+  "icons": [
+    {
+      "src": "/images/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/images/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
