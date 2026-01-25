@@ -587,7 +587,9 @@ const captureVideoThumbnail = (file: File): Promise<string | null> => {
     setConfirmPostModal(true);
   };
 
-  const handlePost = async () => {
+  cconst handlePost = async () => {
+    console.log("handlePost 시작, 파일 개수:", mediaFiles.length);
+    console.log("파일 정보:", mediaFiles.map(f => ({name: f.name, size: f.size, type: f.type})));
     setConfirmPostModal(false); setPosting(true); setUploadProgress(0); setTotalFiles(mediaFiles.length); setCurrentFileIndex(0);
     try {
       const uploadedUrls: string[] = [];
