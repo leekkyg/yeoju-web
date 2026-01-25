@@ -6,6 +6,9 @@ const config: CapacitorConfig = {
   server: {
     url: 'https://yeoju-web.vercel.app',
     cleartext: true
+  },
+  android: {
+    allowMixedContent: true
   }
 };
 export default config;

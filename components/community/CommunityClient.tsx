@@ -526,11 +526,22 @@ const captureVideoThumbnail = (file: File): Promise<string | null> => {
   };
 
   const uploadSmallFile = async (file: File): Promise<string> => {
-    const processedFile = await compressImage(file);
-    const ext = file.name.split('.').pop();
-    const fileName = `posts/${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
-    const response = await fetch(`${R2_WORKER_URL}/${fileName}`, { method: 'PUT', body: processedFile, headers: { 'Content-Type': processedFile.type } });
-    return (await response.json()).url;
+    console.log("업로드 시작:", file.name, file.size);
+    try {
+      const processedFile = await compressImage(file);
+      console.log("압축 완료:", processedFile.size);
+      const ext = file.name.split('.').pop();
+      const fileName = `posts/${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
+      console.log("업로드 URL:", `${R2_WORKER_URL}/${fileName}`);
+      const response = await fetch(`${R2_WORKER_URL}/${fileName}`, { method: 'PUT', body: processedFile, headers: { 'Content-Type': processedFile.type } });
+      console.log("응답:", response.status);
+      const data = await response.json();
+      console.log("결과:", data);
+      return data.url;
+    } catch (error) {
+      console.error("업로드 에러:", error);
+      throw error;
+    }
   };
 
   const uploadLargeFile = async (file: File, fileIndex: number, totalFilesCount: number): Promise<string> => {
