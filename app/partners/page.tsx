@@ -72,7 +72,7 @@ export default function PartnersPage() {
             disabled={isShuffling}
             className={`p-2 -mr-2 ${isShuffling ? 'animate-spin' : ''}`}
           >
-            <RefreshCw className="w-5 h-5" style={{ color: theme.gold }} />
+            <RefreshCw className="w-5 h-5" style={{ color: theme.accent }} />
           </button>
         </div>
       </header>
@@ -83,12 +83,12 @@ export default function PartnersPage() {
           <div className="flex justify-center items-center py-32">
             <div 
               className="w-10 h-10 rounded-full border-2 border-t-transparent animate-spin"
-              style={{ borderColor: theme.gold, borderTopColor: 'transparent' }}
+              style={{ borderColor: theme.accent, borderTopColor: 'transparent' }}
             />
           </div>
         ) : partners.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-32">
-            <Sparkles className="w-12 h-12 mb-4" style={{ color: theme.gold }} />
+            <Sparkles className="w-12 h-12 mb-4" style={{ color: theme.accent }} />
             <p className="text-lg font-medium mb-2" style={{ color: theme.textPrimary }}>
               파트너를 모집 중이에요
             </p>
@@ -100,10 +100,10 @@ export default function PartnersPage() {
           <>
             {/* 상단 타이틀 */}
             <div className="flex items-center justify-center gap-2 mb-6">
-              <Sparkles className="w-4 h-4" style={{ color: theme.gold }} />
+              <Sparkles className="w-4 h-4" style={{ color: theme.accent }} />
               <span 
                 className="text-sm font-bold uppercase tracking-widest" 
-                style={{ color: theme.gold }}
+                style={{ color: theme.accent }}
               >
                 Official Partners
               </span>

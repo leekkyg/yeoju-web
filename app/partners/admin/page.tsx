@@ -258,20 +258,20 @@ export default function PartnersAdminPage() {
         </button>
         <h1 className="flex-1 text-center font-bold text-lg" style={{ color: theme.textPrimary }}>파트너스 관리</h1>
         <button onClick={() => setShowModal(true)} className="p-2 -mr-2">
-          <Plus className="w-6 h-6" style={{ color: theme.gold }} />
+          <Plus className="w-6 h-6" style={{ color: theme.accent }} />
         </button>
       </header>
 
       <main className="pt-14 pb-8 px-4 max-w-[631px] mx-auto">
         {loading ? (
           <div className="flex justify-center items-center py-20">
-            <Loader2 className="w-8 h-8 animate-spin" style={{ color: theme.gold }} />
+            <Loader2 className="w-8 h-8 animate-spin" style={{ color: theme.accent }} />
           </div>
         ) : partners.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20">
             <ImagePlus className="w-16 h-16 mb-4" style={{ color: theme.textMuted }} />
             <p style={{ color: theme.textMuted }}>등록된 파트너가 없습니다</p>
-            <button onClick={() => setShowModal(true)} className="mt-4 px-6 py-3 rounded-xl font-medium" style={{ backgroundColor: theme.gold, color: '#000' }}>
+            <button onClick={() => setShowModal(true)} className="mt-4 px-6 py-3 rounded-xl font-medium" style={{ backgroundColor: theme.accent, color: '#000' }}>
               첫 파트너 등록하기
             </button>
           </div>
@@ -293,7 +293,7 @@ export default function PartnersAdminPage() {
                   )}
                 </div>
                 <button onClick={() => handleEdit(partner)} className="p-2 rounded-full" style={{ backgroundColor: 'rgba(212, 175, 55, 0.1)' }}>
-                  <Pencil className="w-5 h-5" style={{ color: theme.gold }} />
+                  <Pencil className="w-5 h-5" style={{ color: theme.accent }} />
                 </button>
                 <button onClick={() => handleDelete(partner.id)} className="p-2 rounded-full" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}>
                   <Trash2 className="w-5 h-5 text-red-500" />
@@ -317,12 +317,12 @@ export default function PartnersAdminPage() {
               <input type="file" accept="image/*" ref={fileInputRef} onChange={handleImageSelect} className="hidden" />
               {imagePreview ? (
                 <div className="flex flex-col items-center">
-                  <div className="relative inline-block border-2 border-dashed rounded-xl overflow-hidden" style={{ width: imageSize.width, height: imageSize.height, borderColor: theme.gold }}>
+                  <div className="relative inline-block border-2 border-dashed rounded-xl overflow-hidden" style={{ width: imageSize.width, height: imageSize.height, borderColor: theme.accent }}>
                     <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" draggable={false} />
                     <button onClick={() => { setImageFile(null); setImagePreview(null); }} className="absolute top-2 right-2 p-1 rounded-full bg-black/50">
                       <X className="w-4 h-4 text-white" />
                     </button>
-                    <div onMouseDown={handleResizeStart} onTouchStart={handleResizeStart} className="absolute bottom-0 right-0 w-8 h-8 cursor-se-resize flex items-center justify-center" style={{ backgroundColor: theme.gold }}>
+                    <div onMouseDown={handleResizeStart} onTouchStart={handleResizeStart} className="absolute bottom-0 right-0 w-8 h-8 cursor-se-resize flex items-center justify-center" style={{ backgroundColor: theme.accent }}>
                       <Move className="w-4 h-4 text-black" />
                     </div>
                   </div>
@@ -346,7 +346,7 @@ export default function PartnersAdminPage() {
               <input type="url" value={linkUrl} onChange={e => setLinkUrl(e.target.value)} placeholder="https://example.com" className="w-full px-4 py-3 rounded-xl outline-none" style={{ backgroundColor: theme.bgInput, color: theme.textPrimary, border: `1px solid ${theme.border}` }} />
             </div>
 
-            <button onClick={handleSubmit} disabled={uploading || !name.trim() || (!editingPartner && !imageFile)} className="w-full py-4 rounded-xl font-bold text-lg disabled:opacity-50 flex items-center justify-center gap-2" style={{ backgroundColor: theme.gold, color: '#000' }}>
+            <button onClick={handleSubmit} disabled={uploading || !name.trim() || (!editingPartner && !imageFile)} className="w-full py-4 rounded-xl font-bold text-lg disabled:opacity-50 flex items-center justify-center gap-2" style={{ backgroundColor: theme.accent, color: '#000' }}>
               {uploading ? (<><Loader2 className="w-5 h-5 animate-spin" />업로드 중...</>) : (editingPartner ? '수정하기' : '등록하기')}
             </button>
           </div>
