@@ -1415,7 +1415,7 @@ const { data: newPost, error } = await supabase.from("posts").insert({
       <Header title="커뮤니티" showBack />
 
       {/* 메인 */}
-      <main className="max-w-[631px] mx-auto py-4 px-2">
+      <main className="max-w-[631px] mx-auto py-4">
         {/* 글쓰기 박스 */}
         {user && (
           <div ref={writeBoxRef} className="rounded-2xl mb-4 overflow-hidden" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}>
