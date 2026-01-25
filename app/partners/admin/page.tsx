@@ -252,7 +252,7 @@ export default function PartnersAdminPage() {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: theme.bgMain }}>
-      <header className="fixed top-0 left-0 right-0 z-50 h-14 flex items-center px-4 border-b" style={{ backgroundColor: theme.bgPrimary, borderColor: theme.border }}>
+      <header className="fixed top-0 left-0 right-0 z-50 h-14 flex items-center px-4 border-b" style={{ backgroundColor: theme.bgMain, borderColor: theme.border }}>
         <button onClick={() => router.back()} className="p-2 -ml-2">
           <ArrowLeft className="w-6 h-6" style={{ color: theme.textPrimary }} />
         </button>
@@ -306,7 +306,7 @@ export default function PartnersAdminPage() {
 
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={closeModal}>
-          <div className="w-full max-w-[631px] rounded-t-3xl p-6 max-h-[90vh] overflow-y-auto" style={{ backgroundColor: theme.bgPrimary }} onClick={e => e.stopPropagation()}>
+          <div className="w-full max-w-[631px] rounded-t-3xl p-6 max-h-[90vh] overflow-y-auto" style={{ backgroundColor: theme.bgMain }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-bold" style={{ color: theme.textPrimary }}>{editingPartner ? '파트너 수정' : '파트너 등록'}</h2>
               <button onClick={closeModal} className="p-1"><X className="w-6 h-6" style={{ color: theme.textMuted }} /></button>
