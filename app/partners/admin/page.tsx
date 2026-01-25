@@ -251,7 +251,7 @@ export default function PartnersAdminPage() {
   if (!mounted) return null;
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: theme.bgPrimary }}>
+    <div className="min-h-screen" style={{ backgroundColor: theme.bgMain }}>
       <header className="fixed top-0 left-0 right-0 z-50 h-14 flex items-center px-4 border-b" style={{ backgroundColor: theme.bgPrimary, borderColor: theme.border }}>
         <button onClick={() => router.back()} className="p-2 -ml-2">
           <ArrowLeft className="w-6 h-6" style={{ color: theme.textPrimary }} />
