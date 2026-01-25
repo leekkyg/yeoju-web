@@ -28,12 +28,17 @@ jobs:
           import requests
           import feedparser
           from difflib import SequenceMatcher
+          import re
 
           SUPABASE_URL = os.environ['SUPABASE_URL']
           SUPABASE_KEY = os.environ['SUPABASE_KEY']
 
           # 언론사 RSS 목록
           RSS_FEEDS = [
+              # 구글 뉴스 (여주 관련 기사 통합)
+              ("구글뉴스", "https://news.google.com/rss/search?q=여주시&hl=ko&gl=KR&ceid=KR:ko"),
+              ("구글뉴스", "https://news.google.com/rss/search?q=여주군&hl=ko&gl=KR&ceid=KR:ko"),
+              # 지역 언론사
               ("경기일보", "https://www.kyeonggi.com/rss/S1N14.xml"),
               ("경인일보", "https://www.kyeongin.com/rss/allArticle.xml"),
               ("중부일보", "http://www.joongboo.com/rss/allArticle.xml"),
@@ -87,6 +92,19 @@ jobs:
                       return True
               return False
 
+          def clean_title(title):
+              """구글 뉴스 제목에서 출처 제거"""
+              # " - 언론사명" 패턴 제거
+              title = re.sub(r'\s*-\s*[^-]+$', '', title)
+              return title.strip()
+
+          def extract_source_from_google(entry):
+              """구글 뉴스에서 실제 출처 추출"""
+              source = entry.get('source', {})
+              if isinstance(source, dict):
+                  return source.get('title', '구글뉴스')
+              return '구글뉴스'
+
           def save_news(title, link, source, existing_news):
               """뉴스 저장 (중복 아닐 때만)"""
               if is_duplicate(title, link, existing_news):
@@ -120,10 +138,19 @@ jobs:
                   for entry in feed.entries:
                       title = entry.get('title', '')
                       link = entry.get('link', '')
-                      # 여주 키워드 포함된 것만
-                      if '여주' in title and title and link:
-                          if save_news(title, link, name, existing_news):
-                              count += 1
+                      
+                      # 구글 뉴스는 모든 기사가 여주 관련
+                      if name == "구글뉴스":
+                          if title and link:
+                              clean = clean_title(title)
+                              real_source = extract_source_from_google(entry)
+                              if save_news(clean, link, real_source, existing_news):
+                                  count += 1
+                      else:
+                          # 다른 RSS는 여주 키워드 포함된 것만
+                          if '여주' in title and title and link:
+                              if save_news(title, link, name, existing_news):
+                                  count += 1
                   print(f"  → {name}: {count}개 새 기사 저장")
               except Exception as e:
                   print(f"  → {name} 에러: {e}")

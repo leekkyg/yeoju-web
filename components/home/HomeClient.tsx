@@ -23,6 +23,7 @@ import {
   ImageIcon,
   FileText,
   Play,
+  Handshake,
 } from "lucide-react";
 
 interface HomeClientProps {
@@ -65,12 +66,15 @@ export default function HomeClient({ initialData }: HomeClientProps) {
     { id: 'community', label: '커뮤니티', icon: MessageCircle, href: '/community' },
     { id: 'news', label: '뉴스', icon: Newspaper, href: '/news' },
     { id: 'videos', label: '영상', icon: Video, href: '/videos' },
+    { id: 'partners', label: '파트너스', icon: Handshake, href: '/partners' },
     { id: 'shops', label: '상점', icon: Store, href: '/shops' },
-    { id: 'events', label: '이벤트', icon: Gift, href: '/events' },
   ];
-  const [tabScrollIndex, setTabScrollIndex] = useState(0);
-  const tabTouchStartX = useRef(0);
-  const visibleTabCount = 4;
+  const [tabScrollX, setTabScrollX] = useState(0);
+  const tabContainerRef = useRef<HTMLDivElement>(null);
+  const tabDragging = useRef(false);
+  const tabStartX = useRef(0);
+  const tabScrollStart = useRef(0);
+  const visibleTabCount = 5;
 
   // 공동구매 썸네일 인덱스 (3초마다 변경)
   const [gbThumbnailIndex, setGbThumbnailIndex] = useState(0);
@@ -148,40 +152,40 @@ export default function HomeClient({ initialData }: HomeClientProps) {
     }
   };
 
-  // 탭 스와이프
-  const handleTabTouchStart = (e: React.TouchEvent) => {
-    tabTouchStartX.current = e.touches[0].clientX;
+  // 탭 드래그 스와이프 (부드럽게)
+  const handleTabDragStart = (e: React.TouchEvent | React.MouseEvent) => {
+    tabDragging.current = true;
+    tabStartX.current = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    tabScrollStart.current = tabScrollX;
   };
 
-  const handleTabTouchEnd = (e: React.TouchEvent) => {
-    const touchEndX = e.changedTouches[0].clientX;
-    const diff = tabTouchStartX.current - touchEndX;
-    
-    if (Math.abs(diff) > 50) {
-      if (diff > 0) {
-        nextTabs();
-      } else {
-        prevTabs();
-      }
-    }
+  const handleTabDragMove = (e: React.TouchEvent | React.MouseEvent) => {
+    if (!tabDragging.current) return;
+    const currentX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const diff = tabStartX.current - currentX;
+    setTabScrollX(tabScrollStart.current + diff);
   };
 
-  // 무한 스와이프
+  const handleTabDragEnd = () => {
+    tabDragging.current = false;
+    // 스냅 효과 - 가장 가까운 위치로 정렬
+    const tabWidth = tabContainerRef.current ? tabContainerRef.current.offsetWidth / visibleTabCount : 70;
+    const maxScroll = tabWidth * (tabs.length - visibleTabCount);
+    let newScrollX = Math.round(tabScrollX / tabWidth) * tabWidth;
+    newScrollX = Math.max(0, Math.min(newScrollX, maxScroll));
+    setTabScrollX(newScrollX);
+  };
+
+  // 화살표 클릭 - 부드럽게 이동
   const nextTabs = () => {
-    setTabScrollIndex(prev => (prev + 1) % tabs.length);
+    const tabWidth = tabContainerRef.current ? tabContainerRef.current.offsetWidth / visibleTabCount : 70;
+    const maxScroll = tabWidth * (tabs.length - visibleTabCount);
+    setTabScrollX(prev => Math.min(prev + tabWidth, maxScroll));
   };
 
   const prevTabs = () => {
-    setTabScrollIndex(prev => (prev - 1 + tabs.length) % tabs.length);
-  };
-
-  // 무한 스와이프용 탭 배열 (현재 위치부터 4개)
-  const getVisibleTabs = () => {
-    const result = [];
-    for (let i = 0; i < visibleTabCount; i++) {
-      result.push(tabs[(tabScrollIndex + i) % tabs.length]);
-    }
-    return result;
+    const tabWidth = tabContainerRef.current ? tabContainerRef.current.offsetWidth / visibleTabCount : 70;
+    setTabScrollX(prev => Math.max(prev - tabWidth, 0));
   };
 
   // 공동구매 썸네일 가져오기
@@ -305,23 +309,23 @@ export default function HomeClient({ initialData }: HomeClientProps) {
           </div>
         </section>
 
-        {/* 탭 네비게이션 - 무한 스와이프 */}
+        {/* 탭 네비게이션 - 부드러운 드래그 스와이프 */}
         <section className="mt-4 mx-4">
           <div 
             className="rounded-2xl p-3 relative transition-colors duration-300" 
             style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}
           >
-            {/* 화살표 - 항상 표시 */}
+            {/* 화살표 버튼 */}
             <button
               onClick={prevTabs}
-              className="absolute left-1 top-1/2 -translate-y-1/2 p-1.5 rounded-full z-10 flex items-center justify-center shadow-lg"
+              className="absolute left-1 top-1/2 -translate-y-1/2 p-1.5 rounded-full z-10 flex items-center justify-center transition-all hover:scale-110"
               style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
             >
               <ChevronLeft className="w-4 h-4" style={{ color: theme.textPrimary }} />
             </button>
             <button
               onClick={nextTabs}
-              className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 rounded-full z-10 flex items-center justify-center shadow-lg"
+              className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 rounded-full z-10 flex items-center justify-center transition-all hover:scale-110"
               style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
             >
               <ChevronRight className="w-4 h-4" style={{ color: theme.textPrimary }} />
@@ -329,22 +333,32 @@ export default function HomeClient({ initialData }: HomeClientProps) {
 
             {/* 탭 컨테이너 */}
             <div
-              className="overflow-hidden mx-6"
-              onTouchStart={handleTabTouchStart}
-              onTouchEnd={handleTabTouchEnd}
+              ref={tabContainerRef}
+              className="overflow-hidden cursor-grab active:cursor-grabbing mx-6"
+              onTouchStart={handleTabDragStart}
+              onTouchMove={handleTabDragMove}
+              onTouchEnd={handleTabDragEnd}
+              onMouseDown={handleTabDragStart}
+              onMouseMove={handleTabDragMove}
+              onMouseUp={handleTabDragEnd}
+              onMouseLeave={handleTabDragEnd}
             >
-              <div className="flex transition-all duration-300 ease-out">
-                {getVisibleTabs().map((tab) => {
+              <div 
+                className="flex transition-transform duration-300 ease-out"
+                style={{ transform: `translateX(-${tabScrollX}px)` }}
+              >
+                {tabs.map((tab) => {
                   const Icon = tab.icon;
                   return (
                     <Link
                       key={tab.id}
                       href={tab.href}
-                      className="tab-item flex items-center gap-2 px-2 py-2.5 rounded-xl transition-all cursor-pointer"
-                      style={{ minWidth: `${100 / visibleTabCount}%` }}
+                      className="tab-item flex flex-col items-center gap-1.5 py-2 rounded-xl transition-all cursor-pointer flex-shrink-0"
+                      style={{ width: `${100 / visibleTabCount}%` }}
+                      onClick={(e) => { if (tabDragging.current) e.preventDefault(); }}
                     >
                       <div 
-                        className="tab-icon-box w-11 h-11 rounded-xl flex items-center justify-center transition-all flex-shrink-0"
+                        className="tab-icon-box w-11 h-11 rounded-xl flex items-center justify-center transition-all"
                         style={{ 
                           backgroundColor: theme.bgInput,
                           border: `1px solid ${theme.border}`
@@ -357,7 +371,7 @@ export default function HomeClient({ initialData }: HomeClientProps) {
                         />
                       </div>
                       <span 
-                        className="tab-label text-[12px] font-medium transition-all duration-200 whitespace-nowrap"
+                        className="tab-label text-[11px] font-medium transition-all duration-200"
                         style={{ color: theme.textMuted }}
                       >
                         {tab.label}
