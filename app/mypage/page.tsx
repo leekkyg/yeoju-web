@@ -241,7 +241,7 @@ export default function MyPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-bold text-lg" style={{ color: isDark ? '#121212' : '#FFFFFF' }}>혹시 사장님이세요?</p>
-                <p className="text-sm mt-1" style={{ color: isDark ? '#121212cc' : '#FFFFFFcc' }}>여주마켓에서 공동구매를 시작해보세요!</p>
+                <p className="text-sm mt-1" style={{ color: isDark ? '#121212cc' : '#FFFFFFcc' }}>여주모아에서 공동구매를 시작해보세요!</p>
               </div>
               <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}>
                 <Store className="w-6 h-6" style={{ color: isDark ? '#121212' : '#FFFFFF' }} />

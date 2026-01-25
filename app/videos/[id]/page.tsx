@@ -733,7 +733,7 @@ useEffect(() => {
         >
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium" style={{ color: isDark ? '#121212' : '#FFFFFF' }}>
-              🎬 여주마켓에서 더 많은 영상을 만나보세요!
+              🎬 여주모아에서 더 많은 영상을 만나보세요!
             </span>
           </div>
           <Link 
@@ -1013,7 +1013,7 @@ useEffect(() => {
                     <UserPlus className="w-6 h-6" style={{ color: isDark ? '#121212' : '#FFFFFF' }} />
                   </div>
                   <div>
-                    <h3 className="font-bold" style={{ color: theme.textPrimary }}>여주마켓 가입하기</h3>
+                    <h3 className="font-bold" style={{ color: theme.textPrimary }}>여주모아 가입하기</h3>
                     <p className="text-sm" style={{ color: theme.textMuted }}>더 많은 영상과 커뮤니티를 만나보세요</p>
                   </div>
                 </div>

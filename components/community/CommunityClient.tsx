@@ -1102,7 +1102,7 @@ const { data: newPost, error } = await supabase.from("posts").insert({
     const isPlaying = playingVideo === post.id;
 
     return (
-      <div key={post.id} ref={(el) => { if (el) postRefs.current.set(post.id, el); }} className="overflow-hidden" style={{ backgroundColor: theme.bgCard, borderBottom: `1px solid ${theme.borderLight}` }}>
+      <div key={post.id} ref={(el) => { if (el) postRefs.current.set(post.id, el); }} className="rounded-2xl overflow-hidden" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}>
         {/* 헤더 */}
         <div className="flex items-center gap-2 p-4 pb-0">
           <div className="w-10 h-10 rounded-full flex items-center justify-center overflow-hidden cursor-pointer" style={{ backgroundColor: theme.accent }} onClick={() => handleProfileClick(post)}>
@@ -1415,10 +1415,10 @@ const { data: newPost, error } = await supabase.from("posts").insert({
       <Header title="커뮤니티" showBack />
 
       {/* 메인 */}
-      <main className="max-w-[631px] mx-auto py-4">
+      <main className="max-w-[631px] mx-auto py-4 px-2">
         {/* 글쓰기 박스 */}
         {user && (
-          <div ref={writeBoxRef} className="mb-4 overflow-hidden" style={{ backgroundColor: theme.bgCard, borderBottom: `1px solid ${theme.borderLight}` }}>
+          <div ref={writeBoxRef} className="rounded-2xl mb-4 overflow-hidden" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}>
             {isMutedPost() && <div className="p-3" style={{ backgroundColor: theme.redBg, borderBottom: `1px solid ${theme.red}30` }}><p className="text-sm" style={{ color: theme.red }}>⚠️ 글쓰기가 제한되어 있습니다.</p></div>}
             {!isWriting ? (
               <div className={`flex items-center gap-3 p-4 cursor-pointer ${isMutedPost() ? 'opacity-50' : ''}`} onClick={handleWriteBoxClick}>
@@ -1445,10 +1445,10 @@ const { data: newPost, error } = await supabase.from("posts").insert({
             )}
           </div>
         )}
-        {!user && <div className="p-4 mb-4 text-center" style={{ backgroundColor: theme.bgCard, borderBottom: `1px solid ${theme.borderLight}` }}><span style={{ color: theme.textMuted }}>로그인하고 글을 작성하세요</span><Link href="/login" className="font-bold ml-2" style={{ color: theme.accent }}>로그인</Link></div>}
+        {!user && <div className="rounded-2xl p-4 mb-4 text-center" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}><span style={{ color: theme.textMuted }}>로그인하고 글을 작성하세요</span><Link href="/login" className="font-bold ml-2" style={{ color: theme.accent }}>로그인</Link></div>}
 
         {/* 게시글 목록 */}
-        {loading ? <div className="flex justify-center py-20"><div className="w-8 h-8 border-4 rounded-full animate-spin" style={{ borderColor: theme.border, borderTopColor: theme.accent }}></div></div> : posts.length === 0 ? <div className="text-center py-20" style={{ backgroundColor: theme.bgCard, borderBottom: `1px solid ${theme.borderLight}` }}><p style={{ color: theme.textMuted }}>게시글이 없습니다</p></div> : <div className="space-y-0">{renderPostsWithAds()}</div>}
+        {loading ? <div className="flex justify-center py-20"><div className="w-8 h-8 border-4 rounded-full animate-spin" style={{ borderColor: theme.border, borderTopColor: theme.accent }}></div></div> : posts.length === 0 ? <div className="text-center py-20 rounded-2xl" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}><p style={{ color: theme.textMuted }}>게시글이 없습니다</p></div> : <div className="space-y-3">{renderPostsWithAds()}</div>}
       </main>
 
       <BottomNav />

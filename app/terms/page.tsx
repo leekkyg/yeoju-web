@@ -36,7 +36,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-lg font-bold mb-3" style={{ color: theme.textPrimary }}>제1조 (목적)</h2>
             <p className="leading-relaxed" style={{ color: theme.textSecondary }}>
-              본 약관은 여주마켓(이하 "회사")이 제공하는 서비스의 이용조건 및 절차, 
+              본 약관은 여주모아(이하 "회사")이 제공하는 서비스의 이용조건 및 절차, 
               회사와 회원 간의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.
             </p>
           </section>

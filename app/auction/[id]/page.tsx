@@ -314,7 +314,7 @@ function WinnerSection({ auction, bids, currentUserId }: { auction: Auction; bid
 
   const handleCopy = async () => {
     // 낙찰 정보 복사
-    const text = `[여주마켓 경매 낙찰]\n상품: ${auction.title}\n낙찰가: ${formatPrice(winningBid.bid_amount)}`;
+    const text = `[여주모아 경매 낙찰]\n상품: ${auction.title}\n낙찰가: ${formatPrice(winningBid.bid_amount)}`;
     await navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);

@@ -15,7 +15,7 @@ export default function Footer() {
         
         {/* 하단 */}
         <div className="mt-4 pt-4 border-t border-white/10 flex justify-between items-center text-xs">
-          <p className="text-gray-500">© 2025 여주마켓</p>
+          <p className="text-gray-500">© 2025 여주모아</p>
           <div className="flex gap-4 text-gray-500">
             <a href="#" className="hover:text-white">이용약관</a>
             <a href="#" className="hover:text-white">개인정보처리방침</a>

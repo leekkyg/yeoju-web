@@ -7,7 +7,7 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const DEFAULT_OG_IMAGE = "/og-default.png";
-const SITE_NAME = "여주마켓";
+const SITE_NAME = "여주모아";
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://yeoju.market";
 
 export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
@@ -27,7 +27,7 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
   }
 
   const title = notice.title || "공지사항";
-  const description = notice.content?.slice(0, 150)?.replace(/\n/g, ' ') || "여주마켓 공지사항";
+  const description = notice.content?.slice(0, 150)?.replace(/\n/g, ' ') || "여주모아 공지사항";
 
   // 섬네일 결정
   let thumbnail = DEFAULT_OG_IMAGE;

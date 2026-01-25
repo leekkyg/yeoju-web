@@ -628,7 +628,7 @@ export default function HomeClient({ initialData }: HomeClientProps) {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-base font-bold" style={{ color: theme.textPrimary }}>🎬 영상</h3>
-              <p className="text-xs mt-0.5" style={{ color: theme.textMuted }}>여주마켓 영상 콘텐츠</p>
+              <p className="text-xs mt-0.5" style={{ color: theme.textMuted }}>여주모아 영상 콘텐츠</p>
             </div>
             <Link href="/videos" className="flex items-center gap-0.5 text-sm font-semibold" style={{ color: theme.accent }}>
               전체보기 <ChevronRight className="w-4 h-4" strokeWidth={1.5} />

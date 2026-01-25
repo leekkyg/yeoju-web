@@ -93,7 +93,7 @@ export default function PartnersPage() {
               파트너를 모집 중이에요
             </p>
             <p className="text-sm text-center" style={{ color: theme.textMuted }}>
-              여주마켓과 함께할 파트너사를 기다리고 있습니다
+              여주모아와 함께할 파트너사를 기다리고 있습니다
             </p>
           </div>
         ) : (

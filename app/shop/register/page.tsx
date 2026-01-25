@@ -276,7 +276,7 @@ export default function ShopRegisterPage() {
         body: JSON.stringify({
           billingKey: selectedCard.billing_key,
           amount: totalAmount,
-          orderName: `여주마켓 셀러 ${selectedPlan!.name}`,
+          orderName: `여주모아 셀러 ${selectedPlan!.name}`,
           customerKey: `customer_${user.id}`,
         }),
       });

@@ -93,7 +93,7 @@ export default function LoginPage() {
           >
             <span className="font-black text-2xl" style={{ color: isDark ? '#121212' : '#FFFFFF' }}>여주</span>
           </div>
-          <h2 className="text-2xl font-black" style={{ color: theme.textPrimary }}>여주마켓</h2>
+          <h2 className="text-2xl font-black" style={{ color: theme.textPrimary }}>여주모아</h2>
           <p className="mt-2" style={{ color: theme.textMuted }}>여주시민의 프리미엄 커뮤니티</p>
         </div>
 

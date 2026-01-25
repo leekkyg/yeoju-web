@@ -36,7 +36,7 @@ export default function PrivacyPage() {
           <section>
             <h2 className="text-lg font-bold mb-3" style={{ color: theme.textPrimary }}>제1조 (개인정보의 처리 목적)</h2>
             <p className="leading-relaxed mb-3" style={{ color: theme.textSecondary }}>
-              여주마켓(이하 "회사")은 다음의 목적을 위하여 개인정보를 처리합니다.
+              여주모아(이하 "회사")은 다음의 목적을 위하여 개인정보를 처리합니다.
             </p>
             <ul className="space-y-2" style={{ color: theme.textSecondary }}>
               <li className="flex gap-2">

@@ -5,13 +5,13 @@ import Providers from "@/components/Providers";
 import Footer from "@/components/Footer";
 
 export const metadata: Metadata = {
-  title: "여주마켓",
+  title: "여주모아",
   description: "여주시민을 위한 지역 커뮤니티 플랫폼",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "여주마켓",
+    title: "여주모아",
   },
 };
 

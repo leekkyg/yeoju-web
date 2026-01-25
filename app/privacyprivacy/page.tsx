@@ -27,7 +27,7 @@ export default function PrivacyPage() {
           <section>
             <h2 className="text-lg font-bold text-gray-900 mb-3">제1조 (목적)</h2>
             <p className="text-gray-700 leading-relaxed">
-              여주마켓(이하 "회사")은 이용자의 개인정보를 중요시하며, 「개인정보 보호법」을 준수하고 있습니다. 
+              여주모아(이하 "회사")은 이용자의 개인정보를 중요시하며, 「개인정보 보호법」을 준수하고 있습니다. 
               본 개인정보처리방침은 회사가 제공하는 서비스 이용과 관련하여 이용자의 개인정보가 어떻게 수집, 이용, 보관, 파기되는지에 대해 안내드립니다.
             </p>
           </section>
@@ -207,7 +207,7 @@ export default function PrivacyPage() {
                 <span className="font-semibold">개인정보 보호책임자</span>
               </p>
               <div className="mt-2 text-sm text-gray-600 space-y-1">
-                <p>성명: 여주마켓 관리자</p>
+                <p>성명: 여주모아 관리자</p>
                 <p>이메일: privacy@yeojumarket.com</p>
               </div>
               <p className="text-gray-500 text-sm mt-3">

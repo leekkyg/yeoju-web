@@ -111,7 +111,7 @@ export default function Header({
                 </span>
               </div>
               <span className="font-bold text-lg" style={{ color: theme.textPrimary }}>
-                여주마켓
+                여주모아
               </span>
             </Link>
           )}

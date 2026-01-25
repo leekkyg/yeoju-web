@@ -9,7 +9,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 // 기본 OG 이미지 (섬네일 없을 때 사용)
 const DEFAULT_OG_IMAGE = "/og-default.png";
-const SITE_NAME = "여주마켓";
+const SITE_NAME = "여주모아";
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://yeoju.market";
 
 // 링크에서 첫 번째 이미지 추출 (링크 프리뷰용)
