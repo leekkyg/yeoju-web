@@ -15,9 +15,9 @@ import {
 } from "lucide-react";
 
 const R2_WORKER_URL = "https://yeoju-r2-worker.kkyg9300.workers.dev";
-const CHUNK_SIZE = 50 * 1024 * 1024;
+const CHUNK_SIZE = 10 * 1024 * 1024;
 const MAX_FILE_SIZE = 3 * 1024 * 1024 * 1024;
-const PARALLEL_UPLOADS = 5;
+const PARALLEL_UPLOADS = 3;
 const linkPreviewCache = new Map<string, any>();
 
 interface CommunityPageContentProps {
@@ -632,26 +632,34 @@ const captureVideoThumbnail = (file: File): Promise<string | null> => {
       const parts: { partNumber: number; etag: string }[] = [];
       let completedParts = 0;
       
-      const uploadChunk = async (partIndex: number) => {
+      const uploadChunk = async (partIndex: number, retries = 3): Promise<{ partNumber: number; etag: string }> => {
         const start = partIndex * CHUNK_SIZE;
         const end = Math.min(start + CHUNK_SIZE, file.size);
         const chunk = file.slice(start, end);
         
-        const partRes = await fetch(`${R2_WORKER_URL}/multipart/upload/${key}`, { 
-          method: 'PUT', 
-          headers: { 'X-Upload-Id': uploadId, 'X-Part-Number': String(partIndex + 1) }, 
-          body: chunk 
-        });
-        
-        if (!partRes.ok) {
-          throw new Error(`파트 ${partIndex + 1} 업로드 실패`);
+        for (let attempt = 0; attempt < retries; attempt++) {
+          try {
+            const partRes = await fetch(`${R2_WORKER_URL}/multipart/upload/${key}`, { 
+              method: 'PUT', 
+              headers: { 'X-Upload-Id': uploadId, 'X-Part-Number': String(partIndex + 1) }, 
+              body: chunk 
+            });
+            
+            if (!partRes.ok) {
+              throw new Error(`파트 ${partIndex + 1} 업로드 실패`);
+            }
+            
+            const partData = await partRes.json();
+            completedParts++;
+            const fileProgress = (completedParts / totalParts) * 100;
+            setUploadProgress(Math.round(((fileIndex + fileProgress / 100) / totalFilesCount) * 100));
+            return { partNumber: partIndex + 1, etag: partData.etag };
+          } catch (error) {
+            if (attempt === retries - 1) throw error;
+            await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+          }
         }
-        
-        const partData = await partRes.json();
-        completedParts++;
-        const fileProgress = (completedParts / totalParts) * 100;
-        setUploadProgress(Math.round(((fileIndex + fileProgress / 100) / totalFilesCount) * 100));
-        return { partNumber: partIndex + 1, etag: partData.etag };
+        throw new Error(`파트 ${partIndex + 1} 업로드 실패`);
       };
       
       for (let i = 0; i < totalParts; i += PARALLEL_UPLOADS) {
