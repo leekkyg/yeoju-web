@@ -97,10 +97,17 @@ export default function NoticeEditPage() {
   };
 
   const uploadFile = async (file: File): Promise<string> => {
-    const ext = file.name.split('.').pop();
+    const ext = file.name.split('.').pop() || 'jpg';
     const fileName = `notices/${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
-    const response = await fetch(`${R2_WORKER_URL}/${fileName}`, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+    const response = await fetch(`${R2_WORKER_URL}/${fileName}`, { method: 'PUT', body: file, headers: { 'Content-Type': file.type || 'application/octet-stream' } });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`업로드 실패: ${response.status}`);
+    }
+    
     const data = await response.json();
+    if (!data.url) throw new Error("URL 반환 실패");
     return data.url;
   };
 

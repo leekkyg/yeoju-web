@@ -101,16 +101,24 @@ export default function ProfileEditPage() {
   };
 
   const uploadAvatar = async (file: File): Promise<string> => {
-    const ext = file.name.split('.').pop();
+    const ext = file.name.split('.').pop() || 'jpg';
     const fileName = `avatars/${user.id}-${Date.now()}.${ext}`;
     
     const response = await fetch(`${R2_WORKER_URL}/${fileName}`, {
       method: 'PUT',
       body: file,
-      headers: { 'Content-Type': file.type }
+      headers: { 'Content-Type': file.type || 'image/jpeg' }
     });
     
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`업로드 실패: ${response.status} - ${errorText}`);
+    }
+    
     const data = await response.json();
+    if (!data.url) {
+      throw new Error("서버에서 URL을 반환하지 않았습니다");
+    }
     return data.url;
   };
 

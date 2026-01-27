@@ -1,6 +1,7 @@
 "use client";
 import { ReactNode, useEffect } from "react";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+import { AuthProvider } from "@/contexts/AuthContext";
 import { App } from "@capacitor/app";
 
 export default function Providers({ children }: { children: ReactNode }) {
@@ -19,5 +20,9 @@ export default function Providers({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  return <ThemeProvider>{children}</ThemeProvider>;
+  return (
+    <AuthProvider>
+      <ThemeProvider>{children}</ThemeProvider>
+    </AuthProvider>
+  );
 }

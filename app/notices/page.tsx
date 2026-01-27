@@ -291,7 +291,7 @@ if (noticeId) {
   const uploadFile = async (file: File): Promise<string> => {
     const ext = file.name.split('.').pop();
     const fileName = `notices/${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
-    const response = await fetch(`${R2_WORKER_URL}/${fileName}`, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+    const response = await fetch(`${R2_WORKER_URL}/${fileName}`, { method: 'PUT', body: file, headers: { 'Content-Type': file.type || 'application/octet-stream' } });
     const data = await response.json();
     return data.url;
   };

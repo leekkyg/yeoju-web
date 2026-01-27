@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { useTheme } from "@/contexts/ThemeContext";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
+import VideoPlayer from "@/components/VideoPlayer";
 import { 
   X, ChevronLeft, ChevronRight, Play, Camera, MoreVertical, Bell,
   Image as ImageIcon, Send, Smile, ThumbsUp, MessageCircle, Share2, 
@@ -71,7 +72,7 @@ function CommunityPageContent({ initialPosts }: CommunityPageContentProps) {
   const commentImageRef = useRef<HTMLInputElement>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isAnonymousComment, setIsAnonymousComment] = useState(false);
-  const [commentSort, setCommentSort] = useState<'newest' | 'oldest' | 'popular'>('newest');
+  const [commentSort, setCommentSort] = useState<'oldest' | 'newest' | 'popular' | 'replies'>('oldest');
   const commentInputRef = useRef<HTMLInputElement>(null);
   const detailContentRef = useRef<HTMLDivElement>(null);
   
@@ -418,8 +419,26 @@ useEffect(() => {
 
   const fetchPosts = async () => {
     setLoading(true);
-    const { data } = await supabase.from("posts").select("*").order("created_at", { ascending: false });
-    setPosts(data || []);
+    const { data: posts } = await supabase.from("posts").select("*").order("created_at", { ascending: false });
+    
+    if (!posts || posts.length === 0) {
+      setPosts([]);
+      setLoading(false);
+      return;
+    }
+    
+    const userIds = [...new Set(posts.map(p => p.user_id).filter(Boolean))];
+    const { data: profiles } = await supabase.from("profiles").select("id, avatar_url").in("id", userIds);
+    
+    const profileMap = new Map();
+    profiles?.forEach(p => profileMap.set(p.id, p.avatar_url));
+    
+    const postsWithAvatar = posts.map(post => ({
+      ...post,
+      author_avatar_url: profileMap.get(post.user_id) || null
+    }));
+    
+    setPosts(postsWithAvatar);
     setLoading(false);
   };
 
@@ -435,31 +454,59 @@ useEffect(() => {
     setCommentImages([]);
     setCommentImagePreviews([]);
 
-    const { data, error } = await supabase
-      .from("comments")
-      .select("*")
-      .eq("post_id", post.id)
-      .order("created_at", { ascending: true });
+    try {
+      const { data, error } = await supabase
+        .from("comments")
+        .select("*")
+        .eq("post_id", post.id)
+        .order("created_at", { ascending: true });
 
-    if (error) {
-      console.error("댓글 에러:", error);
+      if (error) {
+        console.error("댓글 에러:", error);
+        setComments([]);
+        setLoadingComments(false);
+        return;
+      }
+
+      let commentsData = data || [];
+
+      // 댓글 작성자 프로필 정보 가져오기
+      if (commentsData.length > 0) {
+        const userIds = [...new Set(commentsData.map(c => c.user_id).filter(Boolean))];
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, avatar_url")
+          .in("id", userIds);
+        
+        const profileMap = new Map();
+        profiles?.forEach(p => profileMap.set(p.id, p.avatar_url));
+        
+        commentsData = commentsData.map(c => ({
+          ...c,
+          author_avatar_url: profileMap.get(c.user_id) || null
+        }));
+      }
+
+      if (commentsData.length > 0 && user) {
+        try {
+          const { data: likedComments } = await supabase
+            .from("comment_likes")
+            .select("comment_id")
+            .eq("user_id", user.id);
+          const likedIds = new Set(likedComments?.map(l => l.comment_id) || []);
+          commentsData = commentsData.map(c => ({ ...c, liked: likedIds.has(c.id) }));
+        } catch (e) {
+          // 좋아요 정보 실패해도 댓글은 보여줌
+        }
+      }
+      
+      setComments(commentsData);
+    } catch (err) {
+      console.error("댓글 로드 실패:", err);
       setComments([]);
+    } finally {
       setLoadingComments(false);
-      return;
     }
-
-    if (data && user) {
-      const { data: likedComments } = await supabase
-        .from("comment_likes")
-        .select("comment_id")
-        .eq("user_id", user.id);
-      const likedIds = new Set(likedComments?.map(l => l.comment_id) || []);
-      setComments(data.map(c => ({ ...c, liked: likedIds.has(c.id) })));
-    } else {
-      setComments(data || []);
-    }
-    
-    setLoadingComments(false);
   };
 
   const closeDetailModal = () => { 
@@ -526,39 +573,119 @@ const captureVideoThumbnail = (file: File): Promise<string | null> => {
   };
 
   const uploadSmallFile = async (file: File): Promise<string> => {
-    console.log("업로드 시작:", file.name, file.size);
+    console.log("업로드 시작:", file.name, file.size, file.type);
     try {
       const processedFile = await compressImage(file);
       console.log("압축 완료:", processedFile.size);
-      const ext = file.name.split('.').pop();
+      const ext = file.name.split('.').pop() || 'jpg';
       const fileName = `posts/${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
       console.log("업로드 URL:", `${R2_WORKER_URL}/${fileName}`);
-      const response = await fetch(`${R2_WORKER_URL}/${fileName}`, { method: 'PUT', body: processedFile, headers: { 'Content-Type': processedFile.type } });
-      console.log("응답:", response.status);
+      
+      const response = await fetch(`${R2_WORKER_URL}/${fileName}`, { 
+        method: 'PUT', 
+        body: processedFile, 
+        headers: { 'Content-Type': processedFile.type || 'application/octet-stream' }
+      });
+      
+      console.log("응답 상태:", response.status, response.statusText);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("업로드 실패 응답:", errorText);
+        throw new Error(`업로드 실패: ${response.status} - ${errorText}`);
+      }
+      
       const data = await response.json();
-      console.log("결과:", data);
+      console.log("업로드 결과:", data);
+      
+      if (!data.url) {
+        console.error("URL이 응답에 없음:", data);
+        throw new Error("서버에서 URL을 반환하지 않았습니다");
+      }
+      
       return data.url;
-    } catch (error) {
+    } catch (error: any) {
       console.error("업로드 에러:", error);
+      alert(`파일 업로드 실패: ${error.message || '알 수 없는 오류'}`);
       throw error;
     }
   };
 
   const uploadLargeFile = async (file: File, fileIndex: number, totalFilesCount: number): Promise<string> => {
-    const createRes = await fetch(`${R2_WORKER_URL}/multipart/create`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fileName: file.name, contentType: file.type }) });
-    const { uploadId, key } = await createRes.json();
-    const totalParts = Math.ceil(file.size / CHUNK_SIZE);
-    const parts: { partNumber: number; etag: string }[] = [];
-    let completedParts = 0;
-    const uploadChunk = async (partIndex: number) => {
-      const start = partIndex * CHUNK_SIZE, end = Math.min(start + CHUNK_SIZE, file.size), chunk = file.slice(start, end);
-      const partRes = await fetch(`${R2_WORKER_URL}/multipart/upload/${key}`, { method: 'PUT', headers: { 'X-Upload-Id': uploadId, 'X-Part-Number': String(partIndex + 1) }, body: chunk });
-      const partData = await partRes.json(); completedParts++; const fileProgress = (completedParts / totalParts) * 100; setUploadProgress(Math.round(((fileIndex + fileProgress / 100) / totalFilesCount) * 100)); return { partNumber: partIndex + 1, etag: partData.etag };
-    };
-    for (let i = 0; i < totalParts; i += PARALLEL_UPLOADS) { const batch = []; for (let j = i; j < Math.min(i + PARALLEL_UPLOADS, totalParts); j++) batch.push(uploadChunk(j)); const results = await Promise.all(batch); parts.push(...results); }
-    parts.sort((a, b) => a.partNumber - b.partNumber);
-    const completeRes = await fetch(`${R2_WORKER_URL}/multipart/complete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fileKey: key, uploadId, parts }) });
-    return (await completeRes.json()).url;
+    try {
+      const createRes = await fetch(`${R2_WORKER_URL}/multipart/create`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ fileName: file.name, contentType: file.type }) 
+      });
+      
+      if (!createRes.ok) {
+        throw new Error(`멀티파트 생성 실패: ${createRes.status}`);
+      }
+      
+      const { uploadId, key } = await createRes.json();
+      if (!uploadId || !key) {
+        throw new Error("멀티파트 업로드 초기화 실패");
+      }
+      
+      const totalParts = Math.ceil(file.size / CHUNK_SIZE);
+      const parts: { partNumber: number; etag: string }[] = [];
+      let completedParts = 0;
+      
+      const uploadChunk = async (partIndex: number) => {
+        const start = partIndex * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, file.size);
+        const chunk = file.slice(start, end);
+        
+        const partRes = await fetch(`${R2_WORKER_URL}/multipart/upload/${key}`, { 
+          method: 'PUT', 
+          headers: { 'X-Upload-Id': uploadId, 'X-Part-Number': String(partIndex + 1) }, 
+          body: chunk 
+        });
+        
+        if (!partRes.ok) {
+          throw new Error(`파트 ${partIndex + 1} 업로드 실패`);
+        }
+        
+        const partData = await partRes.json();
+        completedParts++;
+        const fileProgress = (completedParts / totalParts) * 100;
+        setUploadProgress(Math.round(((fileIndex + fileProgress / 100) / totalFilesCount) * 100));
+        return { partNumber: partIndex + 1, etag: partData.etag };
+      };
+      
+      for (let i = 0; i < totalParts; i += PARALLEL_UPLOADS) {
+        const batch = [];
+        for (let j = i; j < Math.min(i + PARALLEL_UPLOADS, totalParts); j++) {
+          batch.push(uploadChunk(j));
+        }
+        const results = await Promise.all(batch);
+        parts.push(...results);
+      }
+      
+      parts.sort((a, b) => a.partNumber - b.partNumber);
+      
+      const completeRes = await fetch(`${R2_WORKER_URL}/multipart/complete`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ fileKey: key, uploadId, parts }) 
+      });
+      
+      if (!completeRes.ok) {
+        throw new Error(`멀티파트 완료 실패: ${completeRes.status}`);
+      }
+      
+      const result = await completeRes.json();
+      if (!result.url) {
+        throw new Error("서버에서 URL을 반환하지 않았습니다");
+      }
+      
+      return result.url;
+    } catch (error: any) {
+      console.error("대용량 파일 업로드 에러:", error);
+      alert(`대용량 파일 업로드 실패: ${error.message || '알 수 없는 오류'}`);
+      throw error;
+    }
   };
 
   const uploadFile = async (file: File, fileIndex: number, totalFilesCount: number): Promise<string> => {
@@ -752,7 +879,29 @@ const { data: newPost, error } = await supabase.from("posts").insert({
 
   const formatDate = (d: string) => { const diff = Date.now() - new Date(d).getTime(); const m = Math.floor(diff / 60000), h = Math.floor(diff / 3600000), dd = Math.floor(diff / 86400000); if (m < 60) return `${m}분 전`; if (h < 24) return `${h}시간 전`; if (dd < 7) return `${dd}일 전`; return new Date(d).toLocaleDateString("ko-KR"); };
   const formatFullDate = (d: string) => new Date(d).toLocaleDateString("ko-KR", { year: 'numeric', month: 'long', day: 'numeric' });
-  const getMediaItems = (post: any): {url: string, type: 'image' | 'video'}[] => { if (!post?.images) return []; let urls = typeof post.images === 'string' ? JSON.parse(post.images) : post.images; return urls.map((url: string) => ({ url, type: /\.(mp4|mov|webm|avi)/i.test(url) ? 'video' : 'image' })); };
+  const getMediaItems = (post: any): {url: string, type: 'image' | 'video'}[] => { 
+    if (!post?.images) return []; 
+    try {
+      let urls = typeof post.images === 'string' ? JSON.parse(post.images) : post.images;
+      if (!Array.isArray(urls)) {
+        console.warn("images가 배열이 아님:", post.images);
+        return [];
+      }
+      const validUrls = urls
+        .filter((url: any) => url && typeof url === 'string' && url.trim() !== '')
+        .map((url: string) => ({ 
+          url: url.trim(), 
+          type: /\.(mp4|mov|webm|avi)/i.test(url) ? 'video' as const : 'image' as const 
+        }));
+      if (validUrls.length !== urls.length) {
+        console.warn("일부 URL이 필터링됨:", { 원본: urls, 유효: validUrls });
+      }
+      return validUrls;
+    } catch (e) {
+      console.error("이미지 파싱 에러:", e, post.images);
+      return [];
+    }
+  };
 
   const isAdmin = userProfile?.role === 'admin';
   const getAuthorName = (post: any) => isAdmin && post?.is_anonymous ? `익명 (${post.author_nickname || '?'})` : post?.is_anonymous ? '익명' : post?.author_nickname || '알수없음';
@@ -1003,12 +1152,18 @@ const { data: newPost, error } = await supabase.from("posts").insert({
         <div className="flex gap-2">
           {/* 프로필 */}
           <div 
-            className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" 
+            className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden" 
             style={{ backgroundColor: theme.bgInput }}
           >
-            <span className="text-xs font-bold" style={{ color: theme.textSecondary }}>
-              {comment.is_anonymous ? '?' : comment.author_nickname?.[0]?.toUpperCase() || 'U'}
-            </span>
+            {comment.is_anonymous ? (
+              <span className="text-xs font-bold" style={{ color: theme.textSecondary }}>?</span>
+            ) : comment.author_avatar_url ? (
+              <img src={comment.author_avatar_url} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-xs font-bold" style={{ color: theme.textSecondary }}>
+                {comment.author_nickname?.[0]?.toUpperCase() || 'U'}
+              </span>
+            )}
           </div>
           
           <div className="flex-1 min-w-0">
@@ -1119,7 +1274,13 @@ const { data: newPost, error } = await supabase.from("posts").insert({
         {/* 헤더 */}
         <div className="flex items-center gap-2 p-4 pb-0">
           <div className="w-10 h-10 rounded-full flex items-center justify-center overflow-hidden cursor-pointer" style={{ backgroundColor: theme.accent }} onClick={() => handleProfileClick(post)}>
-            <span className="text-sm font-bold" style={{ color: isDark ? '#121212' : '#fff' }}>{post.is_anonymous ? '?' : (post.author_nickname?.[0]?.toUpperCase() || 'U')}</span>
+            {post.is_anonymous ? (
+              <span className="text-sm font-bold" style={{ color: isDark ? '#121212' : '#fff' }}>?</span>
+            ) : post.author_avatar_url ? (
+              <img src={post.author_avatar_url} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-sm font-bold" style={{ color: isDark ? '#121212' : '#fff' }}>{post.author_nickname?.[0]?.toUpperCase() || 'U'}</span>
+            )}
           </div>
           <div className="flex-1">
             <div className="flex items-center gap-2">
@@ -1172,18 +1333,10 @@ const { data: newPost, error } = await supabase.from("posts").insert({
     {mediaItems.slice(0, 4).map((item, idx) => (
       <div key={idx} className={`relative overflow-hidden rounded-xl ${mediaItems.length === 3 && idx === 0 ? 'row-span-2' : ''}`}>
         {item.type === 'video' ? (
-          isPlaying && idx === 0 ? (
-            <video src={item.url} controls autoPlay className={`w-full object-cover rounded-xl ${mediaItems.length === 1 ? 'max-h-[500px]' : 'h-48'}`} />
-          ) : (
-            <div className="relative cursor-pointer" onClick={(e) => { e.stopPropagation(); setPlayingVideo(post.id); }}>
-              <video src={item.url} className={`w-full object-cover rounded-xl ${mediaItems.length === 1 ? 'max-h-[500px]' : 'h-48'}`} />
-              <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-xl">
-                <div className="w-12 h-12 bg-white/90 rounded-full flex items-center justify-center">
-                  <Play className="w-6 h-6 ml-1" style={{ color: theme.textPrimary }} fill="currentColor" />
-                </div>
-              </div>
-            </div>
-          )
+          <VideoPlayer 
+            src={item.url} 
+            className={mediaItems.length === 1 ? 'max-h-[500px]' : 'h-48'} 
+          />
         ) : (
           <img src={item.url} alt="" className={`w-full object-cover rounded-xl cursor-pointer ${mediaItems.length === 1 ? 'max-h-[500px]' : 'h-48'}`} onClick={() => openLightbox(mediaItems, idx)} />
         )}
@@ -1253,7 +1406,7 @@ const { data: newPost, error } = await supabase.from("posts").insert({
             </div>
             <div className="flex-1 overflow-y-auto" ref={detailContentRef}>
               <div className="flex items-center gap-3 p-4">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: theme.accent }}><span className="text-sm font-bold" style={{ color: isDark ? '#121212' : '#fff' }}>{detailModal.is_anonymous ? '?' : (detailModal.author_nickname?.[0]?.toUpperCase() || 'U')}</span></div>
+                <div className="w-10 h-10 rounded-full flex items-center justify-center overflow-hidden" style={{ backgroundColor: theme.accent }}>{detailModal.is_anonymous ? <span className="text-sm font-bold" style={{ color: isDark ? '#121212' : '#fff' }}>?</span> : detailModal.author_avatar_url ? <img src={detailModal.author_avatar_url} alt="" className="w-full h-full object-cover" /> : <span className="text-sm font-bold" style={{ color: isDark ? '#121212' : '#fff' }}>{detailModal.author_nickname?.[0]?.toUpperCase() || 'U'}</span>}</div>
                 <div><div className="flex items-center gap-2"><span className="font-bold" style={{ color: theme.textPrimary }}>{getAuthorName(detailModal)}</span>{detailModal.is_anonymous && <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: theme.bgInput, color: theme.textMuted }}>익명</span>}</div><span className="text-sm" style={{ color: theme.textMuted }}>{formatDate(detailModal.created_at)}</span></div>
               </div>
               <div className="px-4 pb-3">
@@ -1336,8 +1489,8 @@ const { data: newPost, error } = await supabase.from("posts").insert({
                 <button onClick={() => handleShare(detailModal)} className="flex-1 flex items-center justify-center gap-2 py-3" style={{ color: theme.textSecondary }}><Share2 className="w-5 h-5" /><span className="font-medium text-sm">공유</span></button>
               </div>
               <div className="p-4 space-y-4">
-                {comments.length > 0 && (<div className="flex items-center gap-2 pb-2" style={{ borderBottom: `1px solid ${theme.borderLight}` }}><span className="text-sm" style={{ color: theme.textMuted }}>정렬:</span>{(['newest', 'oldest', 'popular'] as const).map(s => (<button key={s} onClick={() => setCommentSort(s)} className="px-3 py-1 text-sm rounded-full" style={{ backgroundColor: commentSort === s ? theme.accent : theme.bgInput, color: commentSort === s ? (isDark ? '#121212' : '#fff') : theme.textSecondary, fontWeight: commentSort === s ? 'bold' : 'normal' }}>{s === 'newest' ? '최신순' : s === 'oldest' ? '오래된순' : '인기순'}</button>))}</div>)}
-                {loadingComments ? <div className="text-center py-4"><div className="w-6 h-6 border-2 rounded-full animate-spin mx-auto" style={{ borderColor: theme.border, borderTopColor: theme.accent }} /></div> : comments.filter(c => !c.parent_id).length === 0 ? <p className="text-center py-4" style={{ color: theme.textMuted }}>첫 댓글을 남겨보세요</p> : ([...comments.filter(c => !c.parent_id)].sort((a, b) => { if (commentSort === 'newest') return new Date(b.created_at).getTime() - new Date(a.created_at).getTime(); if (commentSort === 'oldest') return new Date(a.created_at).getTime() - new Date(b.created_at).getTime(); return (b.like_count || 0) - (a.like_count || 0); }).map(c => <CommentItem key={c.id} comment={c} />))}
+                {comments.length > 0 && (<div className="flex items-center gap-2 pb-2" style={{ borderBottom: `1px solid ${theme.borderLight}` }}><span className="text-sm" style={{ color: theme.textMuted }}>정렬:</span>{(['oldest', 'newest', 'popular', 'replies'] as const).map(s => (<button key={s} onClick={() => setCommentSort(s)} className="px-3 py-1 text-sm rounded-full" style={{ backgroundColor: commentSort === s ? theme.accent : theme.bgInput, color: commentSort === s ? (isDark ? '#121212' : '#fff') : theme.textSecondary, fontWeight: commentSort === s ? 'bold' : 'normal' }}>{s === 'oldest' ? '작성순' : s === 'newest' ? '최신순' : s === 'popular' ? '인기순' : '나열순'}</button>))}</div>)}
+                {loadingComments ? <div className="text-center py-4"><div className="w-6 h-6 border-2 rounded-full animate-spin mx-auto" style={{ borderColor: theme.border, borderTopColor: theme.accent }} /></div> : comments.filter(c => !c.parent_id).length === 0 ? <p className="text-center py-4" style={{ color: theme.textMuted }}>첫 댓글을 남겨보세요</p> : ([...comments.filter(c => !c.parent_id)].sort((a, b) => { if (commentSort === 'oldest') return new Date(a.created_at).getTime() - new Date(b.created_at).getTime(); if (commentSort === 'newest') return new Date(b.created_at).getTime() - new Date(a.created_at).getTime(); if (commentSort === 'popular') return (b.like_count || 0) - (a.like_count || 0); const aReplies = comments.filter(c => c.parent_id === a.id).length; const bReplies = comments.filter(c => c.parent_id === b.id).length; return bReplies - aReplies; }).map(c => <CommentItem key={c.id} comment={c} />))}
               </div>
             </div>
             {user ? (
@@ -1346,7 +1499,7 @@ const { data: newPost, error } = await supabase.from("posts").insert({
                 {replyingTo && <div className="flex items-center justify-between px-3 py-2 rounded-lg mb-2" style={{ backgroundColor: `${theme.accent}20` }}><span className="text-sm" style={{ color: theme.accent }}>{replyingTo.mentionNickname ? `@${replyingTo.mentionNickname}` : replyingTo.author_nickname}님에게 답글</span><button onClick={() => setReplyingTo(null)} style={{ color: theme.accent }}><X className="w-4 h-4" /></button></div>}
                 {commentImagePreviews.length > 0 && <div className="mb-2 relative inline-block"><img src={commentImagePreviews[0]} alt="" className="h-16 rounded-lg" /><button onClick={() => { setCommentImages([]); setCommentImagePreviews([]); }} className="absolute -top-1 -right-1 w-5 h-5 rounded-full text-xs flex items-center justify-center" style={{ backgroundColor: theme.red, color: '#fff' }}><X className="w-3 h-3" /></button></div>}
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: theme.accent }}><span className="text-xs font-bold" style={{ color: isDark ? '#121212' : '#fff' }}>{userProfile?.nickname?.[0]?.toUpperCase() || 'U'}</span></div>
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden" style={{ backgroundColor: theme.accent }}>{userProfile?.avatar_url ? <img src={userProfile.avatar_url} alt="" className="w-full h-full object-cover" /> : <span className="text-xs font-bold" style={{ color: isDark ? '#121212' : '#fff' }}>{userProfile?.nickname?.[0]?.toUpperCase() || 'U'}</span>}</div>
                   <div className="flex-1 relative">
                     <input ref={commentInputRef} type="text" value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder={isMutedComment() ? "댓글 작성이 제한되어 있습니다" : replyingTo ? "답글 달기..." : `${userProfile?.nickname || '사용자'} 이름으로 댓글 달기`} className="w-full pl-4 pr-20 py-2.5 rounded-full focus:outline-none focus:ring-2 text-sm" style={{ backgroundColor: theme.bgInput, color: theme.textPrimary, opacity: isMutedComment() ? 0.5 : 1 }} onKeyDown={(e) => e.key === 'Enter' && handleComment()} disabled={isMutedComment()} />
                     <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
@@ -1357,7 +1510,6 @@ const { data: newPost, error } = await supabase.from("posts").insert({
                     </div>
                     {showEmojiPicker && !isMutedComment() && <div className="absolute bottom-12 right-0 rounded-xl shadow-lg p-2 grid grid-cols-10 gap-1 z-10" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>{emojis.map(e => <button key={e} onClick={() => addEmoji(e)} className="w-7 h-7 text-lg rounded">{e}</button>)}</div>}
                   </div>
-                  <label className={`flex items-center gap-1 cursor-pointer select-none ${isMutedComment() ? 'opacity-50' : ''}`}><input type="checkbox" checked={isAnonymousComment} onChange={(e) => setIsAnonymousComment(e.target.checked)} className="w-3.5 h-3.5 rounded" style={{ accentColor: theme.accent }} disabled={isMutedComment()} /><span className="text-xs" style={{ color: theme.textMuted }}>익명</span></label>
                 </div>
               </div>
             ) : <div className="p-4 text-center" style={{ borderTop: `1px solid ${theme.borderLight}` }}><span className="text-sm" style={{ color: theme.textMuted }}>댓글을 작성하려면 </span><Link href="/login" className="font-bold text-sm" style={{ color: theme.accent }}>로그인</Link></div>}
@@ -1418,7 +1570,7 @@ const { data: newPost, error } = await supabase.from("posts").insert({
       )}
 
       {/* 확인 모달들 */}
-      {confirmPostModal && (<div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => setConfirmPostModal(false)}><div className="rounded-2xl p-6 w-full max-w-sm" style={{ backgroundColor: theme.bgCard }} onClick={(e) => e.stopPropagation()}><p className="text-center font-medium mb-6" style={{ color: theme.textPrimary }}>{isAnonymous ? '익명으로 게시물을 등록하시겠습니까?' : '게시물을 등록하시겠습니까?'}</p><div className="flex gap-3"><button onClick={() => setConfirmPostModal(false)} className="flex-1 py-3 font-bold rounded-xl" style={{ backgroundColor: theme.bgInput, color: theme.textPrimary }}>취소</button><button onClick={handlePost} className="flex-1 py-3 font-bold rounded-xl" style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}>확인</button></div></div></div>)}
+      {confirmPostModal && (<div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => setConfirmPostModal(false)}><div className="rounded-2xl p-6 w-full max-w-sm" style={{ backgroundColor: theme.bgCard }} onClick={(e) => e.stopPropagation()}><p className="text-center font-medium mb-6" style={{ color: theme.textPrimary }}>게시물을 등록하시겠습니까?</p><div className="flex gap-3"><button onClick={() => setConfirmPostModal(false)} className="flex-1 py-3 font-bold rounded-xl" style={{ backgroundColor: theme.bgInput, color: theme.textPrimary }}>취소</button><button onClick={handlePost} className="flex-1 py-3 font-bold rounded-xl" style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}>확인</button></div></div></div>)}
       {reportModal && (<div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => { setReportModal(null); setReportReason(""); }}><div className="rounded-2xl p-6 w-full max-w-sm" style={{ backgroundColor: theme.bgCard }} onClick={(e) => e.stopPropagation()}><h3 className="text-lg font-bold mb-4" style={{ color: theme.textPrimary }}>🚨 신고하기</h3>{reportModal.isAnonymous && <p className="text-sm mb-3" style={{ color: theme.textMuted }}>익명 사용자를 신고합니다</p>}<textarea value={reportReason} onChange={(e) => setReportReason(e.target.value)} placeholder="신고 사유를 입력하세요" className="w-full h-24 p-3 rounded-xl resize-none focus:outline-none focus:ring-2 mb-4" style={{ backgroundColor: theme.bgInput, color: theme.textPrimary, border: `1px solid ${theme.border}` }} /><div className="flex gap-3"><button onClick={() => { setReportModal(null); setReportReason(""); }} className="flex-1 py-3 font-bold rounded-xl" style={{ backgroundColor: theme.bgInput, color: theme.textPrimary }}>취소</button><button onClick={handleReport} className="flex-1 py-3 font-bold rounded-xl" style={{ backgroundColor: theme.red, color: '#fff' }}>신고</button></div></div></div>)}
       {editingPost && (<div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => setEditingPost(null)}><div className="rounded-2xl p-4 w-full max-w-lg" style={{ backgroundColor: theme.bgCard }} onClick={(e) => e.stopPropagation()}><div className="flex items-center justify-between mb-4"><h3 className="text-lg font-bold" style={{ color: theme.textPrimary }}>게시글 수정</h3><button onClick={() => setEditingPost(null)} style={{ color: theme.textMuted }}><X className="w-6 h-6" /></button></div><textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} className="w-full h-40 p-3 rounded-xl resize-none focus:outline-none focus:ring-2" style={{ backgroundColor: theme.bgInput, color: theme.textPrimary, border: `1px solid ${theme.border}` }} /><div className="flex gap-2 mt-4"><button onClick={() => setEditingPost(null)} className="flex-1 py-3 font-bold rounded-xl" style={{ backgroundColor: theme.bgInput, color: theme.textPrimary }}>취소</button><button onClick={handleEditSave} className="flex-1 py-3 font-bold rounded-xl" style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}>수정</button></div></div></div>)}
       {editProfileModal && (<div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => setEditProfileModal(false)}><div className="rounded-2xl p-6 w-full max-w-sm" style={{ backgroundColor: theme.bgCard }} onClick={(e) => e.stopPropagation()}><h3 className="text-lg font-bold mb-4" style={{ color: theme.textPrimary }}>프로필 수정</h3><div className="flex flex-col items-center mb-6"><div className="relative"><div className="w-24 h-24 rounded-full flex items-center justify-center overflow-hidden" style={{ backgroundColor: theme.accent }}>{userProfile?.avatar_url ? <img src={userProfile.avatar_url} alt="" className="w-full h-full object-cover" /> : <span className="text-3xl font-bold" style={{ color: isDark ? '#121212' : '#fff' }}>{userProfile?.nickname?.[0]?.toUpperCase() || 'U'}</span>}</div><button onClick={() => profileAvatarRef.current?.click()} className="absolute bottom-0 right-0 w-8 h-8 rounded-full flex items-center justify-center shadow-lg" style={{ backgroundColor: theme.accent }}><Camera className="w-4 h-4" style={{ color: isDark ? '#121212' : '#fff' }} /></button><input ref={profileAvatarRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} /></div></div><div className="mb-4"><label className="block text-sm font-medium mb-1" style={{ color: theme.textSecondary }}>닉네임</label><input type="text" value={editNickname} onChange={(e) => setEditNickname(e.target.value)} maxLength={20} className="w-full px-4 py-3 rounded-xl focus:outline-none focus:ring-2" style={{ backgroundColor: theme.bgInput, color: theme.textPrimary, border: `1px solid ${theme.border}` }} />{getNicknameChangeInfo() && <p className="text-xs mt-1" style={{ color: theme.textMuted }}>{getNicknameChangeInfo()!.remaining > 0 ? `변경 가능: ${getNicknameChangeInfo()!.remaining}회` : `${getNicknameChangeInfo()!.daysUntilReset}일 후 리셋`}</p>}</div><div className="flex gap-2"><button onClick={() => setEditProfileModal(false)} className="flex-1 py-3 font-bold rounded-xl" style={{ backgroundColor: theme.bgInput, color: theme.textPrimary }}>취소</button><button onClick={handleSaveNickname} disabled={editingProfile} className="flex-1 py-3 font-bold rounded-xl disabled:opacity-50" style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}>{editingProfile ? '저장 중...' : '저장'}</button></div></div></div>)}
@@ -1452,7 +1604,7 @@ const { data: newPost, error } = await supabase.from("posts").insert({
                 </div>
                 <div className="flex items-center justify-between mt-3 pt-3" style={{ borderTop: `1px solid ${theme.borderLight}` }}>
                   <div className="flex items-center gap-1"><input type="file" ref={fileInputRef} onChange={handleFileSelect} accept="image/*,video/*" multiple className="hidden" disabled={posting} /><button onClick={() => fileInputRef.current?.click()} disabled={posting} className="p-2 rounded-lg disabled:opacity-50" style={{ color: theme.textMuted }}><ImageIcon className="w-6 h-6" /></button></div>
-                  <div className="flex items-center gap-3"><label className="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" checked={isAnonymous} onChange={(e) => setIsAnonymous(e.target.checked)} disabled={posting} className="w-4 h-4 rounded" style={{ accentColor: theme.accent }} /><span className="text-sm" style={{ color: theme.textSecondary }}>익명</span></label><button onClick={handlePostButtonClick} disabled={posting || (!content.trim() && mediaFiles.length === 0)} className="px-5 py-2 font-bold rounded-full disabled:opacity-50" style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}>{posting ? "업로드 중..." : "게시"}</button></div>
+                  <button onClick={handlePostButtonClick} disabled={posting || (!content.trim() && mediaFiles.length === 0)} className="px-5 py-2 font-bold rounded-full disabled:opacity-50" style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}>{posting ? "업로드 중..." : "게시"}</button>
                 </div>
               </div>
             )}

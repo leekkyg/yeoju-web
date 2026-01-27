@@ -33,6 +33,7 @@ export default function MyPage() {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [myPosts, setMyPosts] = useState<any[]>([]);
+const [postCount, setPostCount] = useState(0);
   const [myShop, setMyShop] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   
@@ -62,13 +63,20 @@ export default function MyPage() {
       .single();
     setProfile(profileData);
     
-    const { data: posts } = await supabase
+const { data: posts } = await supabase
       .from("posts")
       .select("*")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(5);
     setMyPosts(posts || []);
+    
+    // 총 게시글 수 가져오기
+    const { count } = await supabase
+      .from("posts")
+      .select("*", { count: 'exact', head: true })
+      .eq("user_id", user.id);
+    setPostCount(count || 0);
 
     const { data: shop } = await supabase
       .from("shops")
@@ -204,8 +212,7 @@ export default function MyPage() {
           </div>
           <div className="grid grid-cols-3 gap-4 mt-6 pt-6" style={{ borderTop: `1px solid ${theme.border}` }}>
             <div className="text-center">
-              <p className="text-2xl font-bold" style={{ color: theme.textPrimary }}>{myPosts.length}</p>
-              <p className="text-sm" style={{ color: theme.textMuted }}>게시글</p>
+             <p className="text-2xl font-bold" style={{ color: theme.textPrimary }}>{postCount}</p>               <p className="text-sm" style={{ color: theme.textMuted }}>게시글</p>
             </div>
             <div className="text-center">
               <p className="text-2xl font-bold" style={{ color: theme.textPrimary }}>0</p>
