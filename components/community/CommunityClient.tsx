@@ -16,7 +16,7 @@ import {
 
 const R2_WORKER_URL = "https://yeoju-r2-worker.kkyg9300.workers.dev";
 const CHUNK_SIZE = 5 * 1024 * 1024;
-const MAX_FILE_SIZE = 3 * 1024 * 1024 * 1024;
+const MAX_FILE_SIZE = 100 * 1024 * 1024;
 const PARALLEL_UPLOADS = 1;
 const linkPreviewCache = new Map<string, any>();
 
@@ -517,7 +517,7 @@ useEffect(() => {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     for (const file of files) {
-      if (file.size > MAX_FILE_SIZE) { alert(`${file.name}: 3GB 이하만`); continue; }
+      if (file.size > MAX_FILE_SIZE) { alert(`${file.name}: 100MB 이하만 업로드 가능합니다`); continue; }
       if (mediaFiles.length + 1 > 10) { alert("최대 10개"); break; }
       const isVideo = file.type.startsWith('video/'), isImage = file.type.startsWith('image/');
       if (!isVideo && !isImage) continue;
@@ -710,7 +710,7 @@ const captureVideoThumbnail = (file: File): Promise<string | null> => {
 
   const uploadFile = async (file: File, fileIndex: number, totalFilesCount: number): Promise<string> => {
     setCurrentFileIndex(fileIndex + 1);
-    if (file.size > 100 * 1024 * 1024) return uploadLargeFile(file, fileIndex, totalFilesCount);
+    if (file.size > 100 * 1024 * 1024) throw new Error("100MB 이하만 업로드 가능합니다");
     const url = await uploadSmallFile(file);
     setUploadProgress(Math.round(((fileIndex + 1) / totalFilesCount) * 100));
     return url;
