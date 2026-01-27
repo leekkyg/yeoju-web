@@ -9,51 +9,77 @@ interface VideoPlayerProps {
   src: string;
   className?: string;
   style?: React.CSSProperties;
+  startTime?: number;
+  onTimeChange?: (time: number) => void;
+  autoPlayOnScroll?: boolean;
+  autoPlay?: boolean;
 }
 
-export default function VideoPlayer({ src, className = "", style }: VideoPlayerProps) {
+export default function VideoPlayer({ 
+  src, 
+  className = "", 
+  style, 
+  startTime = 0,
+  onTimeChange,
+  autoPlayOnScroll = true,
+  autoPlay = false
+}: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showControls, setShowControls] = useState(false);
+  const [showControls, setShowControls] = useState(true);
   const [progress, setProgress] = useState(0);
-  const [currentTime, setCurrentTime] = useState(0);
+  const [currentTimeState, setCurrentTimeState] = useState(0);
   const [duration, setDuration] = useState(0);
   const hideControlsTimer = useRef<NodeJS.Timeout | null>(null);
+  const lastTimeUpdateRef = useRef(0);
+  const onTimeChangeRef = useRef(onTimeChange);
   const hasAutoPlayed = useRef(false);
-  const isVisible = useRef(false);
 
+  // onTimeChange ref 업데이트
   useEffect(() => {
-    if (!containerRef.current) return;
+    onTimeChangeRef.current = onTimeChange;
+  }, [onTimeChange]);
+
+  // 시작 시간 설정
+  useEffect(() => {
+    if (videoRef.current && startTime > 0) {
+      videoRef.current.currentTime = startTime;
+    }
+  }, [startTime]);
+
+  // 자동 재생 (모달용)
+  useEffect(() => {
+    if (autoPlay && videoRef.current) {
+      videoRef.current.play().catch(() => {});
+    }
+  }, [autoPlay]);
+
+  // 스크롤 감지 자동 재생 (목록용)
+  useEffect(() => {
+    if (!autoPlayOnScroll || !containerRef.current) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          const wasVisible = isVisible.current;
-          isVisible.current = entry.intersectionRatio >= 0.7;
-          
-          if (isVisible.current && !wasVisible) {
-            if (!hasAutoPlayed.current) {
-              if (currentPlayingVideo && currentPlayingVideo !== videoRef.current) {
-                currentPlayingVideo.pause();
-              }
-              videoRef.current?.play().catch(() => {});
-              currentPlayingVideo = videoRef.current;
-              setIsPlaying(true);
-              hasAutoPlayed.current = true;
+          if (entry.intersectionRatio >= 0.7 && !hasAutoPlayed.current) {
+            if (currentPlayingVideo && currentPlayingVideo !== videoRef.current) {
+              currentPlayingVideo.pause();
             }
-          } else if (!isVisible.current && wasVisible) {
+            videoRef.current?.play().catch(() => {});
+            currentPlayingVideo = videoRef.current;
+            hasAutoPlayed.current = true;
+          } else if (entry.intersectionRatio < 0.2 && hasAutoPlayed.current) {
             videoRef.current?.pause();
             if (currentPlayingVideo === videoRef.current) {
               currentPlayingVideo = null;
             }
-            setIsPlaying(false);
           }
         });
       },
-      { threshold: [0, 0.7] }
+      { threshold: [0, 0.2, 0.7] }
     );
 
     observer.observe(containerRef.current);
@@ -64,36 +90,53 @@ export default function VideoPlayer({ src, className = "", style }: VideoPlayerP
         currentPlayingVideo = null;
       }
     };
-  }, []);
+  }, [autoPlayOnScroll]);
 
+  // 비디오 이벤트 핸들러
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
     const handleTimeUpdate = () => {
-      setProgress((video.currentTime / video.duration) * 100);
-      setCurrentTime(video.currentTime);
+      const time = video.currentTime;
+      setProgress((time / video.duration) * 100);
+      setCurrentTimeState(time);
+      
+      // 2초마다만 부모에 알림 (throttle로 리렌더링 방지)
+      if (onTimeChangeRef.current && time - lastTimeUpdateRef.current >= 2) {
+        lastTimeUpdateRef.current = time;
+        onTimeChangeRef.current(time);
+      }
     };
     
     const handleLoadedMetadata = () => {
       setDuration(video.duration);
+      if (startTime > 0) {
+        video.currentTime = startTime;
+      }
     };
     
     const handlePlay = () => setIsPlaying(true);
     const handlePause = () => setIsPlaying(false);
+    const handleEnded = () => {
+      video.currentTime = 0;
+      video.play().catch(() => {});
+    };
 
     video.addEventListener("timeupdate", handleTimeUpdate);
     video.addEventListener("loadedmetadata", handleLoadedMetadata);
     video.addEventListener("play", handlePlay);
     video.addEventListener("pause", handlePause);
+    video.addEventListener("ended", handleEnded);
     
     return () => {
       video.removeEventListener("timeupdate", handleTimeUpdate);
       video.removeEventListener("loadedmetadata", handleLoadedMetadata);
       video.removeEventListener("play", handlePlay);
       video.removeEventListener("pause", handlePause);
+      video.removeEventListener("ended", handleEnded);
     };
-  }, []);
+  }, [startTime]); // onTimeChange 의존성 제거!
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -113,19 +156,17 @@ export default function VideoPlayer({ src, className = "", style }: VideoPlayerP
 
   const togglePlay = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!videoRef.current) return;
+    
     if (isPlaying) {
-      videoRef.current?.pause();
-      if (currentPlayingVideo === videoRef.current) {
-        currentPlayingVideo = null;
-      }
+      videoRef.current.pause();
     } else {
       if (currentPlayingVideo && currentPlayingVideo !== videoRef.current) {
         currentPlayingVideo.pause();
       }
-      videoRef.current?.play();
+      videoRef.current.play().catch(() => {});
       currentPlayingVideo = videoRef.current;
     }
-    showControlsTemporarily();
   };
 
   const toggleMute = (e: React.MouseEvent) => {
@@ -134,134 +175,138 @@ export default function VideoPlayer({ src, className = "", style }: VideoPlayerP
       videoRef.current.muted = !isMuted;
       setIsMuted(!isMuted);
     }
-    showControlsTemporarily();
   };
 
-  const toggleFullscreen = (e: React.MouseEvent) => {
+  const toggleFullscreen = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!containerRef.current) return;
-    
-    if (isFullscreen) {
-      document.exitFullscreen();
-    } else {
-      containerRef.current.requestFullscreen();
+
+    try {
+      if (!document.fullscreenElement) {
+        await containerRef.current.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch (err) {
+      console.error("Fullscreen error:", err);
     }
-    showControlsTemporarily();
   };
 
-  const showControlsTemporarily = () => {
+  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    if (!videoRef.current) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const percent = (e.clientX - rect.left) / rect.width;
+    videoRef.current.currentTime = percent * duration;
+  };
+
+  const handleMouseMove = () => {
     setShowControls(true);
     if (hideControlsTimer.current) {
       clearTimeout(hideControlsTimer.current);
     }
     hideControlsTimer.current = setTimeout(() => {
-      setShowControls(false);
-    }, 3000);
+      if (isPlaying) {
+        setShowControls(false);
+      }
+    }, 2000);
   };
 
-  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
-    e.stopPropagation();
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const percentage = x / rect.width;
-    if (videoRef.current) {
-      videoRef.current.currentTime = percentage * videoRef.current.duration;
+  const handleMouseLeave = () => {
+    if (isPlaying) {
+      hideControlsTimer.current = setTimeout(() => {
+        setShowControls(false);
+      }, 1000);
     }
   };
 
   return (
     <div
       ref={containerRef}
-      className={`relative ${className} ${isFullscreen ? "!max-h-none !h-screen" : ""}`}
+      className={`relative bg-black group ${className}`}
       style={style}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
       onClick={togglePlay}
-      onMouseEnter={() => setShowControls(true)}
-      onMouseLeave={() => setShowControls(false)}
-      onTouchStart={() => showControlsTemporarily()}
     >
       <video
         ref={videoRef}
         src={src}
-        className={`w-full object-cover ${isFullscreen ? "h-full object-contain" : "h-full rounded-xl"}`}
+        className="w-full h-full object-contain"
         muted={isMuted}
-        loop
         playsInline
-        preload="metadata"
+        loop
       />
 
-      <div
-        className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${isFullscreen ? "" : "rounded-xl"} ${
-          showControls || !isPlaying ? "opacity-100" : "opacity-0"
-        }`}
-        style={{ backgroundColor: "rgba(0,0,0,0.3)" }}
-      >
-        <button
-          onClick={togglePlay}
-          className="w-16 h-16 bg-white/90 rounded-full flex items-center justify-center shadow-lg hover:bg-white transition-colors"
-        >
-          {isPlaying ? (
-            <Pause className="w-8 h-8 text-gray-800" fill="currentColor" />
-          ) : (
-            <Play className="w-8 h-8 text-gray-800 ml-1" fill="currentColor" />
-          )}
-        </button>
-      </div>
+      {/* 중앙 재생 버튼 */}
+      {!isPlaying && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+          <button
+            onClick={togglePlay}
+            className="w-16 h-16 rounded-full bg-white/90 flex items-center justify-center hover:bg-white transition-colors"
+          >
+            <Play className="w-8 h-8 text-black ml-1" fill="currentColor" />
+          </button>
+        </div>
+      )}
 
+      {/* 컨트롤 바 */}
       <div
-        className={`absolute bottom-0 left-0 right-0 p-4 transition-opacity duration-300 ${isFullscreen ? "" : "rounded-b-xl"} ${
+        className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3 transition-opacity duration-300 ${
           showControls ? "opacity-100" : "opacity-0"
         }`}
-        style={{ background: "linear-gradient(transparent, rgba(0,0,0,0.8))" }}
+        onClick={(e) => e.stopPropagation()}
       >
+        {/* 프로그레스 바 */}
         <div
-          className="w-full h-2 bg-white/30 rounded-full cursor-pointer mb-3 group"
-          onClick={handleSeek}
+          className="w-full h-1 bg-white/30 rounded-full cursor-pointer mb-2 group/progress"
+          onClick={handleProgressClick}
         >
           <div
-            className="h-full bg-white rounded-full transition-all relative"
+            className="h-full bg-white rounded-full relative"
             style={{ width: `${progress}%` }}
           >
-            <div className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover/progress:opacity-100 transition-opacity" />
           </div>
         </div>
 
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <button
               onClick={togglePlay}
-              className="p-2 bg-black/50 rounded-full hover:bg-black/70 transition-colors"
+              className="p-1 hover:bg-white/20 rounded transition-colors"
             >
               {isPlaying ? (
-                <Pause className="w-6 h-6 text-white" fill="currentColor" />
+                <Pause className="w-5 h-5 text-white" fill="currentColor" />
               ) : (
-                <Play className="w-6 h-6 text-white ml-0.5" fill="currentColor" />
+                <Play className="w-5 h-5 text-white" fill="currentColor" />
               )}
             </button>
-            
+
             <button
               onClick={toggleMute}
-              className="p-2 bg-black/50 rounded-full hover:bg-black/70 transition-colors"
+              className="p-1 hover:bg-white/20 rounded transition-colors"
             >
               {isMuted ? (
-                <VolumeX className="w-6 h-6 text-white" />
+                <VolumeX className="w-5 h-5 text-white" />
               ) : (
-                <Volume2 className="w-6 h-6 text-white" />
+                <Volume2 className="w-5 h-5 text-white" />
               )}
             </button>
-            
-            <span className="text-white text-sm font-medium ml-1">
-              {formatTime(currentTime)} / {formatTime(duration)}
+
+            <span className="text-white text-xs">
+              {formatTime(currentTimeState)} / {formatTime(duration)}
             </span>
           </div>
 
           <button
             onClick={toggleFullscreen}
-            className="p-2 bg-black/50 rounded-full hover:bg-black/70 transition-colors"
+            className="p-1 hover:bg-white/20 rounded transition-colors"
           >
             {isFullscreen ? (
-              <Minimize className="w-6 h-6 text-white" />
+              <Minimize className="w-5 h-5 text-white" />
             ) : (
-              <Maximize className="w-6 h-6 text-white" />
+              <Maximize className="w-5 h-5 text-white" />
             )}
           </button>
         </div>

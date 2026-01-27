@@ -37,6 +37,9 @@ function CommunityPageContent({ initialPosts }: CommunityPageContentProps) {
   const [userProfile, setUserProfile] = useState<any>(null);
   const [expandedPosts, setExpandedPosts] = useState<Set<number>>(new Set());
   const [playingVideo, setPlayingVideo] = useState<number | null>(null);
+  const videoTimesRef = useRef<Map<string, number>>(new Map());
+  const [modalStartTime, setModalStartTime] = useState(0);
+  const [expandedCommentPost, setExpandedCommentPost] = useState<number | null>(null);
   
   const [lightboxImages, setLightboxImages] = useState<string[]>([]);
   const [lightboxIndex, setLightboxIndex] = useState(0);
@@ -225,7 +228,19 @@ function CommunityPageContent({ initialPosts }: CommunityPageContentProps) {
   useEffect(() => {
     const urls = extractLinks(content);
     if (urls.length > 0 && !writingLinkPreview) {
-      fetchLinkPreview(urls[0]).then(preview => { if (preview) setWritingLinkPreview(preview); });
+      const youtubeId = getYoutubeId(urls[0]);
+      if (youtubeId) {
+        setWritingLinkPreview({
+          title: '유튜브 동영상',
+          image: `https://img.youtube.com/vi/${youtubeId}/maxresdefault.jpg`,
+          url: urls[0],
+          domain: 'youtube.com',
+          isYoutube: true,
+          youtubeId
+        });
+      } else {
+        fetchLinkPreview(urls[0]).then(preview => { if (preview) setWritingLinkPreview(preview); });
+      }
     } else if (urls.length === 0) setWritingLinkPreview(null);
   }, [content]);
 
@@ -512,6 +527,70 @@ useEffect(() => {
   const closeDetailModal = () => { 
     setDetailModalVisible(false); 
     setTimeout(() => { setDetailModal(null); setComments([]); }, 300); 
+  };
+
+  const toggleCommentSection = async (post: any) => {
+    if (expandedCommentPost === post.id) {
+      setExpandedCommentPost(null);
+      setComments([]);
+      return;
+    }
+    
+    setExpandedCommentPost(post.id);
+    setLoadingComments(true);
+    setReplyingTo(null);
+    setNewComment("");
+    setCommentImages([]);
+    setCommentImagePreviews([]);
+
+    try {
+      const { data, error } = await supabase
+        .from("comments")
+        .select("*")
+        .eq("post_id", post.id)
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        setComments([]);
+        setLoadingComments(false);
+        return;
+      }
+
+      let commentsData = data || [];
+
+      if (commentsData.length > 0) {
+        const userIds = [...new Set(commentsData.map(c => c.user_id).filter(Boolean))];
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, avatar_url")
+          .in("id", userIds);
+        
+        const profileMap = new Map();
+        profiles?.forEach(p => profileMap.set(p.id, p.avatar_url));
+        
+        commentsData = commentsData.map(c => ({
+          ...c,
+          author_avatar_url: profileMap.get(c.user_id) || null
+        }));
+      }
+
+      if (commentsData.length > 0 && user) {
+        try {
+          const { data: likedComments } = await supabase
+            .from("comment_likes")
+            .select("comment_id")
+            .eq("user_id", user.id);
+          const likedIds = new Set(likedComments?.map(l => l.comment_id) || []);
+          commentsData = commentsData.map(c => ({ ...c, liked: likedIds.has(c.id) }));
+        } catch (e) {}
+      }
+      
+      setComments(commentsData);
+    } catch (err) {
+      setComments([]);
+    } finally {
+      setLoadingComments(false);
+    }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -851,6 +930,46 @@ const { data: newPost, error } = await supabase.from("posts").insert({
     } catch (error: any) { alert("댓글 작성 실패: " + error.message); }
   };
 
+  const submitCommentInline = async (postId: number) => {
+    if (!user) return alert("로그인이 필요합니다");
+    if (userProfile?.is_banned) return alert("이용이 정지된 계정입니다");
+    if (isMutedComment()) return alert(getMuteMessage("comment"));
+    if (!newComment.trim() && commentImages.length === 0) return;
+    try {
+      let imageUrl = null; if (commentImages.length > 0) imageUrl = await uploadSmallFile(commentImages[0]);
+      const ipAddress = await getClientIP();
+      const nickname = userProfile?.nickname || user.email?.split('@')[0] || '사용자';
+      const mentionNickname = replyingTo?.mentionNickname || null;
+      const { data, error } = await supabase.from("comments").insert({ 
+        post_id: postId, 
+        user_id: user.id, 
+        content: newComment, 
+        author_nickname: nickname, 
+        parent_id: replyingTo?.id || null, 
+        image_url: imageUrl, 
+        is_anonymous: isAnonymousComment, 
+        ip_address: ipAddress,
+        mention_nickname: mentionNickname
+      }).select().single();
+      if (error) throw error;
+      
+      // 댓글 목록에 추가
+      setComments(prev => [...prev, { ...data, author_avatar_url: userProfile?.avatar_url }]); 
+      setNewComment(""); 
+      setCommentImages([]); 
+      setCommentImagePreviews([]); 
+      setReplyingTo(null); 
+      setIsAnonymousComment(false);
+      
+      // 댓글 수 업데이트
+      const post = posts.find(p => p.id === postId);
+      if (post) {
+        await supabase.from("posts").update({ comment_count: (post.comment_count || 0) + 1 }).eq("id", postId);
+        setPosts(posts.map(p => p.id === postId ? { ...p, comment_count: (p.comment_count || 0) + 1 } : p));
+      }
+    } catch (error: any) { alert("댓글 작성 실패: " + error.message); }
+  };
+
   // 좋아요 누른 사람 목록 가져오기
   const fetchLikers = async (postId: number) => {
     const { data } = await supabase
@@ -965,11 +1084,12 @@ const { data: newPost, error } = await supabase.from("posts").insert({
   };
 
   // 인라인 답글 입력 컴포넌트 (별도 분리로 리렌더링 방지)
-  const InlineReplyBox = ({ parentComment, mentionNickname, onClose, onSuccess }: { 
+  const InlineReplyBox = ({ parentComment, mentionNickname, onClose, onSuccess, postId }: { 
     parentComment: any, 
     mentionNickname?: string | null,
     onClose: () => void,
-    onSuccess: (newComment: any) => void
+    onSuccess: (newComment: any) => void,
+    postId?: number
   }) => {
     const [content, setContent] = useState("");
     const [images, setImages] = useState<File[]>([]);
@@ -979,6 +1099,8 @@ const { data: newPost, error } = await supabase.from("posts").insert({
     const [submitting, setSubmitting] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
     const fileRef = useRef<HTMLInputElement>(null);
+    
+    const targetPostId = postId || detailModal?.id;
     
     useEffect(() => {
       // 자동 포커스 제거 - 모바일 키보드 방지
@@ -997,6 +1119,7 @@ const { data: newPost, error } = await supabase.from("posts").insert({
     const handleSubmit = async () => {
       if (!user || (!content.trim() && images.length === 0) || submitting) return;
       if (userProfile?.is_banned) return alert("이용이 정지된 계정입니다");
+      if (!targetPostId) return;
       
       setSubmitting(true);
       try {
@@ -1006,7 +1129,7 @@ const { data: newPost, error } = await supabase.from("posts").insert({
         const nickname = userProfile?.nickname || user.email?.split('@')[0] || '사용자';
         
         const { data, error } = await supabase.from("comments").insert({ 
-          post_id: detailModal.id, 
+          post_id: targetPostId, 
           user_id: user.id, 
           content: content, 
           author_nickname: nickname, 
@@ -1127,13 +1250,16 @@ const { data: newPost, error } = await supabase.from("posts").insert({
   const [inlineReplyTarget, setInlineReplyTarget] = useState<{ parentComment: any, mentionNickname?: string | null } | null>(null);
 
   // 댓글 컴포넌트
-  const CommentItem = ({ comment, depth = 0, parentId = null }: { comment: any, depth?: number, parentId?: number | null }) => {
+  const CommentItem = ({ comment, depth = 0, parentId = null, isInline = false, inlinePostId = null }: { comment: any, depth?: number, parentId?: number | null, isInline?: boolean, inlinePostId?: number | null }) => {
     const replies = comments.filter(c => Number(c.parent_id) === Number(comment.id));
     const isExpanded = expandedComments.has(comment.id);
     const showReplies = expandedReplies.has(comment.id);
     const isLong = comment.content?.length > 150;
     const getCommentAuthor = () => isAdmin && comment.is_anonymous ? `익명 (${comment.author_nickname || '?'})` : comment.is_anonymous ? '익명' : comment.author_nickname;
-    const isPostAuthor = detailModal && comment.user_id === detailModal.user_id;
+    
+    // 인라인 모드에서는 posts에서 찾기
+    const currentPost = isInline ? posts.find(p => p.id === inlinePostId) : detailModal;
+    const isPostAuthor = currentPost && comment.user_id === currentPost.user_id;
     const hasReplies = replies.length > 0;
     
     // 이 댓글에 인라인 입력창이 열려있는지
@@ -1160,10 +1286,13 @@ const { data: newPost, error } = await supabase.from("posts").insert({
     // 답글 작성 성공
     const handleReplySuccess = (newComment: any) => {
       setComments(prev => [...prev, newComment]);
-      supabase.from("posts").update({ comment_count: (detailModal.comment_count || 0) + 1 }).eq("id", detailModal.id);
-      const updated = { ...detailModal, comment_count: (detailModal.comment_count || 0) + 1 };
-      setPosts(posts.map(p => p.id === detailModal.id ? updated : p));
-      setDetailModal(updated);
+      if (currentPost) {
+        const postId = isInline ? inlinePostId : detailModal?.id;
+        supabase.from("posts").update({ comment_count: (currentPost.comment_count || 0) + 1 }).eq("id", postId);
+        const updated = { ...currentPost, comment_count: (currentPost.comment_count || 0) + 1 };
+        setPosts(posts.map(p => p.id === postId ? updated : p));
+        if (!isInline && detailModal) setDetailModal(updated);
+      }
     };
     
     return (
@@ -1258,6 +1387,8 @@ const { data: newPost, error } = await supabase.from("posts").insert({
                 comment={reply} 
                 depth={1} 
                 parentId={comment.id}
+                isInline={isInline}
+                inlinePostId={inlinePostId}
               />
             ))}
           </div>
@@ -1270,6 +1401,7 @@ const { data: newPost, error } = await supabase.from("posts").insert({
             mentionNickname={inlineReplyTarget?.mentionNickname}
             onClose={() => setInlineReplyTarget(null)}
             onSuccess={handleReplySuccess}
+            postId={isInline ? inlinePostId! : detailModal?.id}
           />
         )}
       </div>
@@ -1355,7 +1487,8 @@ const { data: newPost, error } = await supabase.from("posts").insert({
         {item.type === 'video' ? (
           <VideoPlayer 
             src={item.url} 
-            className={mediaItems.length === 1 ? 'max-h-[500px]' : 'h-48'} 
+            className={mediaItems.length === 1 ? 'max-h-[500px]' : 'h-48'}
+            startTime={0}
           />
         ) : (
           <img src={item.url} alt="" className={`w-full object-cover rounded-xl cursor-pointer ${mediaItems.length === 1 ? 'max-h-[500px]' : 'h-48'}`} onClick={() => openLightbox(mediaItems, idx)} />
@@ -1371,12 +1504,134 @@ const { data: newPost, error } = await supabase.from("posts").insert({
           <button onClick={() => handleLike(post)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors" style={{ color: post.liked ? '#3B82F6' : theme.textSecondary }}>
             <ThumbsUp className="w-5 h-5" fill={post.liked ? 'currentColor' : 'none'} /><span className="text-sm font-medium">좋아요 {post.like_count || 0}</span>
           </button>
-          <button onClick={() => openDetailModal(post, true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors" style={{ color: theme.textSecondary }}>
+          <button onClick={() => toggleCommentSection(post)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors" style={{ color: expandedCommentPost === post.id ? theme.accent : theme.textSecondary }}>
             <MessageCircle className="w-5 h-5" /><span className="text-sm font-medium">댓글 {post.comment_count || 0}</span>
           </button>
           <button onClick={() => handleShare(post)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors ml-auto" style={{ color: theme.textSecondary }}>
             <Share2 className="w-5 h-5" /><span className="text-sm font-medium">공유</span>
           </button>
+        </div>
+
+        {/* 인라인 댓글 섹션 */}
+        {expandedCommentPost === post.id && (
+          <div style={{ borderTop: `1px solid ${theme.borderLight}` }}>
+            {/* 댓글 목록 */}
+            <div className="max-h-[400px] overflow-y-auto">
+              {loadingComments ? (
+                <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 rounded-full animate-spin" style={{ borderColor: theme.border, borderTopColor: theme.accent }} /></div>
+              ) : comments.length === 0 ? (
+                <div className="text-center py-8" style={{ color: theme.textMuted }}>첫 댓글을 남겨보세요!</div>
+              ) : (
+                <div className="py-2">
+                  {(() => {
+                    const rootComments = comments.filter(c => !c.parent_id);
+                    const sortedComments = [...rootComments].sort((a, b) => {
+                      if (commentSort === 'oldest') return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+                      if (commentSort === 'newest') return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+                      if (commentSort === 'popular') return (b.like_count || 0) - (a.like_count || 0);
+                      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+                    });
+                    return sortedComments.map(comment => <CommentItem key={comment.id} comment={comment} depth={0} isInline={true} inlinePostId={post.id} />);
+                  })()}
+                </div>
+              )}
+            </div>
+
+            {/* 댓글 입력 */}
+            {user && (
+              <InlineCommentInput postId={post.id} />
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // 인라인 댓글 입력 컴포넌트
+  const InlineCommentInput = ({ postId }: { postId: number }) => {
+    const [text, setText] = useState("");
+    const [images, setImages] = useState<File[]>([]);
+    const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+    const fileRef = useRef<HTMLInputElement>(null);
+
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files || []);
+      if (files.length > 0) {
+        setImages([files[0]]);
+        const reader = new FileReader();
+        reader.onload = (ev) => setImagePreviews([ev.target?.result as string]);
+        reader.readAsDataURL(files[0]);
+      }
+    };
+
+    const handleSubmit = async () => {
+      if (!user) return alert("로그인이 필요합니다");
+      if (userProfile?.is_banned) return alert("이용이 정지된 계정입니다");
+      if (!text.trim() && images.length === 0) return;
+      try {
+        let imageUrl = null; 
+        if (images.length > 0) imageUrl = await uploadSmallFile(images[0]);
+        const ipAddress = await getClientIP();
+        const nickname = userProfile?.nickname || user.email?.split('@')[0] || '사용자';
+        const { data, error } = await supabase.from("comments").insert({ 
+          post_id: postId, 
+          user_id: user.id, 
+          content: text, 
+          author_nickname: nickname, 
+          parent_id: replyingTo?.id || null, 
+          image_url: imageUrl, 
+          is_anonymous: false, 
+          ip_address: ipAddress,
+          mention_nickname: replyingTo?.mentionNickname || null
+        }).select().single();
+        if (error) throw error;
+        
+        setComments(prev => [...prev, { ...data, author_avatar_url: userProfile?.avatar_url }]); 
+        setText(""); 
+        setImages([]);
+        setImagePreviews([]);
+        setReplyingTo(null);
+        
+        const post = posts.find(p => p.id === postId);
+        if (post) {
+          await supabase.from("posts").update({ comment_count: (post.comment_count || 0) + 1 }).eq("id", postId);
+          setPosts(posts.map(p => p.id === postId ? { ...p, comment_count: (p.comment_count || 0) + 1 } : p));
+        }
+      } catch (error: any) { alert("댓글 작성 실패: " + error.message); }
+    };
+
+    return (
+      <div className="p-4" style={{ borderTop: `1px solid ${theme.borderLight}` }}>
+        {replyingTo && (
+          <div className="flex items-center gap-2 mb-2 text-sm" style={{ color: theme.textMuted }}>
+            <span>@{replyingTo.nickname}에게 답글</span>
+            <button onClick={() => setReplyingTo(null)} className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"><X className="w-4 h-4" /></button>
+          </div>
+        )}
+        {imagePreviews.length > 0 && (
+          <div className="flex gap-2 mb-2 flex-wrap">
+            {imagePreviews.map((preview, index) => (
+              <div key={index} className="relative">
+                <img src={preview} alt="" className="w-16 h-16 object-cover rounded-lg" />
+                <button onClick={() => { setImages(prev => prev.filter((_, i) => i !== index)); setImagePreviews(prev => prev.filter((_, i) => i !== index)); }} className="absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: theme.red, color: '#fff' }}><X className="w-3 h-3" /></button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex items-end gap-2">
+          <div className="flex-1 rounded-2xl px-4 py-2" style={{ backgroundColor: theme.bgInput }}>
+            <textarea 
+              value={text} 
+              onChange={(e) => setText(e.target.value)} 
+              placeholder="댓글을 입력하세요..." 
+              rows={1} 
+              className="w-full resize-none border-0 focus:outline-none focus:ring-0 text-sm" 
+              style={{ backgroundColor: 'transparent', color: theme.textPrimary }} 
+            />
+          </div>
+          <input type="file" ref={fileRef} onChange={handleFileSelect} accept="image/*" className="hidden" />
+          <button onClick={() => fileRef.current?.click()} className="p-2 rounded-full" style={{ color: theme.textMuted }}><ImageIcon className="w-5 h-5" /></button>
+          <button onClick={handleSubmit} disabled={!text.trim() && images.length === 0} className="p-2 rounded-full disabled:opacity-50" style={{ color: theme.accent }}><Send className="w-5 h-5" /></button>
         </div>
       </div>
     );
@@ -1401,8 +1656,20 @@ const { data: newPost, error } = await supabase.from("posts").insert({
         <div className="fixed inset-0 bg-black z-[200] flex items-center justify-center" onClick={closeLightbox}>
           <button className="absolute top-4 right-4 text-white z-10" onClick={closeLightbox}><X className="w-8 h-8" /></button>
           {lightboxImages.length > 1 && <div className="absolute top-4 left-4 text-white text-sm bg-black/50 px-3 py-1 rounded-full z-10">{lightboxIndex + 1} / {lightboxImages.length}</div>}
-          <div className="w-full h-full flex items-center justify-center" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onClick={(e) => e.stopPropagation()}>
-            {isVideoUrl(lightboxImages[lightboxIndex]) ? <video src={lightboxImages[lightboxIndex]} controls autoPlay className="max-w-full max-h-full" onClick={(e) => e.stopPropagation()} /> : <img src={lightboxImages[lightboxIndex]} alt="" className="max-w-full max-h-full object-contain" onClick={closeLightbox} />}
+          <div className="w-full h-full flex items-center justify-center p-4" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onClick={(e) => e.stopPropagation()}>
+            {isVideoUrl(lightboxImages[lightboxIndex]) ? (
+              <div className="w-full max-w-4xl" onClick={(e) => e.stopPropagation()}>
+                <VideoPlayer 
+                  src={lightboxImages[lightboxIndex]} 
+                  className="max-h-[80vh]"
+                  startTime={0}
+                  autoPlayOnScroll={false}
+                  autoPlay={true}
+                />
+              </div>
+            ) : (
+              <img src={lightboxImages[lightboxIndex]} alt="" className="max-w-full max-h-full object-contain" onClick={closeLightbox} />
+            )}
           </div>
           {lightboxImages.length > 1 && (<><button onClick={(e) => { e.stopPropagation(); prevImage(); }} className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/20 rounded-full flex items-center justify-center text-white"><ChevronLeft className="w-8 h-8" /></button><button onClick={(e) => { e.stopPropagation(); nextImage(); }} className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/20 rounded-full flex items-center justify-center text-white"><ChevronRight className="w-8 h-8" /></button></>)}
         </div>
@@ -1493,10 +1760,20 @@ const { data: newPost, error } = await supabase.from("posts").insert({
 })()}
               {detailAd && <div className="px-4 pb-3"><AdBanner ad={detailAd} type="detail" /></div>}
               {getMediaItems(detailModal).length > 0 && (
-                <div className={`cursor-pointer ${getMediaItems(detailModal).length === 1 ? '' : 'grid grid-cols-2 gap-[2px]'}`}>
+                <div className={`${getMediaItems(detailModal).length === 1 ? '' : 'grid grid-cols-2 gap-[2px]'}`}>
                   {getMediaItems(detailModal).slice(0, 4).map((item, idx) => (
-                    <div key={idx} className={`relative overflow-hidden ${getMediaItems(detailModal).length === 3 && idx === 0 ? 'row-span-2' : ''}`} onClick={() => openLightbox(getMediaItems(detailModal), idx)}>
-                      {item.type === 'video' ? (<div className="relative"><video src={item.url} className={`w-full object-cover ${getMediaItems(detailModal).length === 1 ? 'max-h-[300px]' : 'h-48'}`} /><div className="absolute inset-0 flex items-center justify-center bg-black/20"><div className="w-10 h-10 bg-white/90 rounded-full flex items-center justify-center"><Play className="w-5 h-5 ml-0.5" fill="currentColor" /></div></div></div>) : (<img src={item.url} alt="" className={`w-full object-cover ${getMediaItems(detailModal).length === 1 ? 'max-h-[300px]' : 'h-48'}`} />)}
+                    <div key={idx} className={`relative overflow-hidden ${getMediaItems(detailModal).length === 3 && idx === 0 ? 'row-span-2' : ''}`}>
+                      {item.type === 'video' ? (
+                        <VideoPlayer 
+                          src={item.url} 
+                          className={getMediaItems(detailModal).length === 1 ? 'max-h-[400px]' : 'h-48'}
+                          startTime={0}
+                          autoPlayOnScroll={false}
+                          autoPlay={idx === 0}
+                        />
+                      ) : (
+                        <img src={item.url} alt="" className={`w-full object-cover cursor-pointer ${getMediaItems(detailModal).length === 1 ? 'max-h-[400px]' : 'h-48'}`} onClick={() => openLightbox(getMediaItems(detailModal), idx)} />
+                      )}
                       {idx === 3 && getMediaItems(detailModal).length > 4 && <div className="absolute inset-0 bg-black/50 flex items-center justify-center"><span className="text-white text-xl font-bold">+{getMediaItems(detailModal).length - 4}</span></div>}
                     </div>
                   ))}
@@ -1616,7 +1893,7 @@ const { data: newPost, error } = await supabase.from("posts").insert({
                   <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden" style={{ backgroundColor: theme.accent }}>{userProfile?.avatar_url ? <img src={userProfile.avatar_url} alt="" className="w-full h-full object-cover" /> : <span className="font-bold text-sm" style={{ color: isDark ? '#121212' : '#fff' }}>{userProfile?.nickname?.[0]?.toUpperCase() || user.email?.split('@')[0]?.[0]?.toUpperCase() || "U"}</span>}</div>
                   <div className="flex-1">
                     <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="무슨 생각을 하고 계신가요?" rows={3} className="w-full resize-none border-0 focus:outline-none focus:ring-0" style={{ backgroundColor: 'transparent', color: theme.textPrimary }} disabled={posting} />
-                    {writingLinkPreview && (<div className="mt-2 rounded-xl overflow-hidden relative" style={{ border: `1px solid ${theme.border}` }}>{writingLinkPreview.image && <img src={writingLinkPreview.image} alt="" className="w-full h-40 object-cover" />}<div className="p-3" style={{ backgroundColor: theme.bgInput }}><p className="font-medium text-sm line-clamp-2" style={{ color: theme.textPrimary }}>{writingLinkPreview.title}</p>{writingLinkPreview.description && <p className="text-xs line-clamp-2 mt-1" style={{ color: theme.textMuted }}>{writingLinkPreview.description}</p>}<p className="text-xs mt-1" style={{ color: theme.textMuted }}>{writingLinkPreview.domain}</p></div><button onClick={() => setWritingLinkPreview(null)} className="absolute top-2 right-2 w-6 h-6 bg-black/50 text-white rounded-full text-sm flex items-center justify-center"><X className="w-4 h-4" /></button></div>)}
+                    {writingLinkPreview && (<div className="mt-2 rounded-xl overflow-hidden relative" style={{ border: `1px solid ${theme.border}` }}>{writingLinkPreview.image && <div className="relative"><img src={writingLinkPreview.image} alt="" className="w-full h-40 object-cover" />{writingLinkPreview.isYoutube && <div className="absolute inset-0 flex items-center justify-center bg-black/20"><YoutubeLogo /></div>}</div>}<div className="p-3" style={{ backgroundColor: theme.bgInput }}><p className="font-medium text-sm line-clamp-2" style={{ color: theme.textPrimary }}>{writingLinkPreview.title}</p>{writingLinkPreview.description && <p className="text-xs line-clamp-2 mt-1" style={{ color: theme.textMuted }}>{writingLinkPreview.description}</p>}<p className="text-xs mt-1" style={{ color: theme.textMuted }}>{writingLinkPreview.domain}</p></div><button onClick={() => setWritingLinkPreview(null)} className="absolute top-2 right-2 w-6 h-6 bg-black/50 text-white rounded-full text-sm flex items-center justify-center"><X className="w-4 h-4" /></button></div>)}
                     {loadingLinkPreview && <div className="mt-2 p-3 rounded-xl flex items-center gap-2" style={{ backgroundColor: theme.bgInput }}><div className="w-4 h-4 border-2 rounded-full animate-spin" style={{ borderColor: theme.border, borderTopColor: theme.accent }} /><span className="text-sm" style={{ color: theme.textMuted }}>링크 미리보기 로딩 중...</span></div>}
                     {mediaPreviews.length > 0 && <div className="flex gap-2 mt-2 flex-wrap">{mediaPreviews.map((preview, index) => (<div key={index} className="relative">{preview.type === 'video' ? (<div className="w-20 h-20 rounded-lg relative overflow-hidden" style={{ backgroundColor: theme.bgElevated }}><video src={preview.url} className="w-full h-full object-cover" /><div className="absolute inset-0 flex items-center justify-center bg-black/30"><Play className="w-6 h-6 text-white" fill="currentColor" /></div></div>) : (<img src={preview.url} alt="" className="w-20 h-20 object-cover rounded-lg" />)}<button onClick={() => removeMedia(index)} disabled={posting} className="absolute -top-1 -right-1 w-5 h-5 rounded-full text-xs flex items-center justify-center" style={{ backgroundColor: theme.red, color: '#fff' }}><X className="w-3 h-3" /></button></div>))}</div>}
                     {posting && <div className="mt-3"><div className="flex items-center justify-between text-xs mb-1" style={{ color: theme.textSecondary }}><span className="truncate">{totalFiles > 0 ? `${currentFileIndex}/${totalFiles} 업로드 중...` : '처리 중...'}</span><span className="font-bold">{uploadProgress}%</span></div><div className="w-full rounded-full h-2" style={{ backgroundColor: theme.bgInput }}><div className="h-2 rounded-full transition-all" style={{ width: `${uploadProgress}%`, backgroundColor: theme.accent }} /></div></div>}
