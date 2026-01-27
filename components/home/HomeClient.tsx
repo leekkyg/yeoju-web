@@ -82,7 +82,8 @@ export default function HomeClient({ initialData }: HomeClientProps) {
   // 사용자 데이터만 클라이언트에서 가져오기 (빠름)
   useEffect(() => {
     const fetchUserData = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
       if (!user) return;
       
       setUser(user);

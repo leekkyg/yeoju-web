@@ -105,7 +105,8 @@ export default function GroupBuyCreatePage() {
   }, [endDate]);
 
   const checkShop = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     if (!user) {
       alert("로그인이 필요합니다");
       router.push("/login");

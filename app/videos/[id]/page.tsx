@@ -198,7 +198,8 @@ useEffect(() => {
 }, [videoId, user]);
 
   const checkUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     setUser(user);
     
     if (user) {
@@ -236,7 +237,8 @@ useEffect(() => {
     setVideo((prev: any) => prev ? { ...prev, view_count: (prev.view_count || 0) + 1 } : prev);
     
     // 좋아요 여부 확인
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     if (user) {
       const { data: likeData } = await supabase
         .from("video_likes")

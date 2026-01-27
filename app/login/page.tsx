@@ -18,8 +18,8 @@ export default function LoginPage() {
 
   useEffect(() => {
     // 이미 로그인되어 있으면 홈으로
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) router.push("/");
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) router.push("/");
     });
   }, []);
 

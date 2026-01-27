@@ -48,7 +48,8 @@ export default function AdminUsersPage() {
   }, []);
 
   const checkAdminAndFetch = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     if (!user) { router.push("/login"); return; }
 
     const { data: profile } = await supabase.from("profiles").select("*").eq("email", user.email).single();
@@ -84,7 +85,8 @@ export default function AdminUsersPage() {
     }
     
     setSendingMessage(true);
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     
     const { error } = await supabase.from("messages").insert({
       sender_id: user?.id,

@@ -142,7 +142,7 @@ function CommunityPageContent({ initialPosts }: CommunityPageContentProps) {
   useEffect(() => {
     // fetchPosts() 제거 - 서버에서 이미 가져옴
     fetchAds();
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => { const user = session?.user;
       setUser(user);
       if (user) {
         const { data: profile } = await supabase.from("profiles").select("*").eq("email", user.email).single();

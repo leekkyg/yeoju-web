@@ -382,7 +382,8 @@ export default function AuctionDetailPage() {
   useState(() => {
     const getUser = async () => {
       const { supabase } = await import('@/lib/supabase');
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
       if (user) setCurrentUserId(user.id);
     };
     getUser();

@@ -71,7 +71,8 @@ export default function VideosPage() {
   }, []);
 
   const checkUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     setUser(user);
     
     if (user) {
@@ -103,7 +104,8 @@ export default function VideosPage() {
       }
       setLikes(likesData);
       
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
       if (user) {
         const { data: userLikes } = await supabase
           .from("video_likes")

@@ -57,7 +57,8 @@ export default function AdminShopsPage() {
   useEffect(() => { if (isAdmin) fetchShops(); }, [isAdmin, activeTab]);
 
   const checkAdmin = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     if (!user) { router.push("/login"); return; }
 
     const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
@@ -78,7 +79,8 @@ export default function AdminShopsPage() {
 
   const handleApprove = async (shop: Shop) => {
     if (!confirm(`"${shop.name}" 승인하시겠습니까?`)) return;
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
 
     await supabase.from("shops").update({
       approval_status: "approved",

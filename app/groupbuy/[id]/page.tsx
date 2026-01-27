@@ -197,7 +197,8 @@ useEffect(() => {
   useEffect(() => { fetchGroupBuy(); }, [params.id, user]);
 
   const checkAuth = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     setUser(user);
     
     if (user) {

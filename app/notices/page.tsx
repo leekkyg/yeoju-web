@@ -65,7 +65,7 @@ function NoticesPageContent() {
 
   useEffect(() => {
     fetchNotices();
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => { const user = session?.user;
       setUser(user);
       if (user) {
         const { data: profile } = await supabase.from("profiles").select("*").eq("email", user.email).single();

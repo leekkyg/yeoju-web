@@ -48,7 +48,8 @@ export default function AdminMessagesPage() {
   }, []);
 
   const checkAdminAndFetch = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     if (!user) { router.push("/login"); return; }
 
     const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
@@ -74,7 +75,8 @@ export default function AdminMessagesPage() {
       .limit(50);
     setHistory(broadcasts || []);
     
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     if (user) {
       const { data: individual } = await supabase
         .from("messages")
@@ -133,7 +135,8 @@ export default function AdminMessagesPage() {
     
     setSending(true);
     
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     
     try {
       if (sendType === "individual") {

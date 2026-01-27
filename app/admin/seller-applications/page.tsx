@@ -75,7 +75,8 @@ export default function SellerApplicationsPage() {
   }, [filter, loading]);
 
   const checkAdmin = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     if (!user) {
       router.push("/login");
       return;
@@ -134,7 +135,8 @@ export default function SellerApplicationsPage() {
   const handleApprove = async (app: Application) => {
     if (!confirm("이 신청을 승인하시겠습니까?")) return;
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     
     // 신청 승인
     const { error: appError } = await supabase
@@ -209,7 +211,8 @@ export default function SellerApplicationsPage() {
       }
     }
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
 
     const { error } = await supabase
       .from("seller_applications")

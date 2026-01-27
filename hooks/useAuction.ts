@@ -221,7 +221,8 @@ export function useBid() {
     setError(null);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
       if (!user) {
         throw new Error('로그인이 필요합니다.');
       }
@@ -260,7 +261,8 @@ export function useCreateAuction() {
     setError(null);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
       if (!user) {
         throw new Error('로그인이 필요합니다.');
       }
@@ -333,7 +335,8 @@ export function useAuctionWatch(auctionId: string) {
 
   useEffect(() => {
     const checkWatch = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
       if (!user) return;
 
       const { data } = await supabase
@@ -353,7 +356,8 @@ export function useAuctionWatch(auctionId: string) {
     setLoading(true);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
       if (!user) {
         throw new Error('로그인이 필요합니다.');
       }
