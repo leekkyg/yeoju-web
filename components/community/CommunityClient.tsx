@@ -544,6 +544,7 @@ useEffect(() => {
     setCommentImagePreviews([]);
 
     try {
+      // 댓글 먼저 가져오기
       const { data, error } = await supabase
         .from("comments")
         .select("*")
@@ -558,36 +559,30 @@ useEffect(() => {
       }
 
       let commentsData = data || [];
-
+      
       if (commentsData.length > 0) {
         const userIds = [...new Set(commentsData.map(c => c.user_id).filter(Boolean))];
-        if (userIds.length > 0) {
-          const { data: profiles, error: profileError } = await supabase
-            .from("profiles")
-            .select("id, avatar_url")
-            .in("id", userIds);
-          
-          if (!profileError && profiles) {
-            const profileMap = new Map();
-            profiles.forEach(p => profileMap.set(p.id, p.avatar_url));
-            
-            commentsData = commentsData.map(c => ({
-              ...c,
-              author_avatar_url: profileMap.get(c.user_id) || null
-            }));
-          }
-        }
-      }
+        
+        // 프로필과 좋아요 병렬로 가져오기
+        const [profilesResult, likesResult] = await Promise.all([
+          userIds.length > 0 
+            ? supabase.from("profiles").select("id, avatar_url").in("id", userIds)
+            : Promise.resolve({ data: null }),
+          user 
+            ? supabase.from("comment_likes").select("comment_id").eq("user_id", user.id)
+            : Promise.resolve({ data: null })
+        ]);
 
-      if (commentsData.length > 0 && user) {
-        try {
-          const { data: likedComments } = await supabase
-            .from("comment_likes")
-            .select("comment_id")
-            .eq("user_id", user.id);
-          const likedIds = new Set(likedComments?.map(l => l.comment_id) || []);
-          commentsData = commentsData.map(c => ({ ...c, liked: likedIds.has(c.id) }));
-        } catch (e) {}
+        const profileMap = new Map();
+        profilesResult.data?.forEach(p => profileMap.set(p.id, p.avatar_url));
+        
+        const likedIds = new Set(likesResult.data?.map(l => l.comment_id) || []);
+
+        commentsData = commentsData.map(c => ({
+          ...c,
+          author_avatar_url: profileMap.get(c.user_id) || null,
+          liked: likedIds.has(c.id)
+        }));
       }
       
       setComments(commentsData);
