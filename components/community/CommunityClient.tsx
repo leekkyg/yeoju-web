@@ -551,6 +551,7 @@ useEffect(() => {
         .order("created_at", { ascending: true });
 
       if (error) {
+        console.error("댓글 불러오기 오류:", error);
         setComments([]);
         setLoadingComments(false);
         return;
@@ -560,18 +561,22 @@ useEffect(() => {
 
       if (commentsData.length > 0) {
         const userIds = [...new Set(commentsData.map(c => c.user_id).filter(Boolean))];
-        const { data: profiles } = await supabase
-          .from("profiles")
-          .select("id, avatar_url")
-          .in("id", userIds);
-        
-        const profileMap = new Map();
-        profiles?.forEach(p => profileMap.set(p.id, p.avatar_url));
-        
-        commentsData = commentsData.map(c => ({
-          ...c,
-          author_avatar_url: profileMap.get(c.user_id) || null
-        }));
+        if (userIds.length > 0) {
+          const { data: profiles, error: profileError } = await supabase
+            .from("profiles")
+            .select("id, avatar_url")
+            .in("id", userIds);
+          
+          if (!profileError && profiles) {
+            const profileMap = new Map();
+            profiles.forEach(p => profileMap.set(p.id, p.avatar_url));
+            
+            commentsData = commentsData.map(c => ({
+              ...c,
+              author_avatar_url: profileMap.get(c.user_id) || null
+            }));
+          }
+        }
       }
 
       if (commentsData.length > 0 && user) {
@@ -587,6 +592,7 @@ useEffect(() => {
       
       setComments(commentsData);
     } catch (err) {
+      console.error("댓글 불러오기 예외:", err);
       setComments([]);
     } finally {
       setLoadingComments(false);

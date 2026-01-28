@@ -28,7 +28,7 @@ export default function LoginPage() {
     setLoading('email');
     setError("");
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
       setError("이메일 또는 비밀번호가 올바르지 않습니다");
@@ -36,7 +36,13 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/");
+    // 세션 확인 후 이동
+    if (data.session) {
+      window.location.href = "/";
+    } else {
+      setError("로그인 처리 중 오류가 발생했습니다");
+      setLoading(null);
+    }
   };
 
   const handleSocialLogin = async (provider: 'google' | 'kakao' | 'facebook') => {
