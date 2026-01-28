@@ -146,7 +146,8 @@ function CommunityPageContent({ initialPosts }: CommunityPageContentProps) {
   useEffect(() => {
     // fetchPosts() 제거 - 서버에서 이미 가져옴
     fetchAds();
-    supabase.auth.getSession().then(async ({ data: { session } }) => { const user = session?.user;
+    
+    const loadUserData = async (user: any) => {
       setUser(user);
       if (user) {
         const { data: profile } = await supabase.from("profiles").select("*").eq("email", user.email).single();
@@ -154,8 +155,21 @@ function CommunityPageContent({ initialPosts }: CommunityPageContentProps) {
         fetchUnreadCount(user.id);
         const { data: bookmarks } = await supabase.from("post_bookmarks").select("post_id").eq("user_id", user.id);
         if (bookmarks) setBookmarkedPosts(new Set(bookmarks.map(b => b.post_id)));
+      } else {
+        setUserProfile(null);
+        setBookmarkedPosts(new Set());
       }
+    };
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      loadUserData(session?.user || null);
     });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      loadUserData(session?.user || null);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   // 🔥 실시간 게시글 구독
