@@ -65,13 +65,26 @@ function NoticesPageContent() {
 
   useEffect(() => {
     fetchNotices();
-    supabase.auth.getSession().then(async ({ data: { session } }) => { const user = session?.user;
-      setUser(user);
-      if (user) {
-        const { data: profile } = await supabase.from("profiles").select("*").eq("email", user.email).single();
+    
+    const loadUserData = async (sessionUser: any) => {
+      setUser(sessionUser);
+      if (sessionUser) {
+        const { data: profile } = await supabase.from("profiles").select("*").eq("email", sessionUser.email).single();
         setUserProfile(profile);
+      } else {
+        setUserProfile(null);
       }
+    };
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      loadUserData(session?.user || null);
     });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      loadUserData(session?.user || null);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   // ✅ URL 파라미터로 공지 자동 열기 (링크 공유 시)
@@ -92,10 +105,17 @@ if (noticeId) {
     setLoading(true);
     const { data } = await supabase
       .from("notices")
-      .select("*")
+      .select("*, notice_comments(count)")
       .order("is_pinned", { ascending: false })
       .order("created_at", { ascending: false });
-    setNotices(data || []);
+    
+    // 댓글 개수 추가
+    const noticesWithCount = (data || []).map(notice => ({
+      ...notice,
+      comment_count: notice.notice_comments?.[0]?.count || 0
+    }));
+    
+    setNotices(noticesWithCount);
     setLoading(false);
   };
 
@@ -503,9 +523,15 @@ if (noticeId) {
                         <span className="text-xs" style={{ color: theme.textMuted }}>{formatDate(notice.created_at)}</span>
                         <span className="text-xs" style={{ color: theme.border }}>·</span>
                         <span className="text-xs" style={{ color: theme.textMuted }}>조회 {notice.view_count || 0}</span>
+                        {notice.comment_count > 0 && (
+                          <>
+                            <span className="text-xs" style={{ color: theme.border }}>·</span>
+                            <span className="text-xs" style={{ color: theme.accent }}>💬 {notice.comment_count}</span>
+                          </>
+                        )}
                       </div>
                     </div>
-                    <svg className="w-5 h-5 flex-shrink-0 ml-2 mt-1" style={{ color: theme.accent }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5 flex-shrink-0 ml-2 mt-1" style={{ color: theme.textMuted }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
                   </button>
@@ -538,6 +564,12 @@ if (noticeId) {
                         <span className="text-xs" style={{ color: theme.textMuted }}>{formatDate(notice.created_at)}</span>
                         <span className="text-xs" style={{ color: theme.border }}>·</span>
                         <span className="text-xs" style={{ color: theme.textMuted }}>조회 {notice.view_count || 0}</span>
+                        {notice.comment_count > 0 && (
+                          <>
+                            <span className="text-xs" style={{ color: theme.border }}>·</span>
+                            <span className="text-xs" style={{ color: theme.accent }}>💬 {notice.comment_count}</span>
+                          </>
+                        )}
                       </div>
                     </div>
                     <svg className="w-5 h-5 flex-shrink-0 ml-2 mt-1" style={{ color: theme.textMuted }} fill="none" stroke="currentColor" viewBox="0 0 24 24">

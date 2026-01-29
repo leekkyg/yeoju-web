@@ -53,10 +53,10 @@ export default function NoticeWritePage() {
   const contentRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => { const user = session?.user;
-      setUser(user);
-      if (user) {
-        const { data: profile } = await supabase.from("profiles").select("*").eq("email", user.email).single();
+    const loadUserData = async (sessionUser: any) => {
+      setUser(sessionUser);
+      if (sessionUser) {
+        const { data: profile } = await supabase.from("profiles").select("*").eq("email", sessionUser.email).single();
         setUserProfile(profile);
         
         if (profile?.role !== "admin") {
@@ -67,7 +67,17 @@ export default function NoticeWritePage() {
         alert("로그인이 필요합니다");
         router.push("/login");
       }
+    };
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      loadUserData(session?.user || null);
     });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      loadUserData(session?.user || null);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
