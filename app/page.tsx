@@ -1,6 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 import FeedClient from "@/components/feed/FeedClient";
 
+// 캐싱 비활성화 - 항상 최신 데이터 가져오기
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 // 서버에서 공개 데이터 미리 가져오기
 async function getFeedData() {
   const supabase = createClient(
