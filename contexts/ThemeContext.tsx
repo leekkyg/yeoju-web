@@ -6,6 +6,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 export const themes = {
   dark: {
     bgMain: '#252529',
+    bgPrimary: '#252529', // 추가: bgMain과 동일
     bgCard: '#1E1E1E',
     bgCardHover: '#252525',
     bgElevated: '#2A2A2A',
@@ -29,6 +30,7 @@ export const themes = {
   },
   light: {
     bgMain: '#F5F0EB',
+    bgPrimary: '#F5F0EB', // 추가: bgMain과 동일
     bgCard: '#FFFFFF',
     bgCardHover: '#FAFAFA',
     bgElevated: '#FFFFFF',
@@ -79,6 +81,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
     setMounted(true);
   }, []);
+
+  // body 배경색 동적 변경
+  useEffect(() => {
+    if (!mounted) return;
+    
+    const theme = isDark ? themes.dark : themes.light;
+    document.body.style.backgroundColor = theme.bgMain;
+    document.documentElement.style.backgroundColor = theme.bgMain;
+  }, [isDark, mounted]);
 
   useEffect(() => {
     if (!mounted) return;

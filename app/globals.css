@@ -5,9 +5,7 @@
   caret-color: transparent;
 }
 
-body {
-  background-color: #f5f5f5;
-}
+/* body 배경색은 ThemeContext에서 동적으로 설정됨 */
 
 input, textarea {
   caret-color: auto;
