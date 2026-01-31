@@ -1,10 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useTheme } from "@/contexts/ThemeContext";
-import { supabase } from "@/lib/supabase";
-import { Bell, Sun, Moon, ArrowLeft, MoreVertical, Home, User } from "lucide-react";
+import { Bell, Sun, Moon, Home } from "lucide-react";
 
 interface HeaderProps {
   title?: string;
@@ -12,10 +10,7 @@ interface HeaderProps {
   showHome?: boolean;
   showThemeToggle?: boolean;
   showNotification?: boolean;
-  showProfile?: boolean;
-  showMore?: boolean;
   unreadCount?: number;
-  rightElement?: React.ReactNode;
 }
 
 export default function Header({
@@ -24,52 +19,9 @@ export default function Header({
   showHome = true,
   showThemeToggle = true,
   showNotification = true,
-  showProfile = true,
-  showMore = false,
   unreadCount = 0,
-  rightElement,
 }: HeaderProps) {
   const { theme, isDark, toggleTheme } = useTheme();
-  const [user, setUser] = useState<any>(null);
-  const [profile, setProfile] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-    const user = session?.user;
-      setUser(user);
-      
-      if (user) {
-        const { data: profileData } = await supabase
-          .from("profiles")
-          .select("nickname, avatar_url")
-          .eq("id", user.id)
-          .single();
-        setProfile(profileData);
-      }
-      setLoading(false);
-    };
-
-    fetchUser();
-
-    // 로그인/로그아웃 상태 변화 감지
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      setUser(session?.user || null);
-      if (session?.user) {
-        const { data: profileData } = await supabase
-          .from("profiles")
-          .select("nickname, avatar_url")
-          .eq("id", session.user.id)
-          .single();
-        setProfile(profileData);
-      } else {
-        setProfile(null);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
 
   return (
     <header
@@ -80,18 +32,8 @@ export default function Header({
       }}
     >
       <div className="max-w-[631px] mx-auto px-4 h-14 flex items-center justify-between">
-        {/* 왼쪽 영역 */}
+        {/* 왼쪽 영역 - 로고 */}
         <div className="flex items-center gap-2">
-          {showBack ? (
-            <button
-              onClick={() => window.history.back()}
-              className="w-10 h-10 flex items-center justify-center rounded-full transition-colors"
-              style={{ color: theme.textPrimary }}
-            >
-              <ArrowLeft className="w-5 h-5" strokeWidth={1.5} />
-            </button>
-          ) : null}
-          
           {title ? (
             <h1 className="font-bold text-lg" style={{ color: theme.textPrimary }}>
               {title}
@@ -118,12 +60,14 @@ export default function Header({
           )}
         </div>
 
-        {/* 오른쪽 영역 */}
+        {/* 오른쪽 영역 - 다크모드, 홈, 알림 */}
         <div className="flex items-center gap-1">
+          {/* 다크/라이트 모드 토글 */}
           {showThemeToggle && (
             <button
               onClick={toggleTheme}
-              className="w-10 h-10 flex items-center justify-center rounded-full transition-colors"
+              className="w-10 h-10 flex items-center justify-center rounded-full transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+              title={isDark ? "라이트 모드" : "다크 모드"}
             >
               {isDark ? (
                 <Sun className="w-5 h-5" style={{ color: theme.accent }} strokeWidth={1.5} />
@@ -133,19 +77,23 @@ export default function Header({
             </button>
           )}
 
+          {/* 홈 버튼 */}
           {showHome && (
             <Link
               href="/"
-              className="w-10 h-10 flex items-center justify-center rounded-full transition-colors"
+              className="w-10 h-10 flex items-center justify-center rounded-full transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+              title="홈"
             >
               <Home className="w-5 h-5" style={{ color: theme.textSecondary }} strokeWidth={1.5} />
             </Link>
           )}
 
+          {/* 알림 버튼 */}
           {showNotification && (
             <Link
               href="/notifications"
-              className="relative w-10 h-10 flex items-center justify-center rounded-full transition-colors"
+              className="relative w-10 h-10 flex items-center justify-center rounded-full transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+              title="알림"
             >
               <Bell className="w-5 h-5" style={{ color: theme.textSecondary }} strokeWidth={1.5} />
               {unreadCount > 0 && (
@@ -160,50 +108,6 @@ export default function Header({
                 </span>
               )}
             </Link>
-          )}
-
-          {showMore && (
-            <button
-              className="w-10 h-10 flex items-center justify-center rounded-full transition-colors"
-              style={{ color: theme.textSecondary }}
-            >
-              <MoreVertical className="w-5 h-5" strokeWidth={1.5} />
-            </button>
-          )}
-
-          {rightElement}
-
-          {/* 프로필 아이콘 - 항상 표시 */}
-          {showProfile && !loading && (
-            user ? (
-              <Link
-                href="/mypage"
-                className="w-9 h-9 rounded-full flex items-center justify-center overflow-hidden"
-                style={{
-                  backgroundColor: theme.bgElevated,
-                  border: `2px solid ${theme.accent}`,
-                }}
-              >
-                {profile?.avatar_url ? (
-                  <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <span className="font-semibold text-sm" style={{ color: theme.accent }}>
-                    {profile?.nickname?.[0] || user.email?.[0]?.toUpperCase() || "?"}
-                  </span>
-                )}
-              </Link>
-            ) : (
-              <Link
-                href="/login"
-                className="px-3 py-1.5 text-sm font-bold rounded-lg"
-                style={{
-                  background: `linear-gradient(135deg, ${theme.accent}, ${theme.accentDark})`,
-                  color: isDark ? "#121212" : "#FFFFFF",
-                }}
-              >
-                로그인
-              </Link>
-            )
           )}
         </div>
       </div>
