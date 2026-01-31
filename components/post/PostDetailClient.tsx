@@ -144,7 +144,7 @@ export default function PostDetailClient({ post, ads }: PostDetailClientProps) {
             </div>
           )}
 
-                    {/* Livere 댓글 */}
+                   {/* Livere 댓글 */}
           <div className="mt-6 px-4">
             <h3 className="text-base font-bold mb-4" style={{ color: theme.textPrimary }}>댓글</h3>
             <div 
@@ -159,9 +159,10 @@ export default function PostDetailClient({ post, ads }: PostDetailClientProps) {
                 style={{
                   filter: isDark ? 'invert(1) hue-rotate(180deg)' : 'none',
                 }}
-              >
-                <livere-comment client-id="gSoyK4WDjal75heUDfIB"></livere-comment>
-              </div>
+                dangerouslySetInnerHTML={{
+                  __html: `<livere-comment client-id="gSoyK4WDjal75heUDfIB" article-id="${post.id}"></livere-comment><script type="module" src="https://www.livere.org/livere-widget.js"><\/script>`
+                }}
+              />
             </div>
           </div>
 
@@ -245,7 +246,13 @@ export default function PostDetailClient({ post, ads }: PostDetailClientProps) {
 declare global {
   namespace JSX {
     interface IntrinsicElements {
-      'livere-comment': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement> & { 'client-id': string }, HTMLElement>;
+      'livere-comment': React.DetailedHTMLProps<
+        React.HTMLAttributes<HTMLElement> & { 
+          'client-id': string;
+          'article-id'?: string;
+        }, 
+        HTMLElement
+      >;
     }
   }
 }
