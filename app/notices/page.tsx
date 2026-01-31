@@ -29,7 +29,7 @@ function NoticesPageContent() {
   const [user, setUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
 
-  // ✅ 바텀시트 (상세보기)
+  // 바텀시트 (상세보기)
   const [selectedNotice, setSelectedNotice] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
@@ -60,8 +60,8 @@ function NoticesPageContent() {
   // 라이트박스
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   
-  // ✅ URL 파라미터로 자동 열기 처리 완료 여부
-  const [initialLoadDone, setInitialLoadDone] = useState(false);
+  // URL 파라미터 처리 여부
+  const [urlParamHandled, setUrlParamHandled] = useState<string | null>(null);
 
   useEffect(() => {
     fetchNotices();
@@ -87,94 +87,110 @@ function NoticesPageContent() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // ✅ URL 파라미터로 공지 자동 열기 (링크 공유 시)
+  // URL 파라미터로 공지 자동 열기
   useEffect(() => {
-    if (!loading && !initialLoadDone) {
-      const noticeId = searchParams.get('id');
-if (noticeId) {
-  const id = parseInt(noticeId);
-  if (!isNaN(id)) {  // ← NaN 체크 추가
-    openNotice(id);
-  }
-}
-      setInitialLoadDone(true);
+    const noticeId = searchParams.get('id');
+    
+    // 로딩 중이 아니고, 새로운 id가 있고, 아직 처리하지 않은 경우
+    if (!loading && noticeId && urlParamHandled !== noticeId) {
+      const id = parseInt(noticeId);
+      if (!isNaN(id)) {
+        setUrlParamHandled(noticeId);
+        openNotice(id);
+      }
     }
-  }, [loading, searchParams, initialLoadDone]);
+  }, [loading, searchParams, urlParamHandled]);
 
   const fetchNotices = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from("notices")
-      .select("*, notice_comments(count)")
-      .order("is_pinned", { ascending: false })
-      .order("created_at", { ascending: false });
-    
-    // 댓글 개수 추가
-    const noticesWithCount = (data || []).map(notice => ({
-      ...notice,
-      comment_count: notice.notice_comments?.[0]?.count || 0
-    }));
-    
-    setNotices(noticesWithCount);
+    try {
+      const { data, error } = await supabase
+        .from("notices")
+        .select("*, notice_comments(count)")
+        .order("is_pinned", { ascending: false })
+        .order("created_at", { ascending: false });
+      
+      if (error) {
+        console.error("공지사항 로드 에러:", error);
+        setNotices([]);
+      } else {
+        const noticesWithCount = (data || []).map(notice => ({
+          ...notice,
+          comment_count: notice.notice_comments?.[0]?.count || 0
+        }));
+        setNotices(noticesWithCount);
+      }
+    } catch (err) {
+      console.error("fetchNotices 에러:", err);
+      setNotices([]);
+    }
     setLoading(false);
   };
 
-  // ✅ 글 선택 → 바텀시트 열기
+  // 글 선택 → 바텀시트 열기
   const openNotice = async (noticeId: number) => {
     setDetailLoading(true);
     setIsSheetOpen(true);
     document.body.style.overflow = 'hidden';
     
-    // URL 변경 (히스토리에 추가)
     window.history.pushState({ noticeId }, '', `/notices/${noticeId}`);
     
     await loadNoticeData(noticeId);
     setDetailLoading(false);
   };
 
-  // ✅ 공지 데이터 불러오기
+  // 공지 데이터 불러오기
   const loadNoticeData = async (noticeId: number) => {
-    const { data } = await supabase
-      .from("notices")
-      .select("*")
-      .eq("id", noticeId)
-      .single();
-    
-    if (data) {
-      setSelectedNotice(data);
-      
-      // 조회수 증가
-      await supabase
+    try {
+      const { data, error } = await supabase
         .from("notices")
-        .update({ view_count: (data.view_count || 0) + 1 })
-        .eq("id", noticeId);
-      
-      // 이전글
-      const { data: prev } = await supabase
-        .from("notices")
-        .select("id, title")
-        .lt("id", noticeId)
-        .order("id", { ascending: false })
-        .limit(1)
+        .select("*")
+        .eq("id", noticeId)
         .single();
-      setPrevNotice(prev);
       
-      // 다음글
-      const { data: next } = await supabase
-        .from("notices")
-        .select("id, title")
-        .gt("id", noticeId)
-        .order("id", { ascending: true })
-        .limit(1)
-        .single();
-      setNextNotice(next);
+      if (error) {
+        console.error("공지 상세 로드 에러:", error);
+        return;
+      }
       
-      // 댓글
-      fetchComments(noticeId);
+      if (data) {
+        setSelectedNotice(data);
+        
+        // 조회수 증가
+        await supabase
+          .from("notices")
+          .update({ view_count: (data.view_count || 0) + 1 })
+          .eq("id", noticeId);
+        
+        // 이전글
+        const { data: prev } = await supabase
+          .from("notices")
+          .select("id, title")
+          .lt("id", noticeId)
+          .order("id", { ascending: false })
+          .limit(1)
+          .single();
+        setPrevNotice(prev || null);
+        
+        // 다음글
+        const { data: next } = await supabase
+          .from("notices")
+          .select("id, title")
+          .gt("id", noticeId)
+          .order("id", { ascending: true })
+          .limit(1)
+          .single();
+        setNextNotice(next || null);
+        
+        // 댓글
+        fetchComments(noticeId);
+      }
+    } catch (err) {
+      console.error("loadNoticeData 에러:", err);
     }
   };
 
-  // ✅ 이전글/다음글 로드 (모달 유지)
+  // 이전글/다음글 로드 (모달 유지)
   const navigateToNotice = async (noticeId: number) => {
     setDetailLoading(true);
     window.history.replaceState({ noticeId }, '', `/notices/${noticeId}`);
@@ -182,7 +198,7 @@ if (noticeId) {
     setDetailLoading(false);
   };
 
-  // ✅ 바텀시트 닫기
+  // 바텀시트 닫기
   const closeSheet = () => {
     setIsSheetClosing(true);
     setTimeout(() => {
@@ -193,6 +209,7 @@ if (noticeId) {
       setComments([]);
       document.body.style.overflow = 'unset';
       window.history.pushState({}, '', '/notices');
+      setUrlParamHandled(null); // 리셋해서 다시 클릭 가능하게
     }, 300);
   };
 
@@ -206,6 +223,7 @@ if (noticeId) {
           setIsSheetClosing(false);
           setSelectedNotice(null);
           document.body.style.overflow = 'unset';
+          setUrlParamHandled(null);
         }, 300);
       }
     };
@@ -334,7 +352,7 @@ if (noticeId) {
       if (error) throw error;
       setIsEditMode(false);
       await loadNoticeData(selectedNotice.id);
-      fetchNotices(); // 목록도 갱신
+      fetchNotices();
     } catch (error: any) {
       alert("저장 실패: " + error.message);
     }
@@ -404,7 +422,7 @@ if (noticeId) {
       <div key={comment.id} className={isReply ? 'ml-10 mt-3' : 'py-4'}>
         <div className="flex gap-3">
           <div className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center overflow-hidden" style={{ backgroundColor: theme.accent }}>
-            {comment.author_profile_image ? <img src={comment.author_profile_image} className="w-full h-full object-cover" /> : <span className="text-xs font-bold" style={{ color: isDark ? '#121212' : '#fff' }}>{comment.author_nickname?.charAt(0)}</span>}
+            {comment.author_profile_image ? <img src={comment.author_profile_image} className="w-full h-full object-cover" alt="" /> : <span className="text-xs font-bold" style={{ color: isDark ? '#121212' : '#fff' }}>{comment.author_nickname?.charAt(0)}</span>}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
@@ -450,7 +468,7 @@ if (noticeId) {
       {lightboxImage && (
         <div className="fixed inset-0 bg-black z-[200] flex items-center justify-center" onClick={() => setLightboxImage(null)}>
           <button className="absolute top-4 right-4 text-white text-4xl z-10">×</button>
-          <img src={lightboxImage} className="max-w-full max-h-full object-contain" />
+          <img src={lightboxImage} className="max-w-full max-h-full object-contain" alt="" />
         </div>
       )}
 
@@ -491,11 +509,11 @@ if (noticeId) {
           </div>
         ) : (
           <div className="mx-4 space-y-4">
-              {/* 고정 공지 */}
-               {pinnedNotices.length > 0 && (
-                <div className="rounded-2xl overflow-hidden border" style={{ borderColor: theme.accent, backgroundColor: theme.bgCard }}>
+            {/* 고정 공지 */}
+            {pinnedNotices.length > 0 && (
+              <div className="rounded-2xl overflow-hidden border" style={{ borderColor: theme.accent, backgroundColor: theme.bgCard }}>
                 <div className="px-4 py-2 flex items-center gap-2 border-b" style={{ borderColor: theme.border }}>
-                <svg className="w-4 h-4" style={{ color: theme.accent }} fill="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4" style={{ color: theme.accent }} fill="currentColor" viewBox="0 0 24 24">
                     <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z" />
                   </svg>
                   <span className="text-sm font-bold" style={{ color: theme.accent }}>중요 공지</span>
@@ -583,7 +601,7 @@ if (noticeId) {
         )}
       </main>
 
-      {/* ========== 바텀시트 ========== */}
+      {/* 바텀시트 */}
       {isSheetOpen && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center">
           <div 
@@ -658,7 +676,7 @@ if (noticeId) {
                     <div className="flex gap-2 flex-wrap">
                       {existingImages.map((url, index) => (
                         <div key={index} className="relative">
-                          <img src={url} className="w-20 h-20 object-cover rounded-lg" />
+                          <img src={url} className="w-20 h-20 object-cover rounded-lg" alt="" />
                           <button onClick={() => removeExistingImage(index)} className="absolute -top-2 -right-2 w-6 h-6 rounded-full text-white text-sm font-bold" style={{ backgroundColor: theme.red }}>✕</button>
                         </div>
                       ))}
@@ -671,7 +689,7 @@ if (noticeId) {
                     <div className="flex gap-2 flex-wrap">
                       {newMediaPreviews.map((preview, index) => (
                         <div key={index} className="relative">
-                          {preview.type === 'video' ? <div className="w-20 h-20 bg-gray-900 rounded-lg flex items-center justify-center"><svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg></div> : <img src={preview.url} className="w-20 h-20 object-cover rounded-lg" />}
+                          {preview.type === 'video' ? <div className="w-20 h-20 bg-gray-900 rounded-lg flex items-center justify-center"><svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg></div> : <img src={preview.url} className="w-20 h-20 object-cover rounded-lg" alt="" />}
                           <button onClick={() => removeNewMedia(index)} className="absolute -top-2 -right-2 w-6 h-6 rounded-full text-white text-sm font-bold" style={{ backgroundColor: theme.red }}>✕</button>
                         </div>
                       ))}
@@ -714,7 +732,7 @@ if (noticeId) {
                     {images.length > 0 && (
                       <div className="mb-6 space-y-3">
                         {images.map((img: string, idx: number) => (
-                          <img key={idx} src={img} className="w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setLightboxImage(img)} />
+                          <img key={idx} src={img} className="w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setLightboxImage(img)} alt="" />
                         ))}
                       </div>
                     )}
@@ -749,21 +767,43 @@ if (noticeId) {
                       <span style={{ color: theme.accent }}>{totalComments}</span>
                     </div>
                     {comments.length === 0 ? (
-                      <div className="text-center py-8"><p className="text-sm" style={{ color: theme.textMuted }}>첫 댓글을 남겨보세요!</p></div>
+                      <div className="text-center py-8">
+                        <p className="text-sm" style={{ color: theme.textMuted }}>첫 번째 댓글을 남겨보세요</p>
+                      </div>
                     ) : (
-                      <div className="divide-y" style={{ borderColor: theme.border }}>{comments.map(comment => renderComment(comment))}</div>
+                      <div className="divide-y" style={{ borderColor: theme.border }}>
+                        {comments.map(comment => renderComment(comment))}
+                      </div>
                     )}
                   </div>
                 </div>
 
-                <div className="px-4 py-3 border-t" style={{ borderColor: theme.border, backgroundColor: theme.bgCard }}>
+                {/* 댓글 입력 */}
+                <div className="px-4 py-3 border-t" style={{ borderColor: theme.border }}>
                   {user ? (
                     <div className="flex gap-2">
-                      <input type="text" value={commentText} onChange={(e) => setCommentText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSubmitComment()} placeholder="댓글을 입력하세요..." className="flex-1 px-4 py-3 rounded-xl text-sm focus:outline-none" style={{ backgroundColor: theme.bgInput, color: theme.textPrimary }} />
-                      <button onClick={handleSubmitComment} disabled={!commentText.trim() || submittingComment} className="px-4 py-3 rounded-xl font-bold text-sm disabled:opacity-50" style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}>등록</button>
+                      <input
+                        type="text"
+                        value={commentText}
+                        onChange={(e) => setCommentText(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleSubmitComment()}
+                        placeholder="댓글을 입력하세요"
+                        className="flex-1 px-4 py-2 rounded-full text-sm focus:outline-none"
+                        style={{ backgroundColor: theme.bgInput, color: theme.textPrimary }}
+                      />
+                      <button
+                        onClick={handleSubmitComment}
+                        disabled={!commentText.trim() || submittingComment}
+                        className="px-4 py-2 rounded-full text-sm font-bold disabled:opacity-50"
+                        style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}
+                      >
+                        등록
+                      </button>
                     </div>
                   ) : (
-                    <button onClick={() => router.push("/login")} className="block w-full py-3 text-center rounded-xl" style={{ backgroundColor: theme.bgInput, color: theme.textMuted }}>로그인하고 댓글 작성하기</button>
+                    <Link href="/login" className="block text-center py-2 text-sm" style={{ color: theme.textMuted }}>
+                      로그인하고 댓글을 남겨보세요
+                    </Link>
                   )}
                 </div>
               </>
@@ -771,27 +811,15 @@ if (noticeId) {
           </div>
         </div>
       )}
-
-      {/* 하단 네비게이션 */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t z-50" style={{ backgroundColor: theme.bgCard, borderColor: theme.border }}>
-        <div className="flex">
-          <Link href="/" className="flex-1 py-3 flex flex-col items-center gap-1"><svg className="w-6 h-6" style={{ color: theme.textMuted }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg><span className="text-xs" style={{ color: theme.textMuted }}>홈</span></Link>
-          <Link href="/community" className="flex-1 py-3 flex flex-col items-center gap-1"><svg className="w-6 h-6" style={{ color: theme.textMuted }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg><span className="text-xs" style={{ color: theme.textMuted }}>커뮤니티</span></Link>
-          <Link href="/market" className="flex-1 py-3 flex flex-col items-center gap-1"><svg className="w-6 h-6" style={{ color: theme.textMuted }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg><span className="text-xs" style={{ color: theme.textMuted }}>마켓</span></Link>
-          <Link href="/videos" className="flex-1 py-3 flex flex-col items-center gap-1"><svg className="w-6 h-6" style={{ color: theme.textMuted }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg><span className="text-xs" style={{ color: theme.textMuted }}>영상</span></Link>
-          <Link href="/mypage" className="flex-1 py-3 flex flex-col items-center gap-1"><svg className="w-6 h-6" style={{ color: theme.textMuted }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg><span className="text-xs" style={{ color: theme.textMuted }}>MY</span></Link>
-        </div>
-      </nav>
     </div>
   );
 }
 
-// Suspense로 감싸서 useSearchParams 사용 가능하게
 export default function NoticesPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#121212' }}>
-        <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#d4af37' }} />
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
       </div>
     }>
       <NoticesPageContent />

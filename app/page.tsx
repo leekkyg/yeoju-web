@@ -18,6 +18,7 @@ async function getFeedData() {
     postResult,
     videoResult,
     feedAdResult,
+    noticeResult,
   ] = await Promise.all([
     // 메인 배너 광고
     supabase
@@ -49,6 +50,13 @@ async function getFeedData() {
       .or(`start_date.is.null,start_date.lte.${now}`)
       .or(`end_date.is.null,end_date.gte.${now}`)
       .order("created_at", { ascending: false }),
+    // 공지사항
+    supabase
+      .from("notices")
+      .select("*")
+      .order("is_pinned", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(50),
   ]);
 
   return {
@@ -56,6 +64,7 @@ async function getFeedData() {
     posts: postResult.data || [],
     videos: videoResult.data || [],
     feedAds: feedAdResult.data || [],
+    notices: noticeResult.data || [],
   };
 }
 
