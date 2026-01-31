@@ -152,27 +152,28 @@ export default function VideoDetailClient({
             </div>
           </div>
 
-                              {/* Livere 댓글 */}
-          <div className="mt-6 px-4">
-            <h3 className="text-base font-bold mb-4" style={{ color: theme.textPrimary }}>댓글</h3>
-            <div 
-              className="rounded-xl overflow-hidden" 
-              style={{ 
-                backgroundColor: isDark ? '#1a1a1a' : '#ffffff',
-                border: `1px solid ${theme.borderLight}` 
-              }}
-            >
-              <div 
-                id="livere-comments"
-                style={{
-                  filter: isDark ? 'invert(1) hue-rotate(180deg)' : 'none',
-                }}
-                dangerouslySetInnerHTML={{
-                  __html: `<livere-comment client-id="gSoyK4WDjal75heUDfIB" article-id="${post.id}"></livere-comment><script type="module" src="https://www.livere.org/livere-widget.js"><\/script>`
-                }}
-              />
-            </div>
-          </div>
+               {/* Livere 댓글 */}
+<div className="mt-6 px-4">
+  <h3 className="text-base font-bold mb-4" style={{ color: theme.textPrimary }}>댓글</h3>
+  <div 
+    className="rounded-xl overflow-hidden" 
+    style={{ 
+      backgroundColor: isDark ? '#1a1a1a' : '#ffffff',
+      border: `1px solid ${theme.borderLight}` 
+    }}
+  >
+    <div 
+      id="livere-comments"
+      style={{
+        filter: isDark ? 'invert(1) hue-rotate(180deg)' : 'none',
+      }}
+      dangerouslySetInnerHTML={{
+        __html: `<livere-comment client-id="gSoyK4WDjal75heUDfIB" article-id="${video.id}"></livere-comment><script type="module" src="https://www.livere.org/livere-widget.js"><\/script>`
+      }}
+    />
+  </div>
+</div>
+
 
 
           <Script 
