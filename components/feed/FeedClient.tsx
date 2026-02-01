@@ -3,10 +3,10 @@
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import OptimizedImage from "@/components/common/OptimizedImage";
 import { useTheme } from "@/contexts/ThemeContext";
 import Header from "@/components/Header";
-import { FileText } from "lucide-react";
+import { FileText, RefreshCw } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 interface FeedItem {
   id: string;
@@ -20,6 +20,17 @@ interface FeedItem {
   view_count?: number;
   images?: string[];
   attachments?: string[];
+}
+
+interface Partner {
+  id: number;
+  name: string;
+  image_url: string;
+  link_url: string | null;
+  width: number | null;
+  height: number | null;
+  start_date: string | null;
+  end_date: string | null;
 }
 
 interface FeedClientProps {
@@ -48,432 +59,412 @@ export default function FeedClient({ initialData }: FeedClientProps) {
   const { theme, isDark, mounted } = useTheme();
   const [mainBanners] = useState(initialData.mainBanners);
   const [feedAds] = useState(initialData.feedAds);
+  const [activeTab, setActiveTab] = useState<"all" | "posts" | "notices" | "partners">("all");
+  const [partners, setPartners] = useState<Partner[]>([]);
+  const [loadingPartners, setLoadingPartners] = useState(false);
+  
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
+  const [postItems, setPostItems] = useState<FeedItem[]>([]);
   const [noticeItems, setNoticeItems] = useState<FeedItem[]>([]);
-  const [currentBanner, setCurrentBanner] = useState(0);
-  const [activeTab, setActiveTab] = useState<"all" | "notices" | "posts" | "partners">("all");
-  const bannerTouchStartX = useRef(0);
+
+  const postObserverRef = useRef<IntersectionObserver | null>(null);
+  const [visiblePosts, setVisiblePosts] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    const posts: FeedItem[] = initialData.posts.map((p: any) => {
-      let images = p.images;
-      if (typeof images === 'string') {
-        try { images = JSON.parse(images); } catch { images = []; }
-      }
-      const thumbnail = Array.isArray(images) && isValidUrl(images[0]) ? images[0] : undefined;
-      
-      return {
-        id: p.id,
-        type: "post" as const,
-        title: p.title,
-        thumbnail_url: thumbnail,
-        created_at: p.created_at,
-      };
-    });
+    if (!mounted) return;
 
-    const videos: FeedItem[] = initialData.videos.map((v: any) => ({
-      id: v.id,
-      type: "video" as const,
-      title: v.title,
-      thumbnail_url: isValidUrl(v.thumbnail_url) ? v.thumbnail_url : undefined,
-      video_url: isValidUrl(v.video_url) ? v.video_url : undefined,
-      duration: v.duration || null,
-      created_at: v.created_at,
+    // 게시물 변환
+    const posts: FeedItem[] = initialData.posts.map((post) => ({
+      id: `post-${post.id}`,
+      type: "post" as const,
+      title: post.title,
+      thumbnail_url: post.images?.[0],
+      created_at: post.created_at,
+      images: post.images,
+      attachments: post.attachments,
     }));
 
-    // 공지사항
-    const notices: FeedItem[] = (initialData.notices || []).map((n: any) => {
-      let images = n.images;
-      if (typeof images === 'string') {
-        try { images = JSON.parse(images); } catch { images = []; }
-      }
-      
-      return {
-        id: n.id,
-        type: "notice" as const,
-        title: n.title,
-        thumbnail_url: Array.isArray(images) && isValidUrl(images[0]) ? images[0] : undefined,
-        created_at: n.created_at,
-        is_pinned: n.is_pinned,
-        view_count: n.view_count || 0,
-        images: images,
-        attachments: n.attachments || [],
-      };
-    });
+    // 영상 변환
+    const videos: FeedItem[] = initialData.videos.map((video) => ({
+      id: `video-${video.id}`,
+      type: "video" as const,
+      title: video.title,
+      thumbnail_url: video.thumbnail_url,
+      video_url: video.video_url,
+      duration: video.duration,
+      created_at: video.created_at,
+    }));
 
-    setNoticeItems(notices);
+    // 공지사항 변환
+    const notices: FeedItem[] = (initialData.notices || []).map((notice) => ({
+      id: `notice-${notice.id}`,
+      type: "notice" as const,
+      title: notice.title,
+      created_at: notice.created_at,
+      is_pinned: notice.is_pinned,
+      view_count: notice.view_count,
+    }));
 
-    const combined = [...posts, ...videos].sort(
+    // 전체 피드 (게시물 + 영상 혼합)
+    const allFeed = [...posts, ...videos].sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
-    setFeedItems(combined);
-  }, [initialData.posts, initialData.videos, initialData.notices]);
+
+    setFeedItems(allFeed);
+    setPostItems(posts);
+    setNoticeItems(notices);
+  }, [initialData, mounted]);
+
+  // 제휴협력사 데이터 가져오기
+  useEffect(() => {
+    if (activeTab === "partners" && partners.length === 0) {
+      fetchPartners();
+    }
+  }, [activeTab]);
+
+  const fetchPartners = async () => {
+    setLoadingPartners(true);
+    const { data } = await supabase
+      .from("partners")
+      .select("*");
+
+    if (data) {
+      // 게시 기간 필터링
+      const now = new Date();
+      const activePartners = data.filter((p: Partner) => {
+        const start = p.start_date ? new Date(p.start_date) : null;
+        const end = p.end_date ? new Date(p.end_date) : null;
+        
+        if (start && now < start) return false;
+        if (end && now > end) return false;
+        return true;
+      });
+
+      const shuffled = [...activePartners].sort(() => Math.random() - 0.5);
+      setPartners(shuffled);
+    }
+    setLoadingPartners(false);
+  };
+
+  const handleShufflePartners = () => {
+    const shuffled = [...partners].sort(() => Math.random() - 0.5);
+    setPartners(shuffled);
+  };
 
   useEffect(() => {
-    if (mainBanners.length <= 1) return;
-    const interval = setInterval(() => {
-      setCurrentBanner((prev) => (prev + 1) % mainBanners.length);
-    }, 4000);
-    return () => clearInterval(interval);
-  }, [mainBanners.length]);
+    if (typeof window === "undefined") return;
 
-  const handleBannerTouchStart = (e: React.TouchEvent) => {
-    bannerTouchStartX.current = e.touches[0].clientX;
-  };
+    postObserverRef.current = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const postId = entry.target.getAttribute("data-post-id");
+          if (!postId) return;
 
-  const handleBannerTouchEnd = (e: React.TouchEvent) => {
-    const touchEndX = e.changedTouches[0].clientX;
-    const diff = bannerTouchStartX.current - touchEndX;
-    if (Math.abs(diff) > 50) {
-      if (diff > 0) setCurrentBanner((prev) => (prev + 1) % mainBanners.length);
-      else setCurrentBanner((prev) => (prev - 1 + mainBanners.length) % mainBanners.length);
-    }
-  };
+          if (entry.isIntersecting) {
+            setVisiblePosts((prev) => new Set(prev).add(postId));
+          }
+        });
+      },
+      { threshold: 0.1, rootMargin: "50px" }
+    );
 
-  // 탭에 따라 필터링
-  const getFilteredItems = () => {
-    if (activeTab === "posts") return feedItems;
-    return feedItems;
-  };
+    return () => {
+      postObserverRef.current?.disconnect();
+    };
+  }, []);
 
-  const getFeedWithAds = () => {
-    const items = getFilteredItems();
-    if (feedAds.length === 0) return items.map((item, idx) => ({ type: 'item' as const, data: item, index: idx }));
-    const result: Array<{ type: 'item' | 'ad'; data: any; index: number }> = [];
-    let adIndex = 0;
-    items.forEach((item, idx) => {
-      result.push({ type: 'item', data: item, index: idx });
-      if ((idx + 1) % 6 === 0 && adIndex < feedAds.length) {
-        result.push({ type: 'ad', data: feedAds[adIndex], index: adIndex });
-        adIndex++;
-      }
-    });
-    return result;
-  };
+  if (!mounted) return null;
 
-  // 날짜 포맷
-  const formatDate = (d: string) => {
-    const date = new Date(d);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const days = Math.floor(diff / 86400000);
-    
-    if (days === 0) return date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
-    if (days < 7) return `${days}일 전`;
-    return date.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" }).replace(/\. /g, '.').replace('.', '');
-  };
-
-  const isNew = (d: string) => Date.now() - new Date(d).getTime() < 3 * 24 * 60 * 60 * 1000;
-  const hasAttachments = (notice: FeedItem) => (notice.images?.length || 0) + (notice.attachments?.length || 0) > 0;
-
-  // 공지사항 분류
-  const pinnedNotices = noticeItems.filter(n => n.is_pinned);
-  const normalNotices = noticeItems.filter(n => !n.is_pinned);
-
-  if (!mounted) {
-    return <div className="min-h-screen bg-[#252529]"><div className="max-w-[631px] mx-auto" /></div>;
-  }
+  const currentItems = activeTab === "all" ? feedItems : activeTab === "posts" ? postItems : noticeItems;
 
   return (
-    <div className="min-h-screen transition-colors duration-300" style={{ backgroundColor: theme.bgMain }}>
-      <div className="max-w-[631px] mx-auto">
-        <Header showHome={false} />
-        
-        <main className="pb-8">
-          {/* 메인 배너 */}
-          {mainBanners.length > 0 && (
-            <section className="px-4 pt-4">
-              <div className="relative rounded-2xl overflow-hidden" style={{ aspectRatio: "16/9" }} onTouchStart={handleBannerTouchStart} onTouchEnd={handleBannerTouchEnd}>
-                {mainBanners.map((banner, index) => (
-                  <Link key={banner.id} href={banner.link_url || "#"} className={`absolute inset-0 transition-opacity duration-500 ${index === currentBanner ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
-                    {isValidUrl(banner.image_url) ? (
-                      <OptimizedImage src={banner.image_url} alt={banner.title || "배너"} fill sizes="(max-width: 631px) 100vw, 631px" className="object-cover" priority={index === 0} />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: theme.bgCard }}><span style={{ color: theme.textMuted }}>배너 이미지</span></div>
-                    )}
-                  </Link>
-                ))}
-                {mainBanners.length > 1 && (
-                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
-                    {mainBanners.map((_, index) => (
-                      <button key={index} onClick={() => setCurrentBanner(index)} className={`w-2 h-2 rounded-full transition-all ${index === currentBanner ? "w-4" : ""}`} style={{ backgroundColor: index === currentBanner ? "#fff" : "rgba(255,255,255,0.5)" }} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            </section>
-          )}
+    <div className="min-h-screen" style={{ backgroundColor: theme.bgMain }}>
+      <Header />
 
-          {/* 탭 메뉴 */}
+      <main className="pt-14 pb-16 max-w-[631px] mx-auto">
+        {/* 메인 배너 */}
+        {mainBanners.length > 0 && (
           <section className="px-4 pt-4">
-            <div 
-              className="flex rounded-xl overflow-hidden" 
-              style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}
-            >
-              <button
-                onClick={() => setActiveTab("all")}
-                className="flex-1 py-3 text-xs sm:text-sm font-medium transition-colors"
-                style={{ 
-                  backgroundColor: activeTab === "all" ? theme.accent : "transparent",
-                  color: activeTab === "all" ? (isDark ? "#121212" : "#FFFFFF") : theme.textSecondary
-                }}
-              >
-                전체
-              </button>
-              <button
-                onClick={() => setActiveTab("notices")}
-                className="flex-1 py-3 text-xs sm:text-sm font-medium transition-colors"
-                style={{ 
-                  backgroundColor: activeTab === "notices" ? theme.accent : "transparent",
-                  color: activeTab === "notices" ? (isDark ? "#121212" : "#FFFFFF") : theme.textSecondary
-                }}
-              >
-                공지사항
-              </button>
-              <button
-                onClick={() => setActiveTab("posts")}
-                className="flex-1 py-3 text-xs sm:text-sm font-medium transition-colors"
-                style={{ 
-                  backgroundColor: activeTab === "posts" ? theme.accent : "transparent",
-                  color: activeTab === "posts" ? (isDark ? "#121212" : "#FFFFFF") : theme.textSecondary
-                }}
-              >
-                게시물
-              </button>
-              <button
-                onClick={() => setActiveTab("partners")}
-                className="flex-1 py-3 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap"
-                style={{ 
-                  backgroundColor: activeTab === "partners" ? theme.accent : "transparent",
-                  color: activeTab === "partners" ? (isDark ? "#121212" : "#FFFFFF") : theme.textSecondary
-                }}
-              >
-                제휴·협력사
-              </button>
+            <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: theme.bgCard }}>
+              {mainBanners.map((banner) => (
+                <a key={banner.id} href={banner.target_url || "#"} target="_blank" rel="noopener noreferrer">
+                  <img src={banner.image_url} alt={banner.title} className="w-full h-auto" />
+                </a>
+              ))}
             </div>
           </section>
+        )}
 
-          {/* 공지사항 탭 - 리스트 형태 */}
-          {activeTab === "notices" && (
-            <section className="px-4 pt-4">
-              <div className="mb-3 flex items-center justify-between">
-                <span className="text-sm" style={{ color: theme.textMuted }}>총 {noticeItems.length}개의 공지</span>
+        {/* 탭 네비게이션 */}
+        <section className="px-4 pt-4 sticky top-14 z-40" style={{ backgroundColor: theme.bgMain }}>
+          <div 
+            className="grid grid-cols-4 rounded-xl overflow-hidden"
+            style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
+          >
+            <button
+              onClick={() => setActiveTab("all")}
+              className="py-3 text-xs sm:text-sm font-medium transition-colors"
+              style={{ 
+                backgroundColor: activeTab === "all" ? theme.accent : "transparent",
+                color: activeTab === "all" ? (isDark ? "#121212" : "#FFFFFF") : theme.textSecondary
+              }}
+            >
+              전체
+            </button>
+            <button
+              onClick={() => setActiveTab("notices")}
+              className="py-3 text-xs sm:text-sm font-medium transition-colors"
+              style={{ 
+                backgroundColor: activeTab === "notices" ? theme.accent : "transparent",
+                color: activeTab === "notices" ? (isDark ? "#121212" : "#FFFFFF") : theme.textSecondary
+              }}
+            >
+              공지사항
+            </button>
+            <button
+              onClick={() => setActiveTab("posts")}
+              className="py-3 text-xs sm:text-sm font-medium transition-colors"
+              style={{ 
+                backgroundColor: activeTab === "posts" ? theme.accent : "transparent",
+                color: activeTab === "posts" ? (isDark ? "#121212" : "#FFFFFF") : theme.textSecondary
+              }}
+            >
+              게시물
+            </button>
+            <button
+              onClick={() => setActiveTab("partners")}
+              className="flex-1 py-3 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap"
+              style={{ 
+                backgroundColor: activeTab === "partners" ? theme.accent : "transparent",
+                color: activeTab === "partners" ? (isDark ? "#121212" : "#FFFFFF") : theme.textSecondary
+              }}
+            >
+              제휴·협력사
+            </button>
+          </div>
+        </section>
+
+        {/* 공지사항 탭 */}
+        {activeTab === "notices" && (
+          <section className="px-4 pt-4">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-sm" style={{ color: theme.textMuted }}>총 {noticeItems.length}개의 공지</span>
+            </div>
+            {noticeItems.length === 0 ? (
+              <div className="text-center py-20 rounded-2xl" style={{ backgroundColor: theme.bgCard }}>
+                <p style={{ color: theme.textMuted }}>등록된 공지사항이 없습니다</p>
               </div>
-
-              {noticeItems.length === 0 ? (
-                <div className="text-center py-20 rounded-2xl" style={{ backgroundColor: theme.bgCard }}>
-                  <svg className="w-16 h-16 mx-auto mb-4" style={{ color: theme.textMuted }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  <p style={{ color: theme.textMuted }}>공지사항이 없습니다</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {/* 고정 공지 */}
-                  {pinnedNotices.length > 0 && (
-                    <div className="rounded-2xl overflow-hidden border" style={{ borderColor: theme.accent, backgroundColor: theme.bgCard }}>
-                      <div className="px-4 py-2 flex items-center gap-2 border-b" style={{ borderColor: theme.border }}>
-                        <svg className="w-4 h-4" style={{ color: theme.accent }} fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z" />
-                        </svg>
-                        <span className="text-sm font-bold" style={{ color: theme.accent }}>중요 공지</span>
-                      </div>
-                      {pinnedNotices.map((notice, index) => (
-                        <button
-                          key={notice.id}
-                          onClick={() => router.push(`/notices/${notice.id}`)}
-                          className="flex items-start px-4 py-4 w-full text-left transition-colors hover:opacity-80"
-                          style={{ borderTop: index > 0 ? `1px solid ${theme.border}` : 'none' }}
-                        >
-                          <div className="w-10 flex-shrink-0">
-                            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: theme.accent }}>
-                              <svg className="w-4 h-4" style={{ color: isDark ? '#121212' : '#fff' }} fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z" />
-                              </svg>
-                            </div>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h3 className="font-bold truncate" style={{ color: theme.accent }}>{notice.title}</h3>
-                              {hasAttachments(notice) && (
-                                <svg className="w-4 h-4 flex-shrink-0" style={{ color: theme.textMuted }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                                </svg>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2 mt-1.5">
-                              <span className="text-xs" style={{ color: theme.textMuted }}>{formatDate(notice.created_at)}</span>
-                              <span className="text-xs" style={{ color: theme.border }}>·</span>
-                              <span className="text-xs" style={{ color: theme.textMuted }}>조회 {notice.view_count || 0}</span>
-                            </div>
-                          </div>
-                          <svg className="w-5 h-5 flex-shrink-0 ml-2 mt-1" style={{ color: theme.textMuted }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* 일반 공지 */}
-                  {normalNotices.length > 0 && (
-                    <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: theme.bgCard }}>
-                      {normalNotices.map((notice, index) => (
-                        <button
-                          key={notice.id}
-                          onClick={() => router.push(`/notices/${notice.id}`)}
-                          className="flex items-start px-4 py-4 w-full text-left transition-colors hover:opacity-80"
+            ) : (
+              <div className="space-y-2">
+                {noticeItems.map((item) => (
+                  <Link
+                    key={item.id}
+                    href={`/notices/${item.id.replace("notice-", "")}`}
+                    className="block p-4 rounded-xl transition-all hover:opacity-80"
+                    style={{
+                      backgroundColor: theme.bgCard,
+                      border: `1px solid ${theme.border}`,
+                    }}
+                  >
+                    <div className="flex items-start gap-2 mb-2">
+                      {item.is_pinned && (
+                        <span 
+                          className="px-2 py-0.5 text-xs font-bold rounded"
                           style={{ 
-                            borderTop: index > 0 ? `1px solid ${theme.border}` : 'none',
-                            backgroundColor: index % 2 === 0 ? theme.bgCard : isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)'
+                            backgroundColor: `${theme.accent}20`,
+                            color: theme.accent 
                           }}
                         >
-                          <div className="w-10 flex-shrink-0">
-                            <span 
-                              className="text-sm font-medium inline-flex items-center justify-center w-7 h-7 rounded-full" 
-                              style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)', color: theme.textMuted }}
-                            >
-                              {normalNotices.length - index}
-                            </span>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {isNew(notice.created_at) && (
-                                <span 
-                                  className="text-xs font-bold px-1.5 py-0.5 rounded" 
-                                  style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}
-                                >
-                                  NEW
-                                </span>
-                              )}
-                              <h3 className="truncate" style={{ color: theme.textPrimary }}>{notice.title}</h3>
-                              {hasAttachments(notice) && (
-                                <svg className="w-4 h-4 flex-shrink-0" style={{ color: theme.textMuted }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                                </svg>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2 mt-1.5">
-                              <span className="text-xs" style={{ color: theme.textMuted }}>{formatDate(notice.created_at)}</span>
-                              <span className="text-xs" style={{ color: theme.border }}>·</span>
-                              <span className="text-xs" style={{ color: theme.textMuted }}>조회 {notice.view_count || 0}</span>
-                            </div>
-                          </div>
-                          <svg className="w-5 h-5 flex-shrink-0 ml-2 mt-1" style={{ color: theme.textMuted }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
-                        </button>
-                      ))}
+                          고정
+                        </span>
+                      )}
+                      <h3 className="font-semibold text-base flex-1" style={{ color: theme.textPrimary }}>
+                        {item.title}
+                      </h3>
                     </div>
-                  )}
-                </div>
-              )}
-            </section>
-          )}
-
-          {/* 제휴·협력사 탭 */}
-          {activeTab === "partners" && (
-            <section className="px-4 pt-4">
-              <div className="text-center py-20 rounded-2xl" style={{ backgroundColor: theme.bgCard }}>
-                <svg className="w-16 h-16 mx-auto mb-4" style={{ color: theme.textMuted }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-                <p style={{ color: theme.textMuted }}>제휴·협력사 정보가 없습니다</p>
-                <p className="text-sm mt-2" style={{ color: theme.textMuted }}>곧 업데이트 예정입니다</p>
+                    <div className="flex items-center gap-3 text-xs" style={{ color: theme.textMuted }}>
+                      <span>관리자</span>
+                      <span>조회 {item.view_count || 0}</span>
+                      <span>{new Date(item.created_at).toLocaleDateString()}</span>
+                    </div>
+                  </Link>
+                ))}
               </div>
-            </section>
-          )}
+            )}
+          </section>
+        )}
 
-          {/* 전체/게시물 탭 - 카드 형태 */}
-          {(activeTab === "all" || activeTab === "posts") && (
-            <section className="px-4 pt-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {getFeedWithAds().map((entry, idx) => {
-                  if (entry.type === 'ad') {
-                    return (
-                      <div key={`ad-${entry.index}`} className="col-span-1 md:col-span-2">
-                        <Link href={entry.data.link_url || "#"} className="block rounded-2xl overflow-hidden" style={{ aspectRatio: "4/1" }}>
-                          {isValidUrl(entry.data.image_url) ? <OptimizedImage src={entry.data.image_url} alt={entry.data.title || "광고"} width={600} height={150} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: theme.bgCard }}><span style={{ color: theme.textMuted }}>광고</span></div>}
-                        </Link>
-                        <p className="text-[10px] text-center mt-1" style={{ color: theme.textMuted }}>광고</p>
+        {/* 제휴·협력사 탭 */}
+        {activeTab === "partners" && (
+          <section className="px-4 pt-4">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-sm" style={{ color: theme.textMuted }}>
+                총 {partners.length}개의 파트너
+              </span>
+              {partners.length > 0 && (
+                <button
+                  onClick={handleShufflePartners}
+                  className="p-2 rounded-lg transition-colors"
+                  style={{ color: theme.accent }}
+                  title="랜덤 정렬"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {loadingPartners ? (
+              <div className="flex justify-center py-20">
+                <div 
+                  className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin"
+                  style={{ borderColor: theme.accent, borderTopColor: 'transparent' }}
+                />
+              </div>
+            ) : partners.length === 0 ? (
+              <div className="text-center py-20 rounded-2xl" style={{ backgroundColor: theme.bgCard }}>
+                <p style={{ color: theme.textMuted }}>등록된 제휴사가 없습니다</p>
+              </div>
+            ) : (
+              <div 
+                className="columns-3 gap-2"
+                style={{ columnGap: '8px' }}
+              >
+                {partners.map((partner) => (
+                  <div
+                    key={partner.id}
+                    className="mb-2 break-inside-avoid"
+                  >
+                    {partner.link_url ? (
+                      <a
+                        href={partner.link_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block rounded-lg overflow-hidden transition-transform hover:scale-[1.02]"
+                        style={{
+                          backgroundColor: theme.bgCard,
+                          border: `1px solid ${theme.border}`
+                        }}
+                      >
+                        <img
+                          src={partner.image_url}
+                          alt={partner.name}
+                          className="w-full h-auto"
+                          loading="lazy"
+                        />
+                      </a>
+                    ) : (
+                      <div
+                        className="rounded-lg overflow-hidden"
+                        style={{
+                          backgroundColor: theme.bgCard,
+                          border: `1px solid ${theme.border}`
+                        }}
+                      >
+                        <img
+                          src={partner.image_url}
+                          alt={partner.name}
+                          className="w-full h-auto"
+                          loading="lazy"
+                        />
                       </div>
-                    );
-                  }
-                  const item = entry.data as FeedItem;
-                  if (item.type === "video") return <VideoTile key={`video-${item.id}`} item={item} theme={theme} isDark={isDark} />;
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* 전체/게시물 탭 */}
+        {(activeTab === "all" || activeTab === "posts") && (
+          <section className="px-4 pt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {currentItems.map((item) => {
+                if (item.type === "video") {
                   return (
-                    <Link key={`post-${item.id}`} href={`/posts/${item.id}`} className="rounded-2xl overflow-hidden transition-colors duration-300" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}>
-                      <div className="aspect-video relative" style={{ backgroundColor: theme.bgInput }}>
-                        {isValidUrl(item.thumbnail_url) ? <OptimizedImage src={item.thumbnail_url!} alt={item.title} fill sizes="(max-width: 768px) 100vw, 300px" className="object-cover" /> : <div className="w-full h-full flex items-center justify-center"><FileText className="w-10 h-10" style={{ color: theme.textMuted }} strokeWidth={1} /></div>}
+                    <Link
+                      key={item.id}
+                      href={`/videos/${item.id.replace("video-", "")}`}
+                      className="block rounded-xl overflow-hidden transition-all hover:opacity-90"
+                      style={{
+                        backgroundColor: theme.bgCard,
+                        border: `1px solid ${theme.border}`,
+                      }}
+                    >
+                      <div className="relative aspect-video">
+                        {item.thumbnail_url && isValidUrl(item.thumbnail_url) ? (
+                          <img
+                            src={item.thumbnail_url}
+                            alt={item.title}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div
+                            className="w-full h-full flex items-center justify-center"
+                            style={{ backgroundColor: isDark ? "#1e1e1e" : "#f5f5f5" }}
+                          >
+                            <FileText className="w-12 h-12" style={{ color: theme.textMuted }} />
+                          </div>
+                        )}
+                        {item.duration && (
+                          <div className="absolute bottom-2 right-2 px-2 py-1 rounded bg-black/80 text-white text-xs">
+                            {item.duration}
+                          </div>
+                        )}
                       </div>
-                      <div className="p-3"><h4 className="text-[14px] font-semibold line-clamp-2" style={{ color: theme.textPrimary }}>{item.title}</h4></div>
+                      <div className="p-3">
+                        <h3 className="font-medium line-clamp-2" style={{ color: theme.textPrimary }}>
+                          {item.title}
+                        </h3>
+                      </div>
                     </Link>
                   );
-                })}
-              </div>
-              {getFilteredItems().length === 0 && <div className="rounded-2xl p-8 text-center" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }}><p style={{ color: theme.textMuted }}>콘텐츠가 없습니다</p></div>}
-            </section>
-          )}
-        </main>
-      </div>
-    </div>
-  );
-}
+                }
 
-function VideoTile({ item, theme, isDark }: { item: FeedItem; theme: any; isDark: boolean }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [isHovering, setIsHovering] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => { setIsMobile('ontouchstart' in window); }, []);
-
-  const handleMouseEnter = () => {
-    if (isMobile) return;
-    setIsHovering(true);
-    if (videoRef.current && item.video_url) { videoRef.current.currentTime = 0; videoRef.current.play().catch(() => {}); }
-  };
-
-  const handleMouseLeave = () => {
-    if (isMobile) return;
-    setIsHovering(false);
-    if (videoRef.current) { videoRef.current.pause(); videoRef.current.currentTime = 0; }
-  };
-
-  const isValidVideoUrl = (url: string | undefined | null): boolean => {
-    if (!url || typeof url !== 'string' || url.trim() === '') return false;
-    try { new URL(url); return true; } catch { return false; }
-  };
-
-  return (
-    <Link href={`/videos/${item.id}`} className="rounded-2xl overflow-hidden transition-colors duration-300 group" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.borderLight}` }} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
-      <div className="aspect-video relative bg-black">
-        {isValidVideoUrl(item.video_url) && !isMobile && <video ref={videoRef} src={item.video_url} className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${isHovering ? "opacity-100" : "opacity-0"}`} muted loop playsInline />}
-        <div className={`absolute inset-0 transition-opacity duration-300 ${isHovering && isValidVideoUrl(item.video_url) && !isMobile ? "opacity-0" : "opacity-100"}`}>
-          {isValidUrl(item.thumbnail_url) ? <OptimizedImage src={item.thumbnail_url!} alt={item.title} fill sizes="(max-width: 768px) 100vw, 300px" className="object-cover" /> : <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: theme.bgInput }}><div className="w-12 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: "rgba(255,0,0,0.9)" }}><svg className="w-4 h-4 ml-0.5" fill="#FFFFFF" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div></div>}
-        </div>
-        {/* 유튜브 스타일 재생 버튼 - hover 시 숨김 */}
-        {!isHovering && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div 
-              className="w-14 h-10 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110"
-              style={{ backgroundColor: "rgba(255, 0, 0, 0.9)" }}
-            >
-              <svg className="w-5 h-5 ml-0.5" fill="#FFFFFF" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z"/>
-              </svg>
+                return (
+                  <Link
+                    key={item.id}
+                    href={`/posts/${item.id.replace("post-", "")}`}
+                    className="block rounded-xl overflow-hidden transition-all hover:opacity-90"
+                    style={{
+                      backgroundColor: theme.bgCard,
+                      border: `1px solid ${theme.border}`,
+                    }}
+                    data-post-id={item.id}
+                    ref={(el) => {
+                      if (el && postObserverRef.current) {
+                        postObserverRef.current.observe(el);
+                      }
+                    }}
+                  >
+                    <div className="relative aspect-video">
+                      {item.thumbnail_url && isValidUrl(item.thumbnail_url) ? (
+                        <img
+                          src={item.thumbnail_url}
+                          alt={item.title}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div
+                          className="w-full h-full flex items-center justify-center"
+                          style={{ backgroundColor: isDark ? "#1e1e1e" : "#f5f5f5" }}
+                        >
+                          <FileText className="w-12 h-12" style={{ color: theme.textMuted }} />
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-3">
+                      <h3 className="font-medium line-clamp-2" style={{ color: theme.textPrimary }}>
+                        {item.title}
+                      </h3>
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
-          </div>
+          </section>
         )}
-        {/* 재생 시간 - hover 시에만 표시 */}
-        {item.duration && (
-          <div 
-            className={`absolute bottom-2 right-2 bg-black/80 text-white text-xs px-2 py-1 rounded transition-opacity duration-300 ${isHovering ? "opacity-100" : "opacity-0 md:group-hover:opacity-100"}`}
-          >
-            {item.duration}
-          </div>
-        )}
-      </div>
-      <div className="p-3"><h4 className="text-[14px] font-semibold line-clamp-2" style={{ color: theme.textPrimary }}>{item.title}</h4></div>
-    </Link>
+      </main>
+    </div>
   );
 }
