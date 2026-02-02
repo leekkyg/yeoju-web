@@ -224,15 +224,15 @@ export default function NoticeDetailPage({ params }: { params: Promise<{ id: str
           >
             댓글
           </h3>
-          <div style={{
-            backgroundColor: isDark ? theme.bgCard : '#ffffff',
+                    <div style={{
+            backgroundColor: isDark ? theme.bgCard : '#FFFFFF',
             color: isDark ? theme.textPrimary : '#000000'
           }}>
-	     {/* @ts-ignore */}
-            <livere-comment 
-              client-id="gSoyK4WDjal75heUDfIB"
-            ></livere-comment>
+            <div dangerouslySetInnerHTML={{
+              __html: '<livere-comment client-id="gSoyK4WDjal75heUDfIB"></livere-comment>'
+            }} />
           </div>
+
         </div>
 
         {/* 3. 다른 공지사항 목록 */}
