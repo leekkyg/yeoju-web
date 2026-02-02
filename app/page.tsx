@@ -19,15 +19,13 @@ async function getFeedData() {
     videoResult,
     feedAdResult,
     noticeResult,
+    partnerResult,
   ] = await Promise.all([
     // 메인 배너 광고
     supabase
       .from("ads")
       .select("*")
-      .eq("position", "home_banner")
-      .eq("is_active", true)
-      .or(`start_date.is.null,start_date.lte.${now}`)
-      .or(`end_date.is.null,end_date.gte.${now}`)
+      .eq("ad_type", "main_banner")
       .order("created_at", { ascending: false }),
     // 게시물
     supabase
@@ -45,10 +43,7 @@ async function getFeedData() {
     supabase
       .from("ads")
       .select("*")
-      .eq("position", "feed_list")
-      .eq("is_active", true)
-      .or(`start_date.is.null,start_date.lte.${now}`)
-      .or(`end_date.is.null,end_date.gte.${now}`)
+      .eq("ad_type", "feed_ad")
       .order("created_at", { ascending: false }),
     // 공지사항
     supabase
@@ -57,6 +52,11 @@ async function getFeedData() {
       .order("is_pinned", { ascending: false })
       .order("created_at", { ascending: false })
       .limit(50),
+    // 제휴협력사
+         supabase
+  .from("partners")
+  .select("*")
+  .order("display_order", { ascending: true }),
   ]);
 
   return {
@@ -65,6 +65,7 @@ async function getFeedData() {
     videos: videoResult.data || [],
     feedAds: feedAdResult.data || [],
     notices: noticeResult.data || [],
+    partners: partnerResult.data || [],
   };
 }
 
