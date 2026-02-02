@@ -241,5 +241,3 @@ export default function PostDetailClient({ post, ads }: PostDetailClientProps) {
     </div>
   );
 }
-
-}
