@@ -228,6 +228,7 @@ export default function NoticeDetailPage({ params }: { params: Promise<{ id: str
             backgroundColor: isDark ? theme.bgCard : '#ffffff',
             color: isDark ? theme.textPrimary : '#000000'
           }}>
+	     {/* @ts-ignore */}
             <livere-comment 
               client-id="gSoyK4WDjal75heUDfIB"
             ></livere-comment>
