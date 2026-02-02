@@ -242,17 +242,4 @@ export default function PostDetailClient({ post, ads }: PostDetailClientProps) {
   );
 }
 
-// TypeScript용 커스텀 엘리먼트 선언
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      'livere-comment': React.DetailedHTMLProps<
-        React.HTMLAttributes<HTMLElement> & { 
-          'client-id': string;
-          'article-id'?: string;
-        }, 
-        HTMLElement
-      >;
-    }
-  }
 }
