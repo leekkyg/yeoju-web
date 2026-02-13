@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import Script from "next/script";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/contexts/ThemeContext";
 import { createClient } from "@supabase/supabase-js";
@@ -64,7 +64,6 @@ export default function NoticeDetailClient({ noticeId }: { noticeId: string }) {
 
         setNotice(data);
         
-        // 조회수 증가
         await supabase
           .from("notices")
           .update({ view_count: (data.view_count || 0) + 1 })
@@ -97,23 +96,22 @@ export default function NoticeDetailClient({ noticeId }: { noticeId: string }) {
     return content;
   };
 
-  // 로딩 중 (theme 로드 전 또는 데이터 로딩 중)
   if (!mounted || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#FAF6F0]">
-        <div className="w-8 h-8 border-4 border-[#C4A77D] border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: mounted ? theme.bgMain : '#252529' }}>
+        <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: theme?.accent || '#C4A77D', borderTopColor: 'transparent' }} />
       </div>
     );
   }
 
-  // 에러 또는 데이터 없음
   if (error || !notice) {
     return (
-      <div className="min-h-screen flex items-center justify-center flex-col gap-4 bg-[#FAF6F0]">
-        <p className="text-gray-700">{error || "공지사항을 찾을 수 없습니다."}</p>
+      <div className="min-h-screen flex items-center justify-center flex-col gap-4" style={{ backgroundColor: theme.bgMain }}>
+        <p style={{ color: theme.textSecondary }}>{error || "공지사항을 찾을 수 없습니다."}</p>
         <button
           onClick={() => router.push("/?tab=notices")}
-          className="px-4 py-2 rounded-lg bg-[#C4A77D] text-white"
+          className="px-4 py-2 rounded-lg"
+          style={{ backgroundColor: theme.accent, color: theme.btnPrimaryText }}
         >
           공지사항 목록으로
         </button>
@@ -125,7 +123,6 @@ export default function NoticeDetailClient({ noticeId }: { noticeId: string }) {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: theme.bgMain }}>
-      {/* 라이트박스 */}
       {lightboxImage && (
         <div
           className="fixed inset-0 bg-black z-[200] flex items-center justify-center"
@@ -136,7 +133,6 @@ export default function NoticeDetailClient({ noticeId }: { noticeId: string }) {
         </div>
       )}
 
-      {/* 헤더 */}
       <header
         className="sticky top-0 z-50 border-b"
         style={{ backgroundColor: theme.bgCard, borderColor: theme.border }}
@@ -155,7 +151,6 @@ export default function NoticeDetailClient({ noticeId }: { noticeId: string }) {
         </div>
       </header>
 
-      {/* 본문 */}
       <main className="max-w-[640px] mx-auto">
         <div className="px-4 py-5 border-b" style={{ borderColor: theme.border, backgroundColor: theme.bgCard }}>
           {notice.is_pinned && (
@@ -214,7 +209,32 @@ export default function NoticeDetailClient({ noticeId }: { noticeId: string }) {
           </div>
         </div>
 
-        {/* 목록으로 버튼 */}
+        {/* ★ Livere 댓글 - 게시물과 동일한 테마 통일 스타일 */}
+        <div className="mt-6 px-4">
+          <h3 className="text-base font-bold mb-4" style={{ color: theme.textPrimary }}>댓글</h3>
+          <div 
+            className="livere-wrapper rounded-xl overflow-hidden p-4"
+            style={{ 
+              backgroundColor: theme.bgCard,
+              border: `1px solid ${theme.border}` 
+            }}
+          >
+            <div 
+              id="livere-comments"
+              className={isDark ? 'livere-dark' : 'livere-light'}
+              dangerouslySetInnerHTML={{
+                __html: `<livere-comment client-id="gSoyK4WDjal75heUDfIB" article-id="notice-${notice.id}"></livere-comment><script type="module" src="https://www.livere.org/livere-widget.js"><\/script>`
+              }}
+            />
+          </div>
+        </div>
+
+        <Script 
+          src="https://www.livere.org/livere-widget.js" 
+          strategy="lazyOnload"
+          type="module"
+        />
+
         <div className="px-4 py-6">
           <button
             onClick={() => router.push("/?tab=notices")}
@@ -225,6 +245,25 @@ export default function NoticeDetailClient({ noticeId }: { noticeId: string }) {
           </button>
         </div>
       </main>
+
+      <style jsx global>{`
+        /* ===== 라이브리 댓글 테마 통일 ===== */
+        .livere-dark {
+          filter: invert(1) hue-rotate(180deg);
+        }
+        .livere-dark img,
+        .livere-dark video,
+        .livere-dark svg,
+        .livere-dark iframe,
+        .livere-dark [class*="avatar"],
+        .livere-dark [class*="profile"],
+        .livere-dark [style*="background-image"] {
+          filter: invert(1) hue-rotate(180deg) !important;
+        }
+        .livere-light {
+          filter: none;
+        }
+      `}</style>
     </div>
   );
 }

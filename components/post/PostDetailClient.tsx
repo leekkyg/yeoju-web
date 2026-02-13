@@ -14,7 +14,6 @@ interface PostDetailClientProps {
   ads: any[];
 }
 
-// URL 유효성 검사 함수
 const isValidUrl = (url: string | undefined | null): boolean => {
   if (!url || typeof url !== 'string') return false;
   try {
@@ -42,7 +41,6 @@ export default function PostDetailClient({ post, ads }: PostDetailClientProps) {
     });
   };
 
-  // 관련 게시물 가져오기
   useEffect(() => {
     const fetchRelatedPosts = async () => {
       const supabase = createClient(
@@ -70,17 +68,14 @@ export default function PostDetailClient({ post, ads }: PostDetailClientProps) {
   return (
     <div className="min-h-screen transition-colors duration-300" style={{ backgroundColor: theme.bgMain }}>
       <div className="max-w-[631px] mx-auto">
-        {/* 공통 헤더 */}
         <Header showHome={true} showThemeToggle={true} showNotification={true} />
 
         <main className="pb-8">
-          {/* PC: 카드 스타일 / 모바일: 꽉 차게 */}
           <div className="md:px-4 md:pt-4">
             <div 
               className="md:rounded-2xl md:overflow-hidden"
               style={{ backgroundColor: theme.bgCard || theme.bgMain }}
             >
-              {/* 대표 이미지 */}
               {mainImage && (
                 <div className="aspect-video relative w-full">
                   <OptimizedImage 
@@ -94,7 +89,6 @@ export default function PostDetailClient({ post, ads }: PostDetailClientProps) {
                 </div>
               )}
 
-              {/* 텍스트 영역 */}
               <article className="px-4 py-5">
                 <h1 className="text-xl font-extrabold mb-3 leading-tight" style={{ color: theme.textPrimary }}>
                   {post.title}
@@ -128,7 +122,6 @@ export default function PostDetailClient({ post, ads }: PostDetailClientProps) {
             </div>
           </div>
 
-          {/* 광고 */}
           {ads.length > 0 && isValidUrl(ads[0].image_url) && (
             <div className="mt-4 md:px-4">
               <Link href={ads[0].link_url || "#"} className="block md:rounded-xl md:overflow-hidden">
@@ -144,21 +137,19 @@ export default function PostDetailClient({ post, ads }: PostDetailClientProps) {
             </div>
           )}
 
-                   {/* Livere 댓글 */}
+          {/* ★ Livere 댓글 - 테마 통일 */}
           <div className="mt-6 px-4">
             <h3 className="text-base font-bold mb-4" style={{ color: theme.textPrimary }}>댓글</h3>
             <div 
-              className="rounded-xl overflow-hidden" 
+              className="livere-wrapper rounded-xl overflow-hidden p-4"
               style={{ 
-                backgroundColor: isDark ? '#1a1a1a' : '#ffffff',
-                border: `1px solid ${theme.borderLight}` 
+                backgroundColor: theme.bgCard,
+                border: `1px solid ${theme.border}` 
               }}
             >
               <div 
                 id="livere-comments"
-                style={{
-                  filter: isDark ? 'invert(1) hue-rotate(180deg)' : 'none',
-                }}
+                className={isDark ? 'livere-dark' : 'livere-light'}
                 dangerouslySetInnerHTML={{
                   __html: `<livere-comment client-id="gSoyK4WDjal75heUDfIB" article-id="${post.id}"></livere-comment><script type="module" src="https://www.livere.org/livere-widget.js"><\/script>`
                 }}
@@ -172,7 +163,6 @@ export default function PostDetailClient({ post, ads }: PostDetailClientProps) {
             type="module"
           />
 
-          {/* 관련 글 목록 */}
           <div className="mt-8 px-4">
             <h3 className="text-base font-bold mb-4" style={{ color: theme.textPrimary }}>다른 게시물</h3>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -234,6 +224,23 @@ export default function PostDetailClient({ post, ads }: PostDetailClientProps) {
             .post-content .link-preview img {
               margin: 0 !important;
               border-radius: 0 !important;
+            }
+
+            /* ===== 라이브리 댓글 테마 통일 ===== */
+            .livere-dark {
+              filter: invert(1) hue-rotate(180deg);
+            }
+            .livere-dark img,
+            .livere-dark video,
+            .livere-dark svg,
+            .livere-dark iframe,
+            .livere-dark [class*="avatar"],
+            .livere-dark [class*="profile"],
+            .livere-dark [style*="background-image"] {
+              filter: invert(1) hue-rotate(180deg) !important;
+            }
+            .livere-light {
+              filter: none;
             }
           `}</style>
         </main>
