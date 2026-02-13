@@ -34,10 +34,10 @@ export default function NoticeDetailClient({ noticeId }: { noticeId: string }) {
     const fetchNotice = async () => {
       setLoading(true);
       setError(null);
-      
+
       try {
         const numId = parseInt(noticeId);
-        
+
         if (isNaN(numId)) {
           setError("잘못된 공지사항 ID입니다.");
           setLoading(false);
@@ -63,16 +63,15 @@ export default function NoticeDetailClient({ noticeId }: { noticeId: string }) {
         }
 
         setNotice(data);
-        
+
         await supabase
           .from("notices")
           .update({ view_count: (data.view_count || 0) + 1 })
           .eq("id", numId);
-          
       } catch (err) {
         setError("오류가 발생했습니다.");
       }
-      
+
       setLoading(false);
     };
 
@@ -98,20 +97,37 @@ export default function NoticeDetailClient({ noticeId }: { noticeId: string }) {
 
   if (!mounted || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: mounted ? theme.bgMain : '#252529' }}>
-        <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: theme?.accent || '#C4A77D', borderTopColor: 'transparent' }} />
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ backgroundColor: mounted ? theme.bgMain : "#252529" }}
+      >
+        <div
+          className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin"
+          style={{
+            borderColor: theme?.accent || "#C4A77D",
+            borderTopColor: "transparent",
+          }}
+        />
       </div>
     );
   }
 
   if (error || !notice) {
     return (
-      <div className="min-h-screen flex items-center justify-center flex-col gap-4" style={{ backgroundColor: theme.bgMain }}>
-        <p style={{ color: theme.textSecondary }}>{error || "공지사항을 찾을 수 없습니다."}</p>
+      <div
+        className="min-h-screen flex items-center justify-center flex-col gap-4"
+        style={{ backgroundColor: theme.bgMain }}
+      >
+        <p style={{ color: theme.textSecondary }}>
+          {error || "공지사항을 찾을 수 없습니다."}
+        </p>
         <button
           onClick={() => router.push("/?tab=notices")}
           className="px-4 py-2 rounded-lg"
-          style={{ backgroundColor: theme.accent, color: theme.btnPrimaryText }}
+          style={{
+            backgroundColor: theme.accent,
+            color: theme.btnPrimaryText,
+          }}
         >
           공지사항 목록으로
         </button>
@@ -121,6 +137,8 @@ export default function NoticeDetailClient({ noticeId }: { noticeId: string }) {
 
   const images = notice.images || [];
 
+  const livereHtml = `<livere-comment client-id="gSoyK4WDjal75heUDfIB" article-id="notice-${notice.id}"></livere-comment><script type="module" src="https://www.livere.org/livere-widget.js"><\/script>`;
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: theme.bgMain }}>
       {lightboxImage && (
@@ -128,8 +146,14 @@ export default function NoticeDetailClient({ noticeId }: { noticeId: string }) {
           className="fixed inset-0 bg-black z-[200] flex items-center justify-center"
           onClick={() => setLightboxImage(null)}
         >
-          <button className="absolute top-4 right-4 text-white text-4xl z-10">×</button>
-          <img src={lightboxImage} className="max-w-full max-h-full object-contain" alt="" />
+          <button className="absolute top-4 right-4 text-white text-4xl z-10">
+            ×
+          </button>
+          <img
+            src={lightboxImage}
+            className="max-w-full max-h-full object-contain"
+            alt=""
+          />
         </div>
       )}
 
@@ -143,43 +167,83 @@ export default function NoticeDetailClient({ noticeId }: { noticeId: string }) {
             className="flex items-center gap-3"
             style={{ color: theme.textSecondary }}
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            <svg
+              className="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 19l-7-7 7-7"
+              />
             </svg>
-            <span className="font-bold text-lg" style={{ color: theme.textPrimary }}>공지사항</span>
+            <span
+              className="font-bold text-lg"
+              style={{ color: theme.textPrimary }}
+            >
+              공지사항
+            </span>
           </button>
         </div>
       </header>
 
       <main className="max-w-[640px] mx-auto">
-        <div className="px-4 py-5 border-b" style={{ borderColor: theme.border, backgroundColor: theme.bgCard }}>
+        <div
+          className="px-4 py-5 border-b"
+          style={{
+            borderColor: theme.border,
+            backgroundColor: theme.bgCard,
+          }}
+        >
           {notice.is_pinned && (
             <div className="flex items-center gap-2 mb-3">
               <span
                 className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded"
-                style={{ backgroundColor: theme.accent, color: isDark ? "#121212" : "#fff" }}
+                style={{
+                  backgroundColor: theme.accent,
+                  color: isDark ? "#121212" : "#fff",
+                }}
               >
-                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                <svg
+                  className="w-3 h-3"
+                  fill="currentColor"
+                  viewBox="0 0 24 24"
+                >
                   <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z" />
                 </svg>
                 중요
               </span>
             </div>
           )}
-          <h1 className="text-xl font-bold leading-tight" style={{ color: theme.textPrimary }}>
+          <h1
+            className="text-xl font-bold leading-tight"
+            style={{ color: theme.textPrimary }}
+          >
             {notice.title}
           </h1>
-          <div className="flex items-center gap-3 mt-4 text-sm flex-wrap" style={{ color: theme.textMuted }}>
+          <div
+            className="flex items-center gap-3 mt-4 text-sm flex-wrap"
+            style={{ color: theme.textMuted }}
+          >
             <div className="flex items-center gap-2">
               <div
                 className="w-8 h-8 rounded-full flex items-center justify-center"
                 style={{ backgroundColor: theme.accent }}
               >
-                <span className="text-xs font-bold" style={{ color: isDark ? "#121212" : "#fff" }}>
+                <span
+                  className="text-xs font-bold"
+                  style={{ color: isDark ? "#121212" : "#fff" }}
+                >
                   관
                 </span>
               </div>
-              <span className="font-medium" style={{ color: theme.textSecondary }}>
+              <span
+                className="font-medium"
+                style={{ color: theme.textSecondary }}
+              >
                 {notice.author_nickname || "관리자"}
               </span>
             </div>
@@ -204,33 +268,43 @@ export default function NoticeDetailClient({ noticeId }: { noticeId: string }) {
               ))}
             </div>
           )}
-          <div className="whitespace-pre-wrap leading-relaxed" style={{ color: theme.textSecondary }}>
+          <div
+            className="whitespace-pre-wrap leading-relaxed"
+            style={{ color: theme.textSecondary }}
+          >
             {renderContent(notice.content)}
           </div>
         </div>
 
-        {/* ★ Livere 댓글 - 게시물과 동일한 테마 통일 스타일 */}
         <div className="mt-6 px-4">
-          <h3 className="text-base font-bold mb-4" style={{ color: theme.textPrimary }}>댓글</h3>
-          <div 
-            className="livere-wrapper rounded-xl overflow-hidden p-4"
-            style={{ 
+          <h3
+            className="text-base font-bold mb-4"
+            style={{ color: theme.textPrimary }}
+          >
+            댓글
+          </h3>
+          <div
+            className="rounded-xl overflow-hidden p-4"
+            style={{
               backgroundColor: theme.bgCard,
-              border: `1px solid ${theme.border}` 
+              border: `1px solid ${theme.border}`,
             }}
           >
-            <div 
-              id="livere-comments"
-              className={isDark ? 'livere-dark' : 'livere-light'}
-              dangerouslySetInnerHTML={{
-                __html: `<livere-comment client-id="gSoyK4WDjal75heUDfIB" article-id="notice-${notice.id}"></livere-comment><script type="module" src="https://www.livere.org/livere-widget.js"><\/script>`
-              }}
+            <div
+              id="livere-comments-notice"
+              data-theme={isDark ? "dark" : "light"}
+              style={
+                isDark
+                  ? { filter: "invert(0.88) hue-rotate(180deg)" }
+                  : undefined
+              }
+              dangerouslySetInnerHTML={{ __html: livereHtml }}
             />
           </div>
         </div>
 
-        <Script 
-          src="https://www.livere.org/livere-widget.js" 
+        <Script
+          src="https://www.livere.org/livere-widget.js"
           strategy="lazyOnload"
           type="module"
         />
@@ -239,7 +313,11 @@ export default function NoticeDetailClient({ noticeId }: { noticeId: string }) {
           <button
             onClick={() => router.push("/?tab=notices")}
             className="block w-full py-3 text-center rounded-xl font-medium"
-            style={{ backgroundColor: theme.bgCard, color: theme.textSecondary, border: `1px solid ${theme.border}` }}
+            style={{
+              backgroundColor: theme.bgCard,
+              color: theme.textSecondary,
+              border: `1px solid ${theme.border}`,
+            }}
           >
             목록으로
           </button>
@@ -247,21 +325,14 @@ export default function NoticeDetailClient({ noticeId }: { noticeId: string }) {
       </main>
 
       <style jsx global>{`
-        /* ===== 라이브리 댓글 테마 통일 ===== */
-        .livere-dark {
-          filter: invert(1) hue-rotate(180deg);
-        }
-        .livere-dark img,
-        .livere-dark video,
-        .livere-dark svg,
-        .livere-dark iframe,
-        .livere-dark [class*="avatar"],
-        .livere-dark [class*="profile"],
-        .livere-dark [style*="background-image"] {
+        #livere-comments-notice[data-theme="dark"] img,
+        #livere-comments-notice[data-theme="dark"] video,
+        #livere-comments-notice[data-theme="dark"] svg,
+        #livere-comments-notice[data-theme="dark"] iframe,
+        #livere-comments-notice[data-theme="dark"] [class*="avatar"],
+        #livere-comments-notice[data-theme="dark"] [class*="profile"],
+        #livere-comments-notice[data-theme="dark"] [style*="background-image"] {
           filter: invert(1) hue-rotate(180deg) !important;
-        }
-        .livere-light {
-          filter: none;
         }
       `}</style>
     </div>
