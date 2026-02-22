@@ -1,0 +1,435 @@
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import OptimizedImage from "@/components/common/OptimizedImage";
+import { supabase } from "@/lib/supabase";
+import { useTheme } from "@/contexts/ThemeContext";
+
+interface GroupBuy {
+  id: number;
+  title: string;
+  description: string;
+  original_price: number;
+  sale_price: number;
+  min_quantity: number;
+  current_quantity: number;
+  end_at: string;
+  image_url: string;
+  status: string;
+  shop: {
+    id: number;
+    name: string;
+    category: string;
+    logo_url: string;
+  };
+}
+
+const categories = [
+  { id: "all", name: "전체", icon: "🛒" },
+  { id: "chicken", name: "치킨/피자", icon: "🍗" },
+  { id: "food", name: "음식점", icon: "🍽️" },
+  { id: "cafe", name: "카페/베이커리", icon: "☕" },
+  { id: "beauty", name: "뷰티/미용", icon: "💇" },
+  { id: "life", name: "생활/편의", icon: "🏪" },
+];
+
+export default function GroupBuyListPage() {
+  const router = useRouter();
+  const { theme, isDark, mounted } = useTheme();
+  const [groupBuys, setGroupBuys] = useState<GroupBuy[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedCategory, setSelectedCategory] = useState("전체");
+  const [sortBy, setSortBy] = useState<"latest" | "ending" | "discount">("latest");
+  
+  // 카테고리 스크롤 관련
+  const categoryRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(true);
+  const [isDragging, setIsDragging] = useState(false);
+  const [startX, setStartX] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
+
+  useEffect(() => {
+    fetchGroupBuys();
+  }, []);
+
+  // 스크롤 상태 체크
+  const checkScrollButtons = () => {
+    if (categoryRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = categoryRef.current;
+      setCanScrollLeft(scrollLeft > 0);
+      setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 10);
+    }
+  };
+
+  useEffect(() => {
+    checkScrollButtons();
+    window.addEventListener('resize', checkScrollButtons);
+    return () => window.removeEventListener('resize', checkScrollButtons);
+  }, []);
+
+  // 화살표 클릭으로 스크롤
+  const scrollCategory = (direction: 'left' | 'right') => {
+    if (categoryRef.current) {
+      const scrollAmount = 150;
+      categoryRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+      setTimeout(checkScrollButtons, 300);
+    }
+  };
+
+  // 마우스 드래그 스크롤
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!categoryRef.current) return;
+    setIsDragging(true);
+    setStartX(e.pageX - categoryRef.current.offsetLeft);
+    setScrollLeft(categoryRef.current.scrollLeft);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging || !categoryRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - categoryRef.current.offsetLeft;
+    const walk = (x - startX) * 1.5;
+    categoryRef.current.scrollLeft = scrollLeft - walk;
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+    checkScrollButtons();
+  };
+
+  const handleMouseLeave = () => {
+    setIsDragging(false);
+  };
+
+  const fetchGroupBuys = async () => {
+    const { data, error } = await supabase
+      .from("group_buys")
+      .select(`
+        *,
+        shop:shops(id, name, category, logo_url)
+      `)
+      .eq("status", "active")
+      .order("created_at", { ascending: false });
+
+    if (!error && data) {
+      setGroupBuys(data);
+    }
+    setLoading(false);
+  };
+
+  const getTimeLeft = (endAt: string) => {
+    const now = new Date().getTime();
+    const end = new Date(endAt).getTime();
+    const diff = end - now;
+
+    if (diff <= 0) return "마감";
+
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+    if (days > 0) return `${days}일`;
+    if (hours > 0) return `${hours}시간`;
+    return `${minutes}분`;
+  };
+
+  const getDiscountPercent = (original: number, sale: number) => {
+    return Math.round((1 - sale / original) * 100);
+  };
+
+  const getProgress = (current: number, min: number) => {
+    return Math.min((current / min) * 100, 100);
+  };
+
+  const filteredGroupBuys = groupBuys
+    .filter(gb => selectedCategory === "전체" || gb.shop?.category === selectedCategory)
+    .sort((a, b) => {
+      if (sortBy === "ending") {
+        return new Date(a.end_at).getTime() - new Date(b.end_at).getTime();
+      }
+      if (sortBy === "discount") {
+        const discountA = (a.original_price - a.sale_price) / a.original_price;
+        const discountB = (b.original_price - b.sale_price) / b.original_price;
+        return discountB - discountA;
+      }
+      return 0;
+    });
+
+  // 로딩 중 표시
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen" style={{ backgroundColor: theme.bgMain }}>
+      {/* 스크롤바 숨기기 스타일 */}
+      <style jsx global>{`
+        .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+        }
+        .drag-scroll {
+          cursor: grab;
+        }
+        .drag-scroll:active {
+          cursor: grabbing;
+        }
+      `}</style>
+
+      {/* 헤더 */}
+      <header className="fixed top-0 left-0 right-0 z-50" style={{ backgroundColor: theme.bgCard }}>
+        <div className="max-w-[640px] mx-auto px-5 h-14 flex items-center justify-between border-b" style={{ borderColor: theme.border }}>
+          <button 
+            onClick={() => router.back()} 
+            className="w-10 h-10 flex items-center justify-center transition-colors"
+            style={{ color: theme.textSecondary }}
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <h1 className="font-bold text-lg tracking-tight" style={{ color: theme.textPrimary }}>공동구매</h1>
+          <Link 
+            href="/shop/dashboard" 
+            className="text-sm font-medium transition-colors"
+            style={{ color: theme.accent }}
+          >
+            내 상점
+          </Link>
+        </div>
+      </header>
+
+      {/* 카테고리 - 화살표 + 드래그 스크롤 */}
+      <div className="fixed top-14 left-0 right-0 z-40 backdrop-blur-sm border-b" style={{ backgroundColor: theme.bgCard, borderColor: theme.border }}>
+        <div className="max-w-[640px] mx-auto relative">
+          {/* 왼쪽 화살표 */}
+          {canScrollLeft && (
+            <button
+              onClick={() => scrollCategory('left')}
+              className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 flex items-center justify-center shadow-lg"
+              style={{ backgroundColor: theme.bgCard, color: theme.textPrimary }}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          )}
+
+          {/* 카테고리 목록 */}
+          <div 
+            ref={categoryRef}
+            className="px-4 py-3 overflow-x-auto scrollbar-hide drag-scroll"
+            onScroll={checkScrollButtons}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseLeave}
+          >
+            <div className="flex gap-2 px-4">
+              {categories.map(cat => (
+                <button
+                  key={cat.id}
+                  onClick={() => !isDragging && setSelectedCategory(cat.name)}
+                  className="px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all select-none"
+                  style={{
+                    backgroundColor: selectedCategory === cat.name ? theme.accent : theme.bgInput,
+                    color: selectedCategory === cat.name ? (isDark ? '#121212' : '#fff') : theme.textSecondary
+                  }}
+                >
+                  {cat.icon} {cat.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 오른쪽 화살표 */}
+          {canScrollRight && (
+            <button
+              onClick={() => scrollCategory('right')}
+              className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 flex items-center justify-center shadow-lg"
+              style={{ backgroundColor: theme.bgCard, color: theme.textPrimary }}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          )}
+        </div>
+      </div>
+
+      <main className="pt-[130px] pb-8 max-w-[640px] mx-auto px-3">
+        {/* 정렬 + 개수 */}
+        <div className="flex items-center justify-between mb-4 px-1 mt-2">
+          <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
+            {[
+              { key: "latest", label: "최신순" },
+              { key: "ending", label: "마감임박" },
+              { key: "discount", label: "할인율순" },
+            ].map(s => (
+              <button
+                key={s.key}
+                onClick={() => setSortBy(s.key as typeof sortBy)}
+                className="px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap border"
+                style={{
+                  backgroundColor: sortBy === s.key ? theme.accent : theme.bgCard,
+                  color: sortBy === s.key ? (isDark ? '#121212' : '#fff') : theme.textSecondary,
+                  borderColor: sortBy === s.key ? theme.accent : theme.border
+                }}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <span className="text-xs whitespace-nowrap ml-2" style={{ color: theme.textMuted }}>
+            {filteredGroupBuys.length}개
+          </span>
+        </div>
+
+        {/* 로딩 */}
+        {loading && (
+          <div className="py-20 flex justify-center">
+            <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: theme.accent }} />
+          </div>
+        )}
+
+        {/* 빈 상태 */}
+        {!loading && filteredGroupBuys.length === 0 && (
+          <div className="py-20 text-center">
+            <div className="w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-5" style={{ backgroundColor: `${theme.accent}30` }}>
+              <span className="text-5xl">🛒</span>
+            </div>
+            <p className="font-medium text-lg mb-2" style={{ color: theme.textPrimary }}>진행 중인 공동구매가 없어요</p>
+            <p className="text-sm" style={{ color: theme.textMuted }}>조금만 기다려주세요!</p>
+          </div>
+        )}
+
+        {/* 상품 목록 - 3열 그리드 */}
+        <div className="grid grid-cols-3 gap-2">
+          {filteredGroupBuys.map((gb, index) => {
+            const discountPercent = getDiscountPercent(gb.original_price, gb.sale_price);
+            const progress = getProgress(gb.current_quantity, gb.min_quantity);
+            const timeLeft = getTimeLeft(gb.end_at);
+            const isUrgent = timeLeft.includes("시간") || timeLeft.includes("분");
+            
+            return (
+              <Link
+                key={gb.id}
+                href={`/groupbuy/${gb.id}`}
+                className="block rounded-xl overflow-hidden border shadow-sm hover:shadow-md transition-all group"
+                style={{ backgroundColor: theme.bgCard, borderColor: theme.border }}
+              >
+                {/* 이미지 - Next.js Image 사용 */}
+                <div className="aspect-square relative overflow-hidden" style={{ backgroundColor: theme.bgInput }}>
+                  {gb.image_url && gb.image_url.startsWith('http') ? (
+                    <OptimizedImage 
+                      src={gb.image_url} 
+                      alt={gb.title || '공동구매'}
+                      fill
+                      sizes="(max-width: 640px) 33vw, 200px"
+                      className="object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <span className="text-3xl opacity-40">🛒</span>
+                    </div>
+                  )}
+                  
+                  {/* 할인율 뱃지 */}
+                  <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: theme.red, color: '#fff' }}>
+                    {discountPercent}%
+                  </div>
+
+                  {/* 마감 시간 */}
+                  <div className={`absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold`}
+                    style={{ 
+                      backgroundColor: isUrgent ? theme.red : 'rgba(0,0,0,0.5)', 
+                      color: '#fff' 
+                    }}
+                  >
+                    {timeLeft}
+                  </div>
+
+                  {/* 공구 확정 뱃지 */}
+                  {progress >= 100 && (
+                    <div className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: theme.accent, color: isDark ? '#121212' : '#fff' }}>
+                      확정
+                    </div>
+                  )}
+                </div>
+
+                {/* 정보 */}
+                <div className="p-2">
+                  {/* 상점명 */}
+                  <p className="text-[10px] truncate mb-0.5" style={{ color: theme.textMuted }}>
+                    {gb.shop?.name}
+                  </p>
+
+                  {/* 상품명 */}
+                  <h3 className="text-xs font-medium line-clamp-2 leading-tight mb-1.5 min-h-[32px]" style={{ color: theme.textPrimary }}>
+                    {gb.title}
+                  </h3>
+
+                  {/* 가격 */}
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-sm font-bold" style={{ color: theme.textPrimary }}>
+                      {gb.sale_price.toLocaleString()}
+                    </span>
+                    <span className="text-[10px]" style={{ color: theme.textPrimary }}>원</span>
+                  </div>
+
+                  {/* 참여 현황 바 */}
+                  <div className="mt-1.5">
+                    <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: theme.bgInput }}>
+                      <div 
+                        className="h-full rounded-full transition-all"
+                        style={{ 
+                          width: `${progress}%`,
+                          backgroundColor: progress >= 100 ? theme.accent : theme.red
+                        }}
+                      />
+                    </div>
+                    <p className="text-[10px] mt-0.5 text-right" style={{ color: theme.textMuted }}>
+                      남은재고 {Math.max(0, (gb.min_quantity || 0) - (gb.current_quantity || 0))}개
+                    </p>
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+
+        {/* 사장님 유도 배너 */}
+        {!loading && (
+          <div className="mt-6 rounded-xl p-4" style={{ backgroundColor: theme.accent }}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-bold text-sm mb-0.5" style={{ color: isDark ? '#121212' : '#fff' }}>사장님이세요? 🏪</p>
+                <p className="text-xs" style={{ color: isDark ? '#121212cc' : '#ffffffcc' }}>공동구매를 시작해보세요</p>
+              </div>
+              <Link
+                href="/shop/register"
+                className="px-3 py-1.5 rounded-lg font-bold text-xs transition-colors whitespace-nowrap"
+                style={{ backgroundColor: theme.bgCard, color: theme.accent }}
+              >
+                입점 신청
+              </Link>
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
